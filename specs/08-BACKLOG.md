@@ -14,10 +14,10 @@ Dokumen ini memecah roadmap (`06-ROADMAP.md`) menjadi tugas-tugas kecil yang dap
 Target: Panel terbuka, host terhubung, workspace list berfungsi, provider manifest generator berjalan.
 
 ### 0.1. Inisialisasi & Struktur Proyek
-- [ ] 0.1.1. Pastikan `package.json` root memiliki workspaces: `["shared", "extension", "bridge"]`.
-- [ ] 0.1.2. Buat folder dasar: `shared/src`, `extension/src`, `bridge/src`.
-- [ ] 0.1.3. Setup `tsconfig.base.json` di root dan `tsconfig.json` di masing-masing workspace.
-- [ ] 0.1.4. Pastikan `npm install` dan `npm run typecheck` berjalan tanpa error di root.
+- [x] 0.1.1. Pastikan `package.json` root memiliki workspaces: `["shared", "extension", "bridge"]`.
+- [x] 0.1.2. Buat folder dasar: `shared/src`, `extension/src`, `bridge/src`.
+- [x] 0.1.3. Setup `tsconfig.base.json` di root dan `tsconfig.json` di masing-masing workspace.
+- [x] 0.1.4. Pastikan `npm install` dan `npm run typecheck` berjalan tanpa error di root.
 
 ### 0.2. Shared Protocol & Types
 - [ ] 0.2.1. Buat `shared/src/protocol.ts` (definisi tipe dasar: Envelope, ErrorCode, RiskClass).
