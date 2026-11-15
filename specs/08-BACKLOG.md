@@ -20,9 +20,9 @@ Target: Panel terbuka, host terhubung, workspace list berfungsi, provider manife
 - [x] 0.1.4. Pastikan `npm install` dan `npm run typecheck` berjalan tanpa error di root.
 
 ### 0.2. Shared Protocol & Types
-- [ ] 0.2.1. Buat `shared/src/protocol.ts` (definisi tipe dasar: Envelope, ErrorCode, RiskClass).
-- [ ] 0.2.2. Tambahkan tipe Config, MCP, dan Provider ke `protocol.ts`.
-- [ ] 0.2.3. Export semua tipe dari `shared/src/index.ts`.
+- [x] 0.2.1. Buat `shared/src/protocol.ts` (definisi tipe dasar: Envelope, ErrorCode, RiskClass).
+- [x] 0.2.2. Tambahkan tipe Config, MCP, dan Provider ke `protocol.ts`.
+- [x] 0.2.3. Export semua tipe dari `shared/src/index.ts`.
 
 ### 0.3. Native Host (Bridge) - Core
 - [ ] 0.3.1. Setup `bridge/package.json` dengan script `build` (esbuild/tsup) dan `start`.
