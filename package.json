@@ -21,6 +21,6 @@
     "check": "npm run typecheck && npm run test && npm run build"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.6.0"
   }
 }
