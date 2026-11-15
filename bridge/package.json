@@ -5,13 +5,14 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsup src/index.ts --format esm --target node18 --sourcemap --clean --dts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "echo \"No tests yet\" && exit 0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0"
   }
 }
