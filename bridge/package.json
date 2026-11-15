@@ -8,7 +8,7 @@
     "build": "tsup src/index.ts --format esm --target node18 --sourcemap --clean --dts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "node --test --experimental-strip-types src/**/*.test.mts"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
