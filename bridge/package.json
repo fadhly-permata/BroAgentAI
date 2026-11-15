@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsup src/index.ts --format esm --target node18 --sourcemap --clean --dts",
+    "build": "tsup src/index.ts --format esm --target node22 --sourcemap --clean --dts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types src/**/*.test.mts"
