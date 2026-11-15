@@ -1,0 +1,29 @@
+{
+  "name": "browseragent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "bridge",
+    "extension"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @browseragent/extension",
+    "build": "npm run build:extension && npm run build:host",
+    "build:extension": "npm run build -w @browseragent/extension",
+    "build:host": "npm run build -w @browseragent/bridge",
+    "host:build": "npm run build:host",
+    "host:install:dev": "node scripts/native-host.mjs install",
+    "host:uninstall:dev": "node scripts/native-host.mjs uninstall",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
