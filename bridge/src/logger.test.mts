@@ -65,6 +65,40 @@ test("redacts secret-looking keys case-insensitively", () => {
   assert.equal(entry.fields?.username, "alice");
 });
 
+test("redacts session ids and keeps non-secret lookalikes", () => {
+  const { logger, entries } = capture({ level: "debug" });
+  logger.info("scope", {
+    fields: {
+      // Must be redacted
+      sessionId: "sess_123",
+      session_id: "sess_456",
+      Authorization: "Bearer x",
+      password: "pw",
+      passwd: "pw2",
+      // Must NOT be redacted: they merely start with a secret-ish prefix
+      author: "Budi",
+      authorName: "Budi S",
+      passenger: "seat 12A",
+      tokenizer: "bert-base",
+      accessToken: "at_123",
+      refreshToken: "rt_456",
+    },
+  });
+
+  const [entry] = entries();
+  assert.equal(entry.fields?.sessionId, REDACTED);
+  assert.equal(entry.fields?.session_id, REDACTED);
+  assert.equal(entry.fields?.Authorization, REDACTED);
+  assert.equal(entry.fields?.password, REDACTED);
+  assert.equal(entry.fields?.passwd, REDACTED);
+  assert.equal(entry.fields?.author, "Budi");
+  assert.equal(entry.fields?.authorName, "Budi S");
+  assert.equal(entry.fields?.passenger, "seat 12A");
+  assert.equal(entry.fields?.tokenizer, "bert-base");
+  assert.equal(entry.fields?.accessToken, REDACTED);
+  assert.equal(entry.fields?.refreshToken, REDACTED);
+});
+
 test("redacts secrets inside nested objects and arrays", () => {
   const { logger, entries } = capture({ level: "debug" });
   logger.info("nested", {

@@ -28,8 +28,8 @@ Target: Panel terbuka, host terhubung, workspace list berfungsi, provider manife
 - [x] 0.3.1. Setup `bridge/package.json` dengan script `build` (esbuild/tsup) dan `start`.
 - [x] 0.3.2. Implementasi `bridge/src/frames.ts` (pembaca/penulis framing untuk Native Messaging).
 - [x] 0.3.3. Implementasi `bridge/src/logger.ts` untuk logging yang aman (no sensitive data).
-- [ ] 0.3.4. Buat handler `system.ping` dan `system.info` di bridge.
-- [ ] 0.3.5. Buat script `scripts/native-host.mjs` untuk `install` dan `uninstall` dev registry.
+- [x] 0.3.4. Buat handler `system.ping` dan `system.info` di bridge.
+- [x] 0.3.5. Buat script `scripts/native-host.mjs` untuk `install` dan `uninstall` dev registry.
 
 ### 0.4. Extension (MV3) - Core
 - [ ] 0.4.1. Setup `extension/package.json` dengan Vite + CRXJS.

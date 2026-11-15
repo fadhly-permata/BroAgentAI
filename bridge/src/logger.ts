@@ -37,7 +37,8 @@ export const MAX_STRING_LENGTH = 400;
  * Keys whose values are never logged verbatim, regardless of their type.
  * Matching is case-insensitive on the raw key.
  */
-const SECRET_KEY_PATTERN = /pass(word)?|secret|token|api[-_]?key|auth(oration)?|cookie|credential|private[-_]?key/i;
+const SECRET_KEY_PATTERN =
+  /password|passwd|passphrase|secret|token\b|api[-_]?key|authorization|cookie|credential|private[-_]?key|session[-_]?id/i;
 
 /** Placeholder substituted for any redacted value. */
 export const REDACTED = "[redacted]";
@@ -263,14 +264,3 @@ function redactPaths(value: unknown, home: string): unknown {
   return value;
 }
 
-/**
- * Guard used by the entry point to catch accidental `console.log` usage that
- * would corrupt the Native Messaging channel. Should be called once at startup.
- */
-export function assertStdoutReserved(stderr: NodeJS.WriteStream = process.stderr): void {
-  // We cannot truly block process.stdout writes from here, but we can make the
-  // contract explicit and fail fast if the process lacks the expected streams.
-  if (!stderr || typeof stderr.write !== "function") {
-    throw new Error("stderr is not writable; cannot establish a safe log sink");
-  }
-}

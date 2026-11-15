@@ -1,0 +1,207 @@
+/**
+ * RPC router for the BrowserAgent bridge.
+ *
+ * Maps wire methods to handlers and converts thrown errors into structured
+ * {@link RpcResponse} envelopes. The router is transport-agnostic: it receives
+ * a decoded request object and returns a response object, so it can be driven
+ * by the Native Messaging loop or by a plain Node test client.
+ */
+
+import { ErrorCode } from "./rpc.ts";
+import type { RpcRequest, RpcResponse } from "./rpc.ts";
+import { WorkspaceError, WorkspaceStore, validateWorkspacePath } from "./workspace.ts";
+import type { WorkspaceInfo } from "./rpc.ts";
+
+/** Protocol version negotiated between extension and host. */
+export const PROTOCOL_VERSION = 1;
+
+/** Version of the bridge host, reported by `system.info`. */
+export const HOST_VERSION = "0.1.0";
+
+/** Host name used for the Native Messaging registration. */
+export const HOST_NAME = "com.browseragent.host";
+
+/** A single registered RPC handler. */
+export type RpcHandler = (params: unknown) => unknown | Promise<unknown>;
+
+/** Options accepted by {@link RpcServer}. */
+export interface RpcServerOptions {
+  /** Workspace registry used by the `workspace.*` methods. */
+  store?: WorkspaceStore;
+  /** Host version reported by `system.info`. */
+  hostVersion?: string;
+}
+
+/**
+ * Routes RPC requests to handlers.
+ *
+ * Every handler failure is normalized into an {@link RpcResponse} carrying a
+ * stable error code, so the panel never has to interpret a thrown exception.
+ */
+export class RpcServer {
+  readonly #store: WorkspaceStore;
+  readonly #hostVersion: string;
+  readonly #handlers = new Map<string, RpcHandler>();
+
+  constructor(options: RpcServerOptions = {}) {
+    this.#store = options.store ?? new WorkspaceStore();
+    this.#hostVersion = options.hostVersion ?? HOST_VERSION;
+    this.#registerCoreHandlers();
+  }
+
+  /** The workspace registry backing this server. */
+  get store(): WorkspaceStore {
+    return this.#store;
+  }
+
+  /** Names of every registered method, sorted alphabetically. */
+  methods(): string[] {
+    return [...this.#handlers.keys()].sort();
+  }
+
+  /** Register (or replace) a handler for a method name. */
+  register(method: string, handler: RpcHandler): void {
+    this.#handlers.set(method, handler);
+  }
+
+  /**
+   * Handle one decoded request envelope.
+   *
+   * Never throws: unknown methods, invalid envelopes, and handler failures all
+   * come back as an error response with the request id when one is available.
+   */
+  async handle(request: unknown): Promise<RpcResponse> {
+    const id = extractId(request);
+
+    if (!isRpcRequest(request)) {
+      return {
+        id: id ?? 0,
+        error: {
+          code: ErrorCode.INVALID_REQUEST,
+          message: "request must be an object with numeric id and string method",
+        },
+      };
+    }
+
+    const handler = this.#handlers.get(request.method);
+    if (!handler) {
+      return {
+        id: request.id,
+        error: {
+          code: ErrorCode.METHOD_NOT_FOUND,
+          message: `unknown method: ${request.method}`,
+          data: { available: this.methods() },
+        },
+      };
+    }
+
+    try {
+      const result = await handler(request.params);
+      return { id: request.id, result };
+    } catch (error) {
+      return { id: request.id, error: toRpcError(error) };
+    }
+  }
+
+  /** Register the built-in handlers for system and workspace methods. */
+  #registerCoreHandlers(): void {
+    this.register("system.ping", () => ({
+      hostVersion: this.#hostVersion,
+      protocolVersion: PROTOCOL_VERSION,
+      hostName: HOST_NAME,
+    }));
+
+    this.register("system.info", () => ({
+      hostVersion: this.#hostVersion,
+      protocolVersion: PROTOCOL_VERSION,
+      hostName: HOST_NAME,
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.version,
+      pid: process.pid,
+      uptimeSeconds: Math.round(process.uptime()),
+      configDir: this.#store.configDir,
+      configPath: this.#store.configPath,
+    }));
+
+    this.register("workspace.list", () => ({
+      workspaces: this.#store.list(),
+      activeWorkspaceId: this.#store.active()?.id ?? null,
+    }));
+
+    this.register("workspace.add", (params) => {
+      const { path, name } = readParams(params);
+      const workspace = this.#store.add(path, name);
+      return { workspace, activeWorkspaceId: this.#store.active()?.id ?? null };
+    });
+
+    this.register("workspace.remove", (params) => {
+      const { id } = readParams(params);
+      return this.#store.remove(id);
+    });
+
+    this.register("workspace.setActive", (params) => {
+      const { id } = readParams(params);
+      const workspace = this.#store.setActive(id);
+      return { workspace, activeWorkspaceId: workspace.id };
+    });
+
+    this.register("workspace.rename", (params) => {
+      const { id, name } = readParams(params);
+      return { workspace: this.#store.rename(id, name) };
+    });
+
+    this.register("workspace.validate", (params) => {
+      const { path } = readParams(params);
+      // Throws WORKSPACE_INVALID when the path is missing, absent, or not a
+      // directory; the router turns that into a structured error response.
+      const resolved = validateWorkspacePath(path);
+      return { valid: true, path: resolved };
+    });
+
+    this.register("workspace.settings", () => this.#store.settings());
+  }
+}
+
+/** Type guard for a well-formed request envelope. */
+function isRpcRequest(value: unknown): value is RpcRequest {
+  if (!value || typeof value !== "object") return false;
+  const request = value as Partial<RpcRequest>;
+  return typeof request.id === "number" && typeof request.method === "string";
+}
+
+/** Best-effort extraction of a request id from a possibly malformed envelope. */
+function extractId(value: unknown): number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const id = (value as { id?: unknown }).id;
+  return typeof id === "number" ? id : undefined;
+}
+
+/** Read a string field from a params object. */
+function readParams(params: unknown): Record<string, string> {
+  if (!params || typeof params !== "object") {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "params must be an object");
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
+}
+
+/** Convert any thrown value into a structured RPC error. */
+function toRpcError(error: unknown): { code: ErrorCode; message: string; data?: unknown } {
+  if (error instanceof WorkspaceError) {
+    return { code: error.code, message: error.message };
+  }
+
+  if (error instanceof Error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "number") {
+      return { code: code as ErrorCode, message: error.message };
+    }
+    return { code: ErrorCode.INTERNAL_ERROR, message: error.message };
+  }
+
+  return { code: ErrorCode.INTERNAL_ERROR, message: String(error) };
+}

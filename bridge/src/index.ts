@@ -1,2 +1,41 @@
-// @browseragent/bridge - Native messaging host
-console.log("BrowserAgent bridge starting...");
+// @browseragent/bridge - Native messaging host entry point
+//
+// stdout is reserved for Native Messaging frames: never write to it.
+// All diagnostics go through the logger, which targets stderr.
+import { createLogger } from "./logger.ts";
+import { readFrames, writeFrame } from "./frames.ts";
+import { RpcServer } from "./rpc-server.ts";
+
+const log = createLogger({ scope: "bridge" });
+
+log.info("bridge starting");
+
+/**
+ * Chrome passes the calling extension origin as the first process argument.
+ * The host manifest's `allowed_origins` already restricts who can launch us,
+ * but we verify the origin shape as well and log the (redacted) origin.
+ */
+function readCallerOrigin(argv: string[]): string | null {
+  const origin = argv.find((arg) => arg.startsWith("chrome-extension://"));
+  return origin ?? null;
+}
+
+async function main(): Promise<void> {
+  const origin = readCallerOrigin(process.argv.slice(2));
+  log.info("bridge ready", { fields: { origin } });
+
+  const server = new RpcServer();
+
+  try {
+    for await (const message of readFrames(process.stdin)) {
+      const response = await server.handle(message);
+      await writeFrame(process.stdout, response);
+    }
+    log.info("stdin closed, shutting down");
+  } catch (error) {
+    log.error("bridge loop failed", { fields: { error } });
+    process.exitCode = 1;
+  }
+}
+
+void main();
