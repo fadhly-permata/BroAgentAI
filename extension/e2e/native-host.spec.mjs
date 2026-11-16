@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FAKE_CHAT_URL, routeFakeChat, say, lastAssistant } from './fake-chat.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(root, '..');
@@ -113,6 +114,27 @@ try {
     await text('#termStatus'));
   await page.locator('#termKill').click();
   await until(async () => /tertutup/.test(await text('#termStatus')), 10000);
+
+  // Agent relay with the real native host executing the tools.
+  await routeFakeChat(ctx);
+  fs.writeFileSync(path.join(workspace, 'README.md'), '# Native readme\n');
+  const chat = await ctx.newPage();
+  await chat.goto(FAKE_CHAT_URL);
+  await page.bringToFront();
+  await page.locator('.rail-btn[data-tab="agent"]').click();
+  await page.locator('#agentStart').click();
+  await until(async () => /Sesi aktif/.test(await text('#agentSession')), 15000);
+  await page.locator('#modeSel').selectOption('auto-edit');
+  await say(chat, 'tolong baca readme lalu tulis catatan');
+  check('agent loop reads and writes through the native host',
+    await until(() => fs.existsSync(path.join(workspace, 'notes-from-ai.txt'))
+      && fs.readFileSync(path.join(workspace, 'notes-from-ai.txt'), 'utf8').includes('# Native readme'), 20000),
+    await text('#cmdLog'));
+  check('agent loop returns the result to the chat',
+    await until(async () => /Selesai/.test(await lastAssistant(chat)), 15000), await lastAssistant(chat));
+  await page.locator('#agentStop').click();
+  await chat.close();
+  await page.bringToFront();
 
   check('host persisted its config in the isolated config dir',
     fs.existsSync(path.join(tmp, 'config', 'config.json')), fs.readdirSync(tmp).join(','));

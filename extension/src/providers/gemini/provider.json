@@ -1,0 +1,14 @@
+{
+  "id": "gemini",
+  "label": "Gemini",
+  "description": "Google Gemini web chat",
+  "homepage": "https://gemini.google.com/app",
+  "matchPatterns": ["https://gemini.google.com/*"],
+  "status": "experimental",
+  "selectors": {
+    "composer": "rich-textarea [contenteditable='true'], .ql-editor[contenteditable='true']",
+    "submit": "button.send-button, button[aria-label*='Send']",
+    "assistantMessage": "model-response message-content, message-content.model-response-text",
+    "generating": "button.stop, button[aria-label*='Stop']"
+  }
+}

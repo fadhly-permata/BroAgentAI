@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "e2e": "node e2e/sidepanel.spec.mjs",
     "e2e:native": "node e2e/native-host.spec.mjs",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "node --test --experimental-strip-types src/**/*.test.mts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.3.3",

@@ -1,0 +1,14 @@
+{
+  "id": "deepseek",
+  "label": "DeepSeek",
+  "description": "DeepSeek web chat",
+  "homepage": "https://chat.deepseek.com/",
+  "matchPatterns": ["https://chat.deepseek.com/*"],
+  "status": "experimental",
+  "selectors": {
+    "composer": "textarea#chat-input, textarea",
+    "submit": "",
+    "assistantMessage": ".ds-markdown",
+    "generating": ""
+  }
+}

@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startRealBridge, attachBridge } from './real-bridge.mjs';
+import { FAKE_CHAT_URL, routeFakeChat, say, lastAssistant, lastUser } from './fake-chat.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
@@ -67,6 +68,7 @@ const ctx = await chromium.launchPersistentContext(path.join(root, 'e2e', '.pw-p
 let exitCode = 1;
 try {
   await attachBridge(ctx, bridge);
+  await routeFakeChat(ctx);
   let worker = ctx.serviceWorkers()[0];
   if (!worker) worker = await ctx.waitForEvent('serviceworker', { timeout: 15000 }).catch(() => null);
   const extId = worker ? worker.url().split('/')[2] : null;
@@ -433,13 +435,102 @@ try {
     fs.rmSync(path.join(wsA, 'broagentai.json'));
   }
 
-  // ---- 11. agent approval flow
-  await page.locator('.rail-btn[data-tab="agent"]').click();
-  await page.locator('#simulateBtn').click();
-  check('approval card appears in Ask mode', await until(() => visible(page, '#approvalCard')));
-  await page.locator('#apAllow').click();
-  check('approval card closes after Allow', await until(async () => !(await visible(page, '#approvalCard'))));
-  check('activity log records the tool call', /fs\.writeFile/.test(await text(page, '#cmdLog')));
+  // ---- 11. agent relay: fake chat page <-> real content script <-> panel loop <-> real bridge
+  {
+    const chat = await ctx.newPage();
+    watch(chat, 'chat');
+    await chat.goto(FAKE_CHAT_URL);
+    const logRow = (tool, status) => page.locator(`#cmdLog [data-log-tool="${tool}"][data-log-status="${status}"]`);
+    const setMode = (value) => page.locator('#modeSel').selectOption(value);
+    const assistantSays = (re, timeout = 15000) => until(async () => re.test(await lastAssistant(chat)), timeout);
+    const cardVisible = () => until(() => visible(page, '#approvalCard'), 15000);
+    const notes = path.join(wsA, 'notes-from-ai.txt');
+    const direct = path.join(wsA, 'direct.txt');
+
+    await page.bringToFront();
+    await page.locator('.rail-btn[data-tab="agent"]').click();
+    check('agent: provider tab is detected', await until(async () => /DeepSeek/.test(await text(page, '#detectedChat'))), await text(page, '#detectedChat'));
+    await page.locator('#agentStart').click();
+    check('agent: session starts', await until(async () => /Sesi aktif - DeepSeek/.test(await text(page, '#agentSession')), 15000), await text(page, '#toast'));
+    check('agent: operating prompt is typed into the chat with workspace and tool catalog',
+      await until(async () => { const t = await lastUser(chat); return t.includes('BroAgentAI operating instructions') && t.includes('alpha-project') && t.includes('fs.writeFile'); }, 15000));
+    check('agent: AI readiness reply is logged', await until(() => logRow('assistant', 'info').first().isVisible(), 15000), await text(page, '#cmdLog'));
+
+    // Ask mode: read runs automatically, write waits for approval.
+    await say(chat, 'tolong baca readme lalu tulis catatan');
+    check('agent: read tool runs without approval', await until(() => logRow('fs.readFile', 'ok').first().isVisible(), 15000), await text(page, '#cmdLog'));
+    check('agent: write tool raises an approval card', await cardVisible(), await text(page, '#cmdLog'));
+    check('agent: approval card names the tool and shows a preview',
+      (await text(page, '#apTool')) === 'fs.writeFile' && /\(new file\)/.test(await text(page, '#apDiff')) && /notes-from-ai\.txt/.test(await text(page, '#apSummary')),
+      await text(page, '#approvalCard'));
+    check('agent: nothing is written before approval', !fs.existsSync(notes));
+    await page.locator('#apAllow').click();
+    check('agent: approved write lands on disk with content derived from the read',
+      await until(() => fs.existsSync(notes) && /README starts with: /.test(fs.readFileSync(notes, 'utf8')), 15000),
+      fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8') : '(missing)');
+    check('agent: tool result is sent back and the AI finishes', await assistantSays(/Selesai\. Catatan sudah ditulis/), await lastAssistant(chat));
+    check('agent: write is logged as allowed once', await logRow('fs.writeFile', 'ok').first().isVisible() && /allow once/.test(await text(page, '#cmdLog')));
+    await page.screenshot({ path: path.join(shots, 'tab-agent.png'), fullPage: true });
+
+    // Read-only: writes are refused without a card.
+    await setMode('read-only');
+    await say(chat, 'tulis langsung');
+    check('agent: read-only denies a write and tells the AI', await assistantSays(/berhenti.*NOT_ALLOWED/s), await lastAssistant(chat));
+    check('agent: read-only write never touched disk', !fs.existsSync(direct) && !(await visible(page, '#approvalCard')));
+
+    // Ask + Deny.
+    await setMode('ask');
+    await say(chat, 'tulis langsung');
+    check('agent: ask mode shows the card again', await cardVisible());
+    await page.locator('#apDeny').click();
+    check('agent: denied write is reported to the AI and not executed',
+      await assistantSays(/user denied this action/) && !fs.existsSync(direct), await lastAssistant(chat));
+
+    // Auto-edit: writes run automatically.
+    await setMode('auto-edit');
+    await say(chat, 'tulis langsung');
+    check('agent: auto-edit writes without a card',
+      await until(() => fs.existsSync(direct), 15000) && !(await visible(page, '#approvalCard')));
+
+    // Full-auto still asks for push.
+    await setMode('full-auto');
+    await say(chat, 'push sekarang');
+    check('agent: push asks even in full-auto', await cardVisible() && (await text(page, '#apTool')) === 'git.push', await text(page, '#cmdLog'));
+    await page.locator('#apDeny').click();
+    await assistantSays(/user denied this action/);
+
+    // Parser and safety feedback.
+    await say(chat, 'dua perintah');
+    check('agent: two commands in one reply get a correction', await assistantSays(/perbaiki formatnya/), await lastAssistant(chat));
+    check('agent: correction names the expected format', /exactly ONE/.test(await lastUser(chat)));
+    await say(chat, 'tool tak dikenal');
+    check('agent: unknown tool is refused with guidance', await assistantSays(/berhenti.*unknown tool: fs\.format/s), await lastAssistant(chat));
+    await say(chat, 'keluar workspace');
+    check('agent: path escape is blocked by the bridge', await assistantSays(/berhenti.*[Pp]ath escape/s), await lastAssistant(chat));
+
+    // MCP tool through the same gate.
+    const fixtureServer = path.resolve(root, '..', 'bridge', 'src', 'fixtures', 'mcp-fixture-server.mjs');
+    fs.writeFileSync(path.join(configDir, 'broagentai.json'), JSON.stringify({ mcp: { fx: { type: 'local', command: [process.execPath, fixtureServer] } } }));
+    await bridge.call('mcp.start', { server: 'fx' });
+    await setMode('read-only');
+    await say(chat, 'pakai mcp');
+    check('agent: read-only MCP tool runs through the same gate', await assistantSays(/MCP menjawab/), await lastAssistant(chat));
+    check('agent: MCP call is in the activity log', await logRow('mcp.fx.echo', 'ok').first().isVisible());
+    await bridge.call('mcp.stop', { server: 'fx' });
+    fs.rmSync(path.join(configDir, 'broagentai.json'));
+
+    // Stop: replies are no longer acted on.
+    await setMode('ask');
+    await page.locator('#agentStop').click();
+    check('agent: Stop ends the session', await until(async () => /Belum ada sesi/.test(await text(page, '#agentSession'))));
+    const readsBefore = await logRow('fs.readFile', 'ok').count();
+    await say(chat, 'tolong baca readme');
+    await assistantSays(/saya baca README/);
+    await new Promise((r) => setTimeout(r, 2500));
+    check('agent: after Stop a command in the chat is ignored', (await logRow('fs.readFile', 'ok').count()) === readsBefore);
+    await chat.close();
+    await page.bringToFront();
+  }
 
   // ---- 12. header menus
   await page.locator('#overflowBtn').click();

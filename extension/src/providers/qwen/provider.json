@@ -1,0 +1,14 @@
+{
+  "id": "qwen",
+  "label": "Qwen",
+  "description": "Qwen web chat",
+  "homepage": "https://chat.qwen.ai/",
+  "matchPatterns": ["https://chat.qwen.ai/*"],
+  "status": "experimental",
+  "selectors": {
+    "composer": "textarea#chat-input, textarea",
+    "submit": "",
+    "assistantMessage": ".response-content-container, .markdown-content-container",
+    "generating": ""
+  }
+}

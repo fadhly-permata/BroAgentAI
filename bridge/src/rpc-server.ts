@@ -16,6 +16,7 @@ import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
+import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { McpManager } from "./mcp.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
@@ -71,6 +72,13 @@ export class RpcServer {
     this.#terminals = new TerminalManager(this.#store, this.#emit);
     this.#mcp = new McpManager(this.#store, this.#emit);
     this.#registerCoreHandlers();
+  }
+
+  /** Run a registered handler directly; throws instead of returning an error envelope. */
+  async invoke(method: string, params: unknown): Promise<unknown> {
+    const handler = this.#handlers.get(method);
+    if (!handler) throw new WorkspaceError(ErrorCode.METHOD_NOT_FOUND, `unknown method: ${method}`);
+    return handler(params);
   }
 
   /** The MCP manager (exposed for the tool catalog). */
@@ -306,6 +314,18 @@ export class RpcServer {
     });
     this.register("workspace.trust", () => this.#mcp.trust());
     this.register("workspace.untrust", () => this.#mcp.untrust());
+
+    // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
+    this.register("tools.list", () => listTools(this));
+    this.register("agent.prompt", (params) => buildPrompt(this, readParams(params ?? {}).mode));
+    this.register("agent.check", (params) => {
+      const p = readParams(params);
+      return checkTool(this, p.command, p.params, p.mode);
+    });
+    this.register("agent.callTool", (params) => {
+      const p = readParams(params);
+      return callTool(this, p.command, p.params, p.mode, p.approved);
+    });
 
     this.register("config.get", () => {
       return loadMergedConfig(this.#store);

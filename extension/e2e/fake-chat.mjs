@@ -1,0 +1,96 @@
+// fake-chat.mjs - a scripted stand-in for a provider chat page.
+//
+// The page is served (via Playwright routing) at the DeepSeek URL and uses the
+// DOM shape the bundled deepseek provider.json expects, so the REAL content
+// script is injected and the REAL relay / parser / approval loop runs. Only
+// the "AI" is fake: it answers from the fixed rules below, streaming its
+// reply in two steps like a real chat does.
+//
+// This proves the agent pipeline. It does NOT prove the selectors match the
+// live DeepSeek site; provider.json marks them "experimental" for that reason.
+export const FAKE_CHAT_URL = 'https://chat.deepseek.com/';
+
+const html = String.raw`<!doctype html>
+<html><head><meta charset="utf-8"><title>Fake DeepSeek (e2e)</title>
+<style>body{font-family:sans-serif;margin:16px}.user{color:#555;white-space:pre-wrap;border-left:3px solid #999;padding-left:8px;margin:8px 0;max-height:120px;overflow:auto}
+.ds-markdown{border-left:3px solid #06c;padding-left:8px;margin:8px 0}pre{background:#eee;padding:6px}textarea{width:100%;height:60px}</style></head>
+<body>
+<div id="messages"></div>
+<textarea id="chat-input" placeholder="Message"></textarea>
+<script>
+const box = document.getElementById('messages');
+const input = document.getElementById('chat-input');
+const cmd = (command, params) => JSON.stringify({ command, params });
+
+// Each rule: [test(userText), prose, ...codeBlocks]
+const rules = [
+  [(t) => t.includes('BroAgentAI operating instructions'), 'READY'],
+  [(t) => /baca readme/i.test(t), 'Baik, saya baca README dulu.', cmd('fs.readFile', { path: 'README.md' })],
+  [(t) => t.startsWith('[BroAgentAI tool result] fs.readFile OK'), 'Sekarang saya tulis catatannya.',
+    (t) => cmd('fs.writeFile', { path: 'notes-from-ai.txt', content: 'README starts with: ' + ((t.match(/"content": "([^\\\n"]*)/) || [])[1] || '?') + '\n' })],
+  [(t) => t.startsWith('[BroAgentAI tool result] fs.writeFile OK'), 'Selesai. Catatan sudah ditulis.'],
+  [(t) => /tulis langsung/i.test(t), 'Saya tulis file.', cmd('fs.writeFile', { path: 'direct.txt', content: 'written directly\n' })],
+  [(t) => /dua perintah/i.test(t), 'Dua sekaligus.', cmd('fs.readFile', { path: 'README.md' }), cmd('fs.readFile', { path: 'image.bin' })],
+  [(t) => /tool tak dikenal/i.test(t), 'Coba tool lain.', cmd('fs.format', { path: 'README.md' })],
+  [(t) => /keluar workspace/i.test(t), 'Saya coba baca di luar.', cmd('fs.readFile', { path: '../outside.txt' })],
+  [(t) => /push sekarang/i.test(t), 'Saya push.', cmd('git.push', {})],
+  [(t) => /pakai mcp/i.test(t), 'Saya panggil MCP.', cmd('mcp.fx.echo', { text: 'from chat' })],
+  [(t) => t.startsWith('[BroAgentAI tool result] mcp.fx.echo OK'), 'MCP menjawab.'],
+  [(t) => t.startsWith('[BroAgentAI tool result]') && / ERROR/.test(t.split('\n')[0]), (t) => 'Baik, saya berhenti. Alasan: ' + t.split('\n').slice(2).join(' ').slice(0, 120)],
+  [(t) => t.startsWith('[BroAgentAI] '), 'Maaf, saya perbaiki formatnya nanti.'],
+  [() => true, 'Saya tidak punya jawaban untuk itu.'],
+];
+
+function addAssistant(prose, blocks) {
+  const el = document.createElement('div');
+  el.className = 'ds-markdown';
+  const p = document.createElement('p');
+  p.textContent = prose.slice(0, Math.ceil(prose.length / 2)); // first half "streams" in
+  el.appendChild(p);
+  box.appendChild(el);
+  setTimeout(() => {
+    p.textContent = prose;
+    for (const block of blocks) {
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.className = 'language-json';
+      code.textContent = block;
+      pre.appendChild(code);
+      el.appendChild(pre);
+    }
+    window.scrollTo(0, document.body.scrollHeight);
+  }, 500);
+}
+
+function submit() {
+  const text = input.value;
+  if (!text.trim()) return;
+  input.value = '';
+  const user = document.createElement('div');
+  user.className = 'user';
+  user.textContent = text;
+  box.appendChild(user);
+  const rule = rules.find((r) => r[0](text));
+  const resolve = (part) => (typeof part === 'function' ? part(text) : part);
+  setTimeout(() => addAssistant(resolve(rule[1]), rule.slice(2).map(resolve)), 250);
+}
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+});
+</script></body></html>`;
+
+/** Serve the fake chat for every request to the provider origin. */
+export async function routeFakeChat(ctx) {
+  await ctx.route('https://chat.deepseek.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html }));
+}
+
+/** Type a message into the fake chat as the user would. */
+export async function say(chatPage, text) {
+  await chatPage.locator('#chat-input').fill(text);
+  await chatPage.locator('#chat-input').press('Enter');
+}
+
+export const lastAssistant = (chatPage) => chatPage.locator('.ds-markdown').last().innerText();
+export const lastUser = (chatPage) => chatPage.locator('.user').last().innerText();
