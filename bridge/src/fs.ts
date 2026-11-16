@@ -95,12 +95,14 @@ export interface FsListDirResult {
   path: string;
   isDirectory: boolean;
   size?: number;
+  /** Set when the entry matches an ignore pattern (only listed with showIgnored). */
+  isIgnored?: boolean;
 }
 
 /**
  * List contents of a directory within the active workspace.
  */
-export function listDir(store: WorkspaceStore, requestedPath: string): FsListDirResult[] {
+export function listDir(store: WorkspaceStore, requestedPath: string, showIgnored: boolean = false): FsListDirResult[] {
   const active = store.active();
   if (!active) {
     throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
@@ -116,7 +118,7 @@ export function listDir(store: WorkspaceStore, requestedPath: string): FsListDir
   const ignorePatterns = store.settings().ignore;
 
   return entries
-    .filter((entry) => !isIgnored(entry.name, ignorePatterns))
+    .filter((entry) => showIgnored || !isIgnored(entry.name, ignorePatterns))
     .map((entry) => {
       const fullPath = join(realPath, entry.name);
       const relPath = relative(active.path, fullPath).replace(/\\/g, "/");
@@ -133,6 +135,7 @@ export function listDir(store: WorkspaceStore, requestedPath: string): FsListDir
         path: relPath,
         isDirectory: entry.isDirectory(),
         size,
+        ...(isIgnored(entry.name, ignorePatterns) ? { isIgnored: true } : {}),
       };
     });
 }
@@ -141,6 +144,7 @@ export interface FsListTreeResult {
   name: string;
   path: string;
   isDirectory: boolean;
+  isIgnored?: boolean;
   size?: number;
   children?: FsListTreeResult[];
 }
@@ -151,7 +155,8 @@ export interface FsListTreeResult {
 export function listTree(
   store: WorkspaceStore,
   requestedPath: string,
-  maxDepth: number = 3
+  maxDepth: number = 3,
+  showIgnored: boolean = false
 ): FsListTreeResult | null {
   const active = store.active();
   if (!active) {
@@ -163,7 +168,8 @@ export function listTree(
 
   function buildTree(currentPath: string, currentDepth: number): FsListTreeResult | null {
     const relPath = relative(active!.path, currentPath).replace(/\\/g, "/") || ".";
-    if (isIgnored(relPath, ignorePatterns)) return null;
+    const ignored = isIgnored(relPath, ignorePatterns);
+    if (ignored && !showIgnored) return null;
 
     const stat = statSync(currentPath);
     const isDir = stat.isDirectory();
@@ -172,6 +178,7 @@ export function listTree(
       name: currentPath === active!.path ? "." : currentPath.split(/[\\/]/).pop() || currentPath,
       path: relPath,
       isDirectory: isDir,
+      ...(ignored ? { isIgnored: true } : {}),
     };
 
     if (!isDir) {

@@ -77,6 +77,10 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 2.1.2. Implementasi `read_file_lines` dan tampilan isi file di editor.
 - [x] 2.1.3. Implementasi `write_file` dengan deteksi konflik `MTIME_CONFLICT`.
 - [x] 2.1.4. Buat UI Search: input query, toggle case/regex, dan tampilan hasil grouped.
+- [x] 2.1.5. Ganti stub UI: New File/Folder, context menu (rename, delete, copy path).
+- [x] 2.1.6. Ganti stub UI: show ignored checkbox, ignore patterns input.
+- [x] 2.1.7. Ganti stub UI: diagnostics, create project config.
+- [x] 2.1.8. Ganti stub UI: theme/language/editor settings (localStorage persistence).
 
 ---
 

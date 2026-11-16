@@ -46,15 +46,105 @@ async function renderTree(){
     $('tree').innerHTML = '<p class="muted">Pilih workspace untuk melihat file.</p>';
     return;
   }
-  
+  const showIgnored = ($('showIgnored') as HTMLInputElement).checked;
   const options: ExplorerOptions = {
     onFileClick: (path) => openFile(path),
-    onContextClick: (e, path) => {
-      openModal('File: ' + path, '<p>New File, Rename, Duplicate, Copy Path, Copy Relative Path, Delete.</p><p><button class="mini" onclick="navigator.clipboard.writeText(\'' + path + '\')">Copy Relative Path</button></p>', () => toast('Context action (demo)'));
-    }
+    onContextClick: (e, path) => showContextMenu(e, path),
+    showIgnored,
   };
-  
   await renderExplorer($('tree'), activeWs.path, options);
+}
+
+function showContextMenu(e: MouseEvent, path: string) {
+  e.preventDefault();
+  const existing = document.getElementById('ctxMenu');
+  if (existing) existing.remove();
+  const menu = document.createElement('div');
+  menu.id = 'ctxMenu';
+  menu.className = 'menu';
+  menu.style.position = 'fixed';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  menu.style.zIndex = '9999';
+  const items = [
+    { label: 'Rename...', act: () => renamePath(path) },
+    { label: 'Delete...', act: () => deletePath(path) },
+    { label: 'Copy Relative Path', act: () => { navigator.clipboard.writeText(path); toast('Path disalin: ' + path); } },
+  ];
+  menu.innerHTML = items.map((it, i) => `<button class="ctx-item" data-i="${i}">${it.label}</button>`).join('');
+  document.body.appendChild(menu);
+  menu.querySelectorAll('.ctx-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number((btn as HTMLElement).dataset.i);
+      menu.remove();
+      items[i].act();
+    });
+  });
+  const close = (ev: MouseEvent) => {
+    if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener('mousedown', close); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', close), 0);
+}
+
+async function renamePath(path: string) {
+  const newName = prompt('Rename to (relative path):', path);
+  if (!newName || newName === path) return;
+  try {
+    await bridge.call('fs.rename', { from: path, to: newName.trim() });
+    toast('Renamed: ' + path + ' -> ' + newName.trim());
+    await renderTree();
+    refreshScm();
+  } catch (err: any) {
+    toast('Gagal rename: ' + (err?.message || err));
+  }
+}
+
+async function deletePath(path: string) {
+  if (!confirm('Delete ' + path + '? (directory must be empty)')) return;
+  try {
+    await bridge.call('fs.delete', { path });
+    toast('Deleted: ' + path);
+    await renderTree();
+    refreshScm();
+  } catch (err: any) {
+    toast('Gagal delete: ' + (err?.message || err));
+  }
+}
+
+async function newFile() {
+  const name = prompt('New file path (relative to workspace):');
+  if (!name) return;
+  try {
+    await bridge.call('fs.createFile', { path: name.trim() });
+    toast('File dibuat: ' + name.trim());
+    await renderTree();
+  } catch (err: any) {
+    toast('Gagal membuat file: ' + (err?.message || err));
+  }
+}
+
+async function newFolder() {
+  const name = prompt('New folder path (relative to workspace):');
+  if (!name) return;
+  try {
+    await bridge.call('fs.mkdir', { path: name.trim() });
+    toast('Folder dibuat: ' + name.trim());
+    await renderTree();
+  } catch (err: any) {
+    toast('Gagal membuat folder: ' + (err?.message || err));
+  }
+}
+
+async function applyIgnore() {
+  const raw = ($('ignoreInput') as HTMLInputElement).value;
+  const patterns = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  try {
+    const res = await bridge.call('workspace.setIgnore', { patterns });
+    toast('Ignore patterns updated: ' + (res?.ignore?.length || 0) + ' rules');
+    await renderTree();
+  } catch (err: any) {
+    toast('Gagal set ignore: ' + (err?.message || err));
+  }
 }
 async function openFile(path:string){
   if (!activeWs) return;
@@ -220,20 +310,99 @@ function openFileAtLine(path: string, line: number) {
   const editorUrl = chrome.runtime.getURL(`src/editor.html?path=${encodeURIComponent(path)}&line=${line}`);
   chrome.tabs.create({ url: editorUrl });
 }
+
+async function runDiagnostics() {
+  const diagEl = $('diagOut') as HTMLElement;
+  diagEl.classList.remove('hidden');
+  diagEl.textContent = 'Running diagnostics...';
+  try {
+    const info = await bridge.call('system.info');
+    const config = await bridge.call('config.get');
+    diagEl.textContent = `Host Info:\n${JSON.stringify(info, null, 2)}\n\nConfig:\n${JSON.stringify(config, null, 2)}`;
+  } catch (err: any) {
+    diagEl.textContent = `Diagnostics failed: ${err.message}`;
+  }
+}
+
+async function restartHost() {
+  toast('Restarting companion...');
+  await connectBridge();
+  toast($('banner').classList.contains('hidden') ? 'Host terhubung' : 'Host masih offline');
+}
+
+async function createProjectConfig() {
+  if (!activeWs) return toast('Pilih workspace terlebih dahulu');
+  try {
+    await bridge.call('fs.createFile', { path: 'broagentai.jsonc', content: '{\n  "approvalMode": "ask",\n  "git": {\n    "pushDefault": "ff-only"\n  }\n}\n' });
+    toast('broagentai.jsonc dibuat di root workspace');
+  } catch (err: any) {
+    toast('Gagal membuat config: ' + (err?.message || err));
+  }
+}
+
 let searchTimer:any=null;
 document.querySelectorAll('.rail-btn').forEach(b=>b.addEventListener('click',()=>switchTab((b as HTMLElement).dataset.tab!)));
 document.querySelectorAll('.set-tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.set-tab').forEach(x=>x.classList.toggle('active',x===b)); document.querySelectorAll('.set-panel').forEach(p=>p.classList.toggle('active',p.id==='set-'+(b as HTMLElement).dataset.set))}));
 on('wsBtn','click',()=>{$('wsMenu').classList.toggle('hidden'); $('overflowMenu').classList.add('hidden')});
 on('overflowBtn','click',()=>{$('overflowMenu').classList.toggle('hidden'); $('wsMenu').classList.add('hidden')});
-document.querySelectorAll('#overflowMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('overflowMenu').classList.add('hidden'); if(a==='settings')switchTab('settings'); if(a==='diagnostics'){switchTab('settings'); ($('diagOut') as HTMLElement).classList.remove('hidden')} if(a==='restart')toast('Restart companion (demo - host offline)'); if(a==='reload')location.reload()}));
+document.querySelectorAll('#overflowMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('overflowMenu').classList.add('hidden'); if(a==='settings')switchTab('settings'); if(a==='diagnostics')runDiagnostics(); if(a==='restart')restartHost(); if(a==='reload')location.reload()}));
 document.querySelectorAll('#wsMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('wsMenu').classList.add('hidden'); if(a==='open-folder')openFolder(); if(a==='manage'){switchTab('settings'); (document.querySelector('.set-tab[data-set="workspaces"]') as HTMLElement)?.click()}}));
 on('wsList','click',(e:any)=>{const t=e.target.closest('[data-ws]'); if(!t)return; $('wsMenu').classList.add('hidden'); setActiveWorkspace(workspaces[Number(t.dataset.ws)])});
 on('manageList','click',async(e:any)=>{const o=e.target.closest('[data-open]'); const r=e.target.closest('[data-remove]'); const rn=e.target.closest('[data-rename]'); if(o){await setActiveWorkspace(workspaces[Number(o.dataset.open)])} if(r){const idx=Number(r.dataset.remove); const ws=workspaces[idx]; try{ await bridge.call('workspace.remove', { id: ws.id }); await loadWorkspaces(); toast('Workspace dihapus dari list'); }catch(err){ toast('Gagal hapus: ' + err); }} if(rn){const idx=Number(rn.dataset.rename); const ws=workspaces[idx]; openModal('Rename workspace','<input id="wsName" class="input" value="'+ws.name+'">',async()=>{const newName=(document.getElementById('wsName') as HTMLInputElement).value; try{ await bridge.call('workspace.rename', { id: ws.id, name: newName }); await loadWorkspaces(); toast('Workspace direname'); }catch(err){ toast('Gagal rename: ' + err); }})}});
 on('restartBtn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('restart2Btn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('setupBtn','click',()=>openModal('Setup help','<p>Host: <code>com.broagentai.host</code></p><p>Dev: build host + register sekali, lalu reload extension.</p><p>Config: <code>~/.broagentai/config.jsonc</code> - Log: <code>~/.broagentai/host.log</code></p>',()=>{}));
-on('diagBtn','click',()=>{($('diagOut') as HTMLElement).classList.toggle('hidden')}); on('reloadConfigBtn','click',()=>toast('Config direload (demo)')); on('createConfigBtn','click',()=>openModal('Create project config','<p>Buat <code>broagentai.jsonc</code> di root workspace dengan default Ask + ff-only?</p>',()=>toast('broagentai.jsonc dibuat (demo)')));
+on('diagBtn','click',runDiagnostics); on('reloadConfigBtn','click',async()=>{try{await bridge.call('config.get'); toast('Config reloaded')}catch(err:any){toast('Gagal reload config: '+(err?.message||err))}}); on('createConfigBtn','click',createProjectConfig);
 on('dismissCk','click',()=>$('checklist').classList.add('hidden'));
 document.querySelectorAll('[data-ck]').forEach(b=>b.addEventListener('click',()=>{const k=(b as HTMLElement).dataset.ck; if(k==='host')(async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')})(); if(k==='ws')($('wsBtn') as HTMLElement).click(); if(k==='ai')switchTab('agent')}));
-on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')}); on('newFileBtn','click',()=>toast('Fitur New File akan diimplementasikan di Fase 2')); on('newFolderBtn','click',()=>toast('Fitur New Folder akan diimplementasikan di Fase 2'));
+
+// UI settings persistence (localStorage)
+const UI_SETTINGS_KEY = 'broagentai.ui';
+function loadUISettings() {
+  try {
+    const raw = localStorage.getItem(UI_SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+function saveUISettings(settings: any) {
+  try {
+    const current = loadUISettings();
+    localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify({ ...current, ...settings }));
+  } catch {}
+}
+function applyUISettings() {
+  const s = loadUISettings();
+  if (s.lang) {
+    ($('langSel') as HTMLSelectElement).value = s.lang;
+    document.documentElement.lang = s.lang;
+  }
+  if (s.theme) {
+    ($('themeSel') as HTMLSelectElement).value = s.theme;
+    document.documentElement.dataset.theme = s.theme;
+  }
+  if (s.fontSize) {
+    ($('fontSize') as HTMLInputElement).value = String(s.fontSize);
+    document.documentElement.style.setProperty('--font-size', s.fontSize + 'px');
+  }
+  if (s.tabSize) {
+    ($('tabSize') as HTMLInputElement).value = String(s.tabSize);
+    document.documentElement.style.setProperty('--tab-size', String(s.tabSize));
+  }
+  if (s.wrap) {
+    ($('wrapChk') as HTMLInputElement).checked = s.wrap;
+    document.documentElement.style.setProperty('--editor-wrap', s.wrap ? 'wrap' : 'nowrap');
+  }
+}
+on('langSel','change',(e)=>{const v=(e.target as HTMLSelectElement).value; saveUISettings({lang:v}); document.documentElement.lang=v;});
+on('themeSel','change',(e)=>{const v=(e.target as HTMLSelectElement).value; saveUISettings({theme:v}); document.documentElement.dataset.theme=v;});
+on('fontSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({fontSize:v}); document.documentElement.style.setProperty('--font-size',v+'px');}});
+on('tabSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({tabSize:v}); document.documentElement.style.setProperty('--tab-size',String(v));}});
+on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; saveUISettings({wrap:v}); document.documentElement.style.setProperty('--editor-wrap',v?'wrap':'nowrap');});
+applyUISettings();
+on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')});
+on('newFileBtn','click',()=>newFile());
+on('newFolderBtn','click',()=>newFolder());
+on('showIgnored','change',async()=>{await renderTree()});
+on('ignoreInput','change',()=>applyIgnore());
+on('ignoreInput','blur',()=>applyIgnore());
 on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; closeEditorPreview()}); on('edArea','input',()=>{dirty=true; $('edDirty').textContent='- dirty'}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});

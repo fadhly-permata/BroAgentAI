@@ -17,6 +17,7 @@ export interface FileNode {
 export interface ExplorerOptions {
   onFileClick?: (path: string) => void;
   onContextClick?: (e: MouseEvent, path: string) => void;
+  showIgnored?: boolean;
 }
 
 export async function renderExplorer(
@@ -27,7 +28,7 @@ export async function renderExplorer(
   rootEl.innerHTML = '<div class="ba-loading">Memuat direktori...</div>';
 
   try {
-    const tree = await bridge.call("fs.listTree", { path: ".", maxDepth: 1 });
+    const tree = await bridge.call("fs.listTree", { path: ".", maxDepth: 1, showIgnored: options.showIgnored });
     if (!tree) {
       rootEl.innerHTML = '<div class="ba-empty">Direktori kosong.</div>';
       return;
@@ -112,7 +113,7 @@ function renderNode(
       if (node.isExpanded && !node.children) {
         paint(" (memuat...)");
         try {
-          const children = await bridge.call("fs.listDir", { path: node.path });
+          const children = await bridge.call("fs.listDir", { path: node.path, showIgnored: options.showIgnored });
           node.children = (children as FileNode[]).map((child) => ({ ...child, isExpanded: false }));
           paint();
         } catch (err: any) {

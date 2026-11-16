@@ -17,6 +17,7 @@ import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
+import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
@@ -225,20 +226,36 @@ export class RpcServer {
 
     this.register("workspace.settings", () => this.#store.settings());
 
+    this.register("workspace.setIgnore", (params) => {
+      const { patterns } = readParams(params);
+      if (!Array.isArray(patterns) || !patterns.every((p) => typeof p === "string")) {
+        throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "patterns must be an array of strings");
+      }
+      return { ignore: this.#store.setIgnore(patterns) };
+    });
+
     // Shows the OS folder picker; the panel then calls workspace.add with the
     // result. Rejects (panel falls back to manual input) where unsupported.
     this.register("workspace.openFolderDialog", () => openFolderDialog());
 
     this.register("fs.listDir", (params) => {
-      const { path } = readParams(params);
-      return listDir(this.#store, path || ".");
+      const { path, showIgnored } = readParams(params);
+      return listDir(this.#store, path || ".", showIgnored === true);
     });
 
     this.register("fs.listTree", (params) => {
-      const { path, maxDepth } = readParams(params);
+      const { path, maxDepth, showIgnored } = readParams(params);
       const depth = maxDepth ? parseInt(maxDepth, 10) : 3;
-      return listTree(this.#store, path || ".", depth);
+      return listTree(this.#store, path || ".", depth, showIgnored === true);
     });
+
+    this.register("fs.createFile", (params) => createFile(this.#store, readParams(params).path));
+    this.register("fs.mkdir", (params) => makeDir(this.#store, readParams(params).path));
+    this.register("fs.rename", (params) => {
+      const { from, to } = readParams(params);
+      return renamePath(this.#store, from, to);
+    });
+    this.register("fs.delete", (params) => deletePath(this.#store, readParams(params).path));
 
     this.register("fs.stat", (params) => {
       const { path } = readParams(params);
