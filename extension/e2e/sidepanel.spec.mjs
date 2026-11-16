@@ -377,6 +377,24 @@ try {
     check('scm: clean switch works', await until(() => git('branch', '--show-current') === firstBranch));
     await page.screenshot({ path: path.join(shots, 'tab-scm.png'), fullPage: true });
 
+    // Explorer badges mirror the same Git status.
+    fs.writeFileSync(readme, committed + 'badge check\n');
+    fs.writeFileSync(path.join(wsA, 'src', 'untracked-badge.txt'), 'u\n');
+    await page.locator('.rail-btn[data-tab="explorer"]').click();
+    await page.locator('#refreshTree').click();
+    check('explorer: modified file shows an M badge',
+      await until(async () => (await fileRow('README.md').locator('.badge-git').innerText()) === 'M'), await text(page, '#tree'));
+    check('explorer: folder with changes shows a marker', await until(() => dirRow('src').locator('.badge-git').isVisible()));
+    check('explorer: unchanged file has no badge', (await fileRow('image.bin').locator('.badge-git').count()) === 0);
+    git('checkout', '--', 'README.md'); // let git restore it: line endings follow the user's autocrlf
+    fs.rmSync(path.join(wsA, 'src', 'untracked-badge.txt'));
+    await page.locator('#refreshTree').click();
+    check('explorer: badges clear when the tree is clean',
+      await until(async () => (await page.locator('#tree .badge-git').count()) === 0),
+      JSON.stringify(await page.locator('#tree .ba-tree-node:has(.badge-git)').evaluateAll((els) => els.map((e) => e.dataset.path + '=' + e.querySelector('.badge-git').textContent))) + ' | ' + git('status', '--porcelain'));
+    await page.locator('.rail-btn[data-tab="scm"]').click();
+    await until(async () => (await groupCount('changes')) === 0 && (await groupCount('untracked')) === 0);
+
     // ---- 10c. remote sync against a local bare "origin"
     check('scm: remote buttons are disabled without a remote', await page.locator('#pushBtn').isDisabled());
     const originDir = path.join(tmp, 'origin.git');

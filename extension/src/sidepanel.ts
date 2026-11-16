@@ -48,6 +48,16 @@ function updateHostStatus(status: 'offline' | 'ready' | 'error') {
     $('banner').classList.add('hidden');
   }
 }
+/** Status letter per changed file, for explorer badges. Empty when the workspace is not a repo. */
+async function loadGitBadges(): Promise<Map<string,string>> {
+  const badges = new Map<string,string>();
+  try {
+    const status: any = await bridge.call('git.status');
+    if (!status?.isRepo) return badges;
+    for (const f of status.files) badges.set(f.path, f.conflicted ? '!' : f.untracked ? 'U' : f.unstaged ? f.worktree : f.index);
+  } catch { /* host offline or git missing: no badges */ }
+  return badges;
+}
 async function renderTree(){
   if (!activeWs) {
     const msg = ((v=>v==='selectWorkspaceForFiles'?'Pilih workspace untuk melihat file.':v)(t('selectWorkspaceForFiles')));
@@ -59,6 +69,7 @@ async function renderTree(){
     onFileClick: (path) => openFile(path),
     onContextClick: (e, path) => showContextMenu(e, path),
     showIgnored,
+    gitStatus: await loadGitBadges(),
   };
   await renderExplorer($('tree'), activeWs.path, options);
 }

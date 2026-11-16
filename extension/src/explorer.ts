@@ -18,6 +18,24 @@ export interface ExplorerOptions {
   onFileClick?: (path: string) => void;
   onContextClick?: (e: MouseEvent, path: string) => void;
   showIgnored?: boolean;
+  /** Git status letter per workspace-relative file path (M, A, D, R, U, !). */
+  gitStatus?: Map<string, string>;
+}
+
+/** Badge for a file, or a dot for a folder that contains changed files. */
+function gitBadge(node: FileNode, status: Map<string, string> | undefined): HTMLElement | null {
+  if (!status || status.size === 0) return null;
+  let letter = status.get(node.path);
+  if (!letter && node.isDirectory && node.path !== '.') {
+    const prefix = node.path + '/';
+    for (const path of status.keys()) if (path.startsWith(prefix)) { letter = '\u2022'; break; }
+  }
+  if (!letter) return null;
+  const badge = document.createElement('span');
+  badge.className = 'badge-git';
+  badge.dataset.git = letter;
+  badge.textContent = letter;
+  return badge;
 }
 
 export async function renderExplorer(
@@ -130,6 +148,8 @@ function renderNode(
 
     paint();
     row.append(toggle, nameSpan);
+    const dirBadge = gitBadge(node, options.gitStatus);
+    if (dirBadge) row.appendChild(dirBadge);
     item.append(row, childrenEl);
     container.appendChild(item);
     renderChildren();
@@ -141,6 +161,8 @@ function renderNode(
   row.dataset.file = node.path;
   nameSpan.textContent = node.name;
   row.appendChild(nameSpan);
+  const fileBadge = gitBadge(node, options.gitStatus);
+  if (fileBadge) row.appendChild(fileBadge);
 
   if (node.size !== undefined) {
     const sizeSpan = document.createElement("span");
