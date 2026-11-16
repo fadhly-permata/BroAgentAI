@@ -153,7 +153,7 @@ MVP adapters: **DeepSeek**, **Gemini**, **Qwen**. The registry is provider-agnos
 {
   "name": "com.broagentai.host",
   "description": "BroAgentAI native companion",
-  "path": "C:\\Users\\<user>\\AppData\\Local\\BroAgentAI\\native-host\\broagentai-host.exe",
+  "path": "<repo>\\bridge\\broagentai-host.cmd",
   "type": "stdio",
   "allowed_origins": ["chrome-extension://<extension-id>/"]
 }
@@ -185,6 +185,8 @@ Chrome already frames messages. On the host side:
 - Invalid JSON, oversized frames, or malformed envelopes produce an error response when an ID is available; otherwise log and drop.
 
 ### 3.3 Envelope
+
+> Implemented envelope (see `shared/src/protocol.ts`): request `{ id, method, params? }`, response `{ id, result? }` or `{ id, error: { code, message, data? } }` with numeric codes, event `{ event, data? }`. The `v`/`ok` shapes below are the original draft and are kept for history only.
 
 Request:
 
@@ -280,8 +282,8 @@ A generic chunking layer can be added later if real usage requires it. It would 
 
 ### 4.1 Dev installation
 
-1. `npm run host:build` builds `bridge/dist/broagentai-host.exe` (or platform equivalent).
-2. `npm run host:install:dev` computes the extension ID from `extension/manifest.json` `key`, writes the host manifest, and registers it with Chrome.
+1. `npm run host:build` builds `bridge/dist/index.js` (run by Node.js through the launcher `bridge/broagentai-host.cmd`).
+2. `npm run host:install:dev` derives the unpacked extension ID from the `extension/dist` path, writes the launcher and host manifest, and registers it with Chrome.
 3. Load `extension/dist` as an unpacked extension.
 4. Open the side panel; the service worker calls `connectNative`.
 
@@ -714,11 +716,8 @@ broagentai/
 
 ### 12.3 Host build
 
-- Bundle `bridge/src/host.ts` to a single executable.
-- Preferred: `bun build --compile`.
-- Fallback: Node SEA or `@yao-pkg/pkg`.
-- MCP SDK and config parser are bundled into the executable; no runtime npm install.
-- Output: `bridge/dist/broagentai-host[.exe]`.
+- Current: `tsup` bundles `bridge/src/index.ts` to `bridge/dist/index.js`, run by the user's Node.js (>= 22.6) through a launcher script. Native modules (`node-pty`) stay external and load from `node_modules`.
+- Post-MVP option: a single executable via Node SEA or `bun build --compile`.
 - Dev registration script writes the host manifest, allowed origins, and registry key.
 
 ### 12.4 Dev scripts

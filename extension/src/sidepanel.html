@@ -38,11 +38,11 @@
   <p id="searchErr" class="err hidden"></p><p id="searchInfo" class="muted"></p><div id="searchResults"></div>
 </section>
 <section id="tab-scm" class="panel">
-  <div class="panel-head"><h2>Source Control</h2><div><button id="scmRefresh" class="mini">Refresh</button><button class="mini" disabled title="Remote (fetch/pull/push) menyusul">Fetch</button><button class="mini" disabled title="Remote (fetch/pull/push) menyusul">Pull</button><button class="mini" disabled title="Remote (fetch/pull/push) menyusul">Push</button></div></div>
+  <div class="panel-head"><h2>Source Control</h2><div><button id="scmRefresh" class="mini">Refresh</button><button id="fetchBtn" class="mini" disabled>Fetch</button><button id="pullBtn" class="mini" disabled>Pull</button><button id="pushBtn" class="mini primary" disabled>Push</button></div></div>
   <div id="scmState" class="card"><p>Memuat status Git...</p></div>
   <div id="scmBody" class="hidden">
     <div class="branch-row"><label>Branch <select id="branchSel"></select></label><span class="sync-pill" title="ahead / behind upstream">up <b id="ahead">0</b> &nbsp; down <b id="behind">0</b> &nbsp; <span id="scmUpstream" class="muted"></span></span><button id="newBranchBtn" class="mini">+ Branch</button></div>
-    <div id="conflictBanner" class="banner hidden"></div>
+    <div id="conflictBanner" class="banner hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
     <div id="scmGroups"></div>
     <label class="lbl">Commit message</label>
     <textarea id="commitMsg" rows="3" placeholder="feat: ..."></textarea>

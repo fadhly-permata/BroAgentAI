@@ -17,7 +17,8 @@ import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
 import {
-  gitBranches, gitCheckout, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitInit, gitStage, gitStatus, gitUnstage,
+  gitAbort, gitBranches, gitCheckout, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitPull, gitPush,
+  gitStage, gitStatus, gitTestRemote, gitUnstage,
 } from "./git.ts";
 
 /** Protocol version negotiated between extension and host. */
@@ -248,6 +249,11 @@ export class RpcServer {
     this.register("git.createBranch", (params) => gitCreateBranch(this.#store, readParams(params).name));
     this.register("git.checkout", (params) => gitCheckout(this.#store, readParams(params).branch));
     this.register("git.init", () => gitInit(this.#store));
+    this.register("git.fetch", () => gitFetch(this.#store));
+    this.register("git.pull", (params) => gitPull(this.#store, readParams(params).mode));
+    this.register("git.push", () => gitPush(this.#store));
+    this.register("git.abort", () => gitAbort(this.#store));
+    this.register("git.testRemote", (params) => gitTestRemote(this.#store, readParams(params).remote));
 
     this.register("config.get", () => {
       return loadMergedConfig(this.#store);

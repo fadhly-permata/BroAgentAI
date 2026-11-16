@@ -23,6 +23,8 @@ export const MAX_STATUS_FILES = 2000;
 /** Maximum diff size returned by `git.diff`. */
 export const MAX_DIFF_BYTES = 512 * 1024;
 const GIT_TIMEOUT_MS = 30_000;
+/** Network operations (fetch/pull/push/ls-remote) get a longer cap. */
+const GIT_REMOTE_TIMEOUT_MS = 120_000;
 const GIT_MAX_BUFFER = 32 * 1024 * 1024;
 
 /** One changed path as reported by `git status`. */
@@ -55,6 +57,8 @@ export interface GitStatusResult {
   behind: number;
   /** In-progress operation, if any. */
   operation: "merge" | "rebase" | "cherry-pick" | "revert" | null;
+  /** Names of configured remotes (empty when there is none). */
+  remotes: string[];
   files: GitFileStatus[];
   truncated: boolean;
 }
@@ -157,8 +161,11 @@ interface GitRun {
 
 class GitUnavailableError extends Error {}
 
+/** stderr fragments that mean "credentials missing or rejected". */
+const AUTH_FAILURE = /authentication failed|could not read username|could not read password|terminal prompts disabled|permission denied \(publickey|access denied|invalid credentials/i;
+
 /** Run git in `cwd`. Resolves for any exit code; rejects only if git cannot start. */
-function runGit(cwd: string, args: string[]): Promise<GitRun> {
+function runGit(cwd: string, args: string[], timeoutMs: number = GIT_TIMEOUT_MS): Promise<GitRun> {
   return new Promise((resolvePromise, reject) => {
     execFile(
       "git",
@@ -167,13 +174,15 @@ function runGit(cwd: string, args: string[]): Promise<GitRun> {
       {
         cwd,
         windowsHide: true,
-        timeout: GIT_TIMEOUT_MS,
+        timeout: timeoutMs,
         maxBuffer: GIT_MAX_BUFFER,
         encoding: "utf8",
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: "0", // never hang waiting for credentials
           GIT_OPTIONAL_LOCKS: "0", // status must not block a concurrent git
+          GIT_MERGE_AUTOEDIT: "no", // a merge commit must never open an editor
+          GIT_EDITOR: "true",
           LC_ALL: "C",
         },
       },
@@ -190,10 +199,10 @@ function runGit(cwd: string, args: string[]): Promise<GitRun> {
 }
 
 /** Run git and throw GIT_OPERATION_FAILED (with git's own message) on failure. */
-async function git(cwd: string, args: string[]): Promise<string> {
+async function git(cwd: string, args: string[], timeoutMs: number = GIT_TIMEOUT_MS): Promise<string> {
   let run: GitRun;
   try {
-    run = await runGit(cwd, args);
+    run = await runGit(cwd, args, timeoutMs);
   } catch (error) {
     if (error instanceof GitUnavailableError) {
       throw new WorkspaceError(ErrorCode.GIT_OPERATION_FAILED, "Git is not installed or not on PATH");
@@ -202,6 +211,12 @@ async function git(cwd: string, args: string[]): Promise<string> {
   }
   if (run.code !== 0) {
     const detail = (run.stderr.trim() || run.stdout.trim() || `git ${args[0]} exited with code ${run.code}`).slice(0, 2000);
+    if (AUTH_FAILURE.test(detail)) {
+      throw new WorkspaceError(
+        ErrorCode.GIT_AUTH_FAILED,
+        `Git authentication failed. Set up a credential helper or SSH key for this remote, then retry. (${detail.split("\n")[0]})`
+      );
+    }
     throw new WorkspaceError(ErrorCode.GIT_OPERATION_FAILED, detail);
   }
   return run.stdout;
@@ -298,7 +313,7 @@ export async function gitStatus(store: WorkspaceStore): Promise<GitStatusResult>
   const root = activePath(store);
   const empty: GitStatusResult = {
     gitAvailable: true, isRepo: false, branch: null, detached: false, upstream: null,
-    ahead: 0, behind: 0, operation: null, files: [], truncated: false,
+    ahead: 0, behind: 0, operation: null, remotes: [], files: [], truncated: false,
   };
   const probe = await probeRepo(root);
   if (!probe.isRepo) return { ...empty, gitAvailable: probe.gitAvailable, reason: probe.reason };
@@ -314,6 +329,7 @@ export async function gitStatus(store: WorkspaceStore): Promise<GitStatusResult>
     ahead: parsed.ahead,
     behind: parsed.behind,
     operation: detectOperation(probe.gitDir),
+    remotes: await listRemotes(root),
     files: truncated ? parsed.files.slice(0, MAX_STATUS_FILES) : parsed.files,
     truncated,
   };
@@ -490,4 +506,96 @@ export async function gitInit(store: WorkspaceStore): Promise<GitStatusResult> {
   if (probe.reason.includes("parent")) throw new WorkspaceError(ErrorCode.GIT_NOT_REPO, probe.reason);
   await git(root, ["init"]);
   return gitStatus(store);
+}
+
+// ---------------------------------------------------------------- remote sync
+
+async function listRemotes(root: string): Promise<string[]> {
+  return (await git(root, ["remote"])).split("\n").map((name) => name.trim()).filter((name) => name !== "");
+}
+
+export type GitPullMode = "ff-only" | "merge" | "rebase";
+
+const PULL_FLAGS: Record<GitPullMode, string[]> = {
+  "ff-only": ["--ff-only"],
+  merge: ["--no-rebase", "--no-edit"],
+  rebase: ["--rebase"],
+};
+
+/** `git.fetch`: update remote-tracking refs; never touches the working tree. */
+export async function gitFetch(store: WorkspaceStore): Promise<GitStatusResult> {
+  const { root } = await requireRepo(store);
+  await git(root, ["fetch", "--prune"], GIT_REMOTE_TIMEOUT_MS);
+  return gitStatus(store);
+}
+
+/**
+ * `git.pull`: integrate the upstream branch. `ff-only` is the default and can
+ * never create a conflict. A merge/rebase that stops on conflicts is reported
+ * as GIT_CONFLICT; the repository is left in that state for the user to
+ * resolve or abort (`git.abort`) - nothing is auto-resolved.
+ */
+export async function gitPull(store: WorkspaceStore, mode: unknown): Promise<GitStatusResult> {
+  const { root, gitDir } = await requireRepo(store);
+  const pullMode = (mode === undefined || mode === null ? "ff-only" : mode) as GitPullMode;
+  if (typeof pullMode !== "string" || !Object.hasOwn(PULL_FLAGS, pullMode)) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "mode must be ff-only, merge, or rebase");
+  }
+  if (detectOperation(gitDir)) {
+    throw new WorkspaceError(ErrorCode.GIT_CONFLICT, "a merge/rebase is already in progress; finish or abort it first");
+  }
+  try {
+    await git(root, ["pull", ...PULL_FLAGS[pullMode]], GIT_REMOTE_TIMEOUT_MS);
+  } catch (error) {
+    if (error instanceof WorkspaceError && error.code === ErrorCode.GIT_OPERATION_FAILED && detectOperation(gitDir)) {
+      throw new WorkspaceError(
+        ErrorCode.GIT_CONFLICT,
+        `pull (${pullMode}) stopped on conflicts; resolve them and commit, or abort`
+      );
+    }
+    throw error;
+  }
+  return gitStatus(store);
+}
+
+/**
+ * `git.push`: push the current branch. Without an upstream the branch is
+ * published with `-u <remote> <branch>`. Force-push is not available.
+ */
+export async function gitPush(store: WorkspaceStore): Promise<GitStatusResult & { publishedTo?: string }> {
+  const { root } = await requireRepo(store);
+  const status = await readStatus(root);
+  if (!status.branch) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "cannot push from a detached HEAD; switch to a branch first");
+  }
+  if (status.upstream) {
+    await git(root, ["push"], GIT_REMOTE_TIMEOUT_MS);
+    return gitStatus(store);
+  }
+  const remotes = await listRemotes(root);
+  if (remotes.length === 0) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "no remote is configured for this repository");
+  }
+  const remote = remotes.includes("origin") ? "origin" : remotes[0];
+  await git(root, ["push", "-u", remote, status.branch], GIT_REMOTE_TIMEOUT_MS);
+  return { ...(await gitStatus(store)), publishedTo: `${remote}/${status.branch}` };
+}
+
+/** `git.abort`: abort the in-progress merge, rebase, cherry-pick or revert. */
+export async function gitAbort(store: WorkspaceStore): Promise<GitStatusResult> {
+  const { root, gitDir } = await requireRepo(store);
+  const operation = detectOperation(gitDir);
+  if (!operation) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "no merge or rebase is in progress");
+  await git(root, [operation, "--abort"]);
+  return gitStatus(store);
+}
+
+/** `git.testRemote`: check that a remote is reachable with the current credentials. */
+export async function gitTestRemote(store: WorkspaceStore, remote: unknown): Promise<{ remote: string; reachable: true }> {
+  const { root } = await requireRepo(store);
+  const remotes = await listRemotes(root);
+  const name = typeof remote === "string" && remote !== "" ? remote : remotes.includes("origin") ? "origin" : remotes[0];
+  if (!name || !remotes.includes(name)) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "unknown remote");
+  await git(root, ["ls-remote", "--heads", name], GIT_REMOTE_TIMEOUT_MS);
+  return { remote: name, reachable: true };
 }

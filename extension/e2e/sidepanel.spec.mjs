@@ -313,6 +313,64 @@ try {
     await page.locator('#branchSel').selectOption(firstBranch);
     check('scm: clean switch works', await until(() => git('branch', '--show-current') === firstBranch));
     await page.screenshot({ path: path.join(shots, 'tab-scm.png'), fullPage: true });
+
+    // ---- 10c. remote sync against a local bare "origin"
+    check('scm: remote buttons are disabled without a remote', await page.locator('#pushBtn').isDisabled());
+    const originDir = path.join(tmp, 'origin.git');
+    const otherDir = path.join(tmp, 'other-clone');
+    execFileSync('git', ['init', '-q', '--bare', originDir]);
+    git('remote', 'add', 'origin', originDir);
+    const gitAt = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    const upstreamCommit = (file, content, message) => {
+      fs.writeFileSync(path.join(otherDir, file), content);
+      gitAt(otherDir, 'add', '-A');
+      gitAt(otherDir, 'commit', '-q', '-m', message);
+      gitAt(otherDir, 'push', '-q');
+    };
+    await page.locator('#scmRefresh').click();
+    check('scm: remote buttons enable once a remote exists', await until(async () => !(await page.locator('#pushBtn').isDisabled())));
+
+    await page.locator('#pushBtn').click();
+    check('scm: push asks for confirmation and names the publish target',
+      await until(async () => new RegExp('origin/' + firstBranch).test(await text(page, '#modalBody'))), await text(page, '#modalBody'));
+    await page.locator('#modalOk').click();
+    check('scm: first push publishes the branch', await toastHas(page, /dipublish ke origin\//), await text(page, '#toast'));
+    check('scm: push is real (remote has the commit)',
+      gitAt(originDir, 'log', '-1', '--format=%s', firstBranch) === 'feat: first commit from e2e');
+    check('scm: upstream is shown after publish',
+      await until(async () => new RegExp('origin/' + firstBranch).test(await text(page, '#scmUpstream'))), await text(page, '#scmUpstream'));
+
+    execFileSync('git', ['clone', '-q', '-b', firstBranch, originDir, otherDir]);
+    gitAt(otherDir, 'config', 'user.email', 'other@example.com');
+    gitAt(otherDir, 'config', 'user.name', 'Other');
+    gitAt(otherDir, 'config', 'commit.gpgsign', 'false');
+    upstreamCommit('from-upstream.txt', 'hello from upstream\n', 'upstream adds a file');
+    await page.locator('#fetchBtn').click();
+    check('scm: fetch shows the branch is behind', await until(async () => (await text(page, '#behind')) === '1'), await text(page, '#behind'));
+    check('scm: fetch does not touch the working tree', !fs.existsSync(path.join(wsA, 'from-upstream.txt')));
+    await page.locator('#pullBtn').click();
+    await page.locator('#pullMode').waitFor({ state: 'visible' });
+    await page.locator('#modalOk').click();
+    check('scm: pull ff-only brings the upstream file',
+      await until(() => fs.existsSync(path.join(wsA, 'from-upstream.txt'))) && await until(async () => (await text(page, '#behind')) === '0'));
+
+    upstreamCommit('README.md', 'upstream version\n', 'upstream rewrites readme');
+    fs.writeFileSync(readme, 'local version\n');
+    git('commit', '-q', '-am', 'local rewrites readme');
+    await page.locator('#pullBtn').click();
+    await page.locator('#pullMode').selectOption('merge');
+    await page.locator('#modalOk').click();
+    check('scm: conflicting pull shows the conflict banner',
+      await until(async () => (await visible(page, '#conflictBanner')) && /merge/.test(await text(page, '#conflictText'))), await text(page, '#toast'));
+    check('scm: conflicted file is listed under Merge changes', await until(() => scmRow('conflict', 'README.md').isVisible()));
+    check('scm: sync buttons lock during a merge', await page.locator('#pullBtn').isDisabled());
+    await page.screenshot({ path: path.join(shots, 'scm-conflict.png'), fullPage: true });
+    await page.locator('#scmAbort').click();
+    await page.locator('#modalOk').click();
+    check('scm: abort restores the pre-merge state',
+      await until(async () => !(await visible(page, '#conflictBanner')))
+        && fs.readFileSync(readme, 'utf8').replace(/\r\n/g, '\n') === 'local version\n'
+        && !fs.existsSync(path.join(wsA, '.git', 'MERGE_HEAD')));
   }
 
   // ---- 11. agent approval flow
