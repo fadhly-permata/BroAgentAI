@@ -12,6 +12,8 @@ import type { RpcRequest, RpcResponse } from "./rpc.ts";
 import { WorkspaceError, WorkspaceStore, validateWorkspacePath } from "./workspace.ts";
 import type { WorkspaceInfo } from "./rpc.ts";
 import { listDir, listTree, statFile, readFile } from "./fs.ts";
+import { loadMergedConfig } from "./config.ts";
+import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 
 /** Protocol version negotiated between extension and host. */
 export const PROTOCOL_VERSION = 1;
@@ -181,6 +183,53 @@ export class RpcServer {
     this.register("fs.readFile", (params) => {
       const { path } = readParams(params);
       return readFile(this.#store, path);
+    });
+
+    this.register("config.get", () => {
+      return loadMergedConfig(this.#store);
+    });
+
+    this.register("instructions.list", () => {
+      const active = this.#store.active();
+      if (!active) {
+        throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+      }
+      const resources = loadAllResources(this.#store);
+      return {
+        agents: resources.agents,
+        instructions: resources.instructions,
+      };
+    });
+
+    this.register("instructions.get", (params) => {
+      const { path } = readParams(params);
+      const active = this.#store.active();
+      if (!active) {
+        throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+      }
+      
+      // Check if it's AGENTS.md
+      if (path === "AGENTS.md") {
+        const resources = loadAllResources(this.#store);
+        return resources.agents;
+      }
+      
+      // Otherwise, treat it as a rule file
+      return loadRule(active.path, path);
+    });
+
+    this.register("skills.list", () => {
+      const resources = loadAllResources(this.#store);
+      return { skills: resources.skills };
+    });
+
+    this.register("skills.get", (params) => {
+      const { name } = readParams(params);
+      const active = this.#store.active();
+      if (!active) {
+        throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+      }
+      return loadSkill(active.path, name);
     });
   }
 }

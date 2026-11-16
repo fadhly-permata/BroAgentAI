@@ -60,10 +60,10 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 1.1.4. Tambahkan aturan ignore default (`.git`, `node_modules`, `dist`).
 
 ### 1.2. Configuration & Resources
-- [ ] 1.2.1. Buat parser JSONC untuk `browseragent.jsonc`.
-- [ ] 1.2.2. Implementasi logika merge config: Global < Project < Local.
-- [ ] 1.2.3. Buat resource loader untuk menemukan `AGENTS.md`, `rules/`, `skills/`.
-- [ ] 1.2.4. Buat RPC `config.get`, `instructions.list`, `skills.list` di Bridge.
+- [x] 1.2.1. Buat parser JSONC untuk `browseragent.jsonc`.
+- [x] 1.2.2. Implementasi logika merge config: Global < Project < Local.
+- [x] 1.2.3. Buat resource loader untuk menemukan `AGENTS.md`, `rules/`, `skills/`.
+- [x] 1.2.4. Buat RPC `config.get`, `instructions.list`, `skills.list` di Bridge.
 
 ### 1.3. UI Explorer
 - [ ] 1.3.1. Buat komponen Tree View di Side Panel untuk menampilkan direktori.
