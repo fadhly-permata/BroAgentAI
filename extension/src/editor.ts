@@ -9,7 +9,7 @@ import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { searchKeymap } from '@codemirror/search';
-import { bridge } from './bridge-client.js';
+import { bridge, BridgeErrorCode } from './bridge-client.js';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -54,7 +54,7 @@ function updateCursorPos(view: EditorView) {
   $('cursorPos').textContent = `Ln ${line.number}, Col ${pos - line.from + 1}`;
 }
 
-async function loadFile(path: string) {
+async function loadFile(path: string, targetLine = 0) {
   currentPath = path;
   dirty = false;
   updateStatus(`Membuka: ${path}`);
@@ -65,9 +65,8 @@ async function loadFile(path: string) {
     const res: any = await bridge.call('fs.readFileLines', { path, startLine: 0, endLine: -1 });
     const content = res.content || '';
     
-    // Dapatkan info file untuk mtime
-    const info: any = await bridge.call('get_file_info', { path });
-    currentMtime = info.mtime || null;
+    // fs.readFileLines sudah mengembalikan mtime untuk deteksi MTIME_CONFLICT
+    currentMtime = typeof res.mtime === 'number' ? res.mtime : null;
     
     $('fileMeta').textContent = `${content.split('\n').length} lines - ${content.length} chars`;
     
@@ -108,7 +107,13 @@ async function loadFile(path: string) {
       parent: $('editor')
     });
     
-    updateStatus(`Membuka: ${path}`);
+    updateStatus(`Dibuka: ${path}`);
+    if (targetLine > 0) {
+      const lineNo = Math.min(targetLine, view.state.doc.lines);
+      const pos = view.state.doc.line(lineNo).from;
+      view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+      updateCursorPos(view);
+    }
   } catch (e: any) {
     updateStatus(`Gagal membuka ${path}: ${e.message}`);
     $('fileMeta').textContent = 'Error';
@@ -125,29 +130,23 @@ async function saveFile() {
   const content = view.state.doc.toString();
   
   try {
-    // Kirim content dan mtime untuk deteksi konflik
-    await bridge.call('fs.writeFile', { 
-      path: currentPath, 
-      content, 
-      expectedMtime: currentMtime 
-    });
-    
-    // Update mtime setelah save berhasil
-    const info: any = await bridge.call('fs.stat', { path: currentPath });
-    currentMtime = info.mtime || null;
-    
+    // Kirim content dan mtime untuk deteksi konflik (tanpa mtime = tulis tanpa cek)
+    const params: any = { path: currentPath, content };
+    if (currentMtime !== null) params.expectedMtime = currentMtime;
+    const res: any = await bridge.call('fs.writeFile', params);
+    currentMtime = typeof res.mtime === 'number' ? res.mtime : null;
+
     dirty = false;
     updateStatus(`Tersimpan: ${currentPath}`);
     $('fileMeta').textContent = `${content.split('\n').length} lines - ${content.length} chars`;
   } catch (e: any) {
-    if (e.code === 'MTIME_CONFLICT') {
+    if (e.code === BridgeErrorCode.MTIME_CONFLICT) {
       updateStatus(`KONFLIK: File telah diubah di tempat lain. Simpan dibatalkan untuk mencegah kehilangan data.`);
       if (confirm('File telah diubah di tempat lain sejak Anda membukanya. Apakah Anda ingin menimpa perubahan tersebut?')) {
         // Force save tanpa expectedMtime
         try {
-          await bridge.call('write_file', { path: currentPath, content });
-          const info: any = await bridge.call('get_file_info', { path: currentPath });
-          currentMtime = info.mtime || null;
+          const res: any = await bridge.call('fs.writeFile', { path: currentPath, content });
+          currentMtime = typeof res.mtime === 'number' ? res.mtime : null;
           dirty = false;
           updateStatus(`Tersimpan (force): ${currentPath}`);
         } catch (err: any) {
@@ -177,7 +176,7 @@ $('btnBack').addEventListener('click', () => {
 const params = new URLSearchParams(window.location.search);
 const filePath = params.get('path');
 if (filePath) {
-  loadFile(filePath);
+  loadFile(filePath, Number(params.get('line')) || 0);
 } else {
   updateStatus('Tidak ada file yang ditentukan.');
   $('fileName').textContent = 'Untitled';

@@ -41,125 +41,123 @@ export async function renderExplorer(
     treeContainer.className = "ba-tree";
     rootEl.appendChild(treeContainer);
 
-    renderNode(treeContainer, node, workspacePath, 0, options);
+    renderNode(treeContainer, node, 0, options);
   } catch (e: any) {
-    const msg = e.message === "BRIDGE_OFFLINE"
+    rootEl.innerHTML = "";
+    const errEl = document.createElement("div");
+    errEl.className = "ba-error";
+    errEl.textContent = e.message === "BRIDGE_OFFLINE"
       ? "Bridge offline. Jalankan bridge lalu klik Retry."
       : `Gagal memuat: ${e.message}`;
-    rootEl.innerHTML = `<div class="ba-error">${msg}</div><button id="ba-retry" class="ba-btn">Retry</button>`;
-    document.getElementById("ba-retry")?.addEventListener("click", () => renderExplorer(rootEl, workspacePath, options));
+    const retry = document.createElement("button");
+    retry.className = "mini ba-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", () => renderExplorer(rootEl, workspacePath, options));
+    rootEl.append(errEl, retry);
   }
 }
 
+/**
+ * Render one node as `.ba-tree-item` = row (`.ba-tree-node`) + children box
+ * (`.ba-tree-children`). Collapsing just empties the children box, so a
+ * re-expand can never duplicate rows.
+ */
 function renderNode(
   container: HTMLElement,
   node: FileNode,
-  workspacePath: string,
   depth: number,
   options: ExplorerOptions
 ): void {
-  const el = document.createElement("div");
-  el.className = "ba-tree-node";
-  el.style.paddingLeft = `${depth * 16}px`;
-  el.dataset.path = node.path;
+  const item = document.createElement("div");
+  item.className = "ba-tree-item";
 
-  const icon = node.isDirectory
-    ? (node.isExpanded ? "[DIR-]" : "[DIR+]")
-    : (node.isBinary ? "[BIN]" : "[FILE]");
+  const row = document.createElement("div");
+  row.className = "ba-tree-node";
+  row.style.paddingLeft = `${depth * 14 + 4}px`;
+  row.dataset.path = node.path;
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "ba-tree-name";
-  nameSpan.textContent = `${icon} ${node.name}`;
-
   if (node.isIgnored) {
     nameSpan.classList.add("ba-ignored");
     nameSpan.title = "Diabaikan oleh konfigurasi";
   }
 
-  if (!node.isDirectory && node.size !== undefined) {
-    const sizeSpan = document.createElement("span");
-    sizeSpan.className = "ba-tree-size";
-    sizeSpan.textContent = formatSize(node.size);
-    el.appendChild(sizeSpan);
-  }
+  const childrenEl = document.createElement("div");
+  childrenEl.className = "ba-tree-children";
 
   if (node.isDirectory) {
-    const toggleBtn = document.createElement("button");
-    toggleBtn.className = "ba-tree-toggle";
-    toggleBtn.textContent = node.isExpanded ? "v" : ">";
-    toggleBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      node.isExpanded = !node.isExpanded;
-      toggleBtn.textContent = node.isExpanded ? "v" : ">";
+    row.classList.add("ba-tree-dir");
+    const toggle = document.createElement("span");
+    toggle.className = "ba-tree-toggle";
 
+    const paint = (suffix = "") => {
+      toggle.textContent = node.isExpanded ? "v" : ">";
+      nameSpan.textContent = `${node.name}/${suffix}`;
+      row.setAttribute("aria-expanded", String(!!node.isExpanded));
+    };
+
+    const renderChildren = () => {
+      childrenEl.innerHTML = "";
+      if (!node.isExpanded || !node.children) return;
+      const sorted = [...node.children].sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      for (const child of sorted) renderNode(childrenEl, child, depth + 1, options);
+    };
+
+    row.addEventListener("click", async () => {
+      node.isExpanded = !node.isExpanded;
       if (node.isExpanded && !node.children) {
-        nameSpan.textContent = `${icon} ${node.name} (memuat...)`;
+        paint(" (memuat...)");
         try {
           const children = await bridge.call("fs.listDir", { path: node.path });
-          node.children = (children as any[]).map((child: any) => ({
-            ...child,
-            isExpanded: false,
-          }));
-          nameSpan.textContent = `${icon} ${node.name}`;
-          renderChildren(container, node, workspacePath, depth, options);
+          node.children = (children as FileNode[]).map((child) => ({ ...child, isExpanded: false }));
+          paint();
         } catch (err: any) {
-          nameSpan.textContent = `${icon} ${node.name} (gagal)`;
-          console.error("Failed to load directory:", err);
+          node.isExpanded = false;
+          paint(" (gagal)");
+          console.warn("Failed to load directory:", err);
+          return;
         }
       } else {
-        renderChildren(container, node, workspacePath, depth, options);
+        paint();
       }
+      renderChildren();
     });
-    el.insertBefore(toggleBtn, nameSpan);
-  } else {
-    el.classList.add("ba-tree-file");
-    el.addEventListener("click", () => {
-      if (options.onFileClick) {
-        options.onFileClick(node.path);
-      }
+
+    paint();
+    row.append(toggle, nameSpan);
+    item.append(row, childrenEl);
+    container.appendChild(item);
+    renderChildren();
+    return;
+  }
+
+  row.classList.add("ba-tree-file");
+  row.style.paddingLeft = `${depth * 14 + 20}px`;
+  row.dataset.file = node.path;
+  nameSpan.textContent = node.name;
+  row.appendChild(nameSpan);
+
+  if (node.size !== undefined) {
+    const sizeSpan = document.createElement("span");
+    sizeSpan.className = "ba-tree-size";
+    sizeSpan.textContent = node.isBinary ? "bin" : formatSize(node.size);
+    row.appendChild(sizeSpan);
+  }
+
+  row.addEventListener("click", () => options.onFileClick?.(node.path));
+  if (options.onContextClick) {
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      options.onContextClick!(e, node.path);
     });
-    if (options.onContextClick) {
-      el.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        options.onContextClick!(e, node.path);
-      });
-    }
   }
 
-  el.appendChild(nameSpan);
-  container.appendChild(el);
-
-  if (node.isDirectory && node.isExpanded && node.children) {
-    renderChildren(container, node, workspacePath, depth, options);
-  }
-}
-
-function renderChildren(
-  container: HTMLElement,
-  node: FileNode,
-  workspacePath: string,
-  depth: number,
-  options: ExplorerOptions
-): void {
-  const existingChildren = container.querySelectorAll(
-    `.ba-tree-node[data-parent="${node.path}"]`
-  );
-  existingChildren.forEach((child) => child.remove());
-
-  if (!node.children || !node.isExpanded) return;
-
-  const sorted = [...node.children].sort((a, b) => {
-    if (a.isDirectory && !b.isDirectory) return -1;
-    if (!a.isDirectory && b.isDirectory) return 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  for (const child of sorted) {
-    const childContainer = document.createElement("div");
-    childContainer.setAttribute("data-parent", node.path);
-    container.appendChild(childContainer);
-    renderNode(childContainer, child, workspacePath, depth + 1, options);
-  }
+  item.appendChild(row);
+  container.appendChild(item);
 }
 
 function formatSize(bytes: number): string {

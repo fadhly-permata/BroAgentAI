@@ -69,3 +69,17 @@ test("workspace.add invalid path returns WORKSPACE_INVALID", async () => {
   const res = await s.handle({ id: 1, method: "workspace.add", params: { path: "/definitely/not/here/ba" } });
   assert.equal(res.error?.code, -32007);
 });
+
+test("workspace.openFolderDialog rejects with a structured error when disabled", async () => {
+  const s = server();
+  const previous = process.env.BROAGENTAI_DISABLE_DIALOG;
+  process.env.BROAGENTAI_DISABLE_DIALOG = "1";
+  try {
+    const res = await s.handle({ id: 9, method: "workspace.openFolderDialog", params: {} });
+    assert.equal(res.error?.code, -32603);
+    assert.equal(res.result, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.BROAGENTAI_DISABLE_DIALOG;
+    else process.env.BROAGENTAI_DISABLE_DIALOG = previous;
+  }
+});

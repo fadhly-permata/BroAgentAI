@@ -93,6 +93,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 /* Tree & Explorer */
 .tree { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; padding: 8px; max-height: 260px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+.ba-tree-node { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 2px; cursor: pointer; user-select: none; white-space: nowrap; }
+.ba-tree-node:hover { background: var(--bg-elevated); }
+.ba-tree-toggle { width: 10px; flex: none; color: var(--text-muted); }
+.ba-tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.ba-tree-size, .ba-ignored, .ba-loading, .ba-empty { color: var(--text-muted); }
+.ba-tree-size { font-size: 10px; }
+.ba-error { color: var(--danger, #f14c4c); margin-bottom: 6px; white-space: normal; }
 .tree-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 2px; cursor: pointer; user-select: none; }
 .tree-row:hover { background: var(--bg-elevated); }
 .tree-row.sel { background: rgba(0, 122, 204, 0.2); color: #ffffff; }
@@ -153,6 +160,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .toast.hidden { display: none !important; }
 
 /* Utility */
+.hidden { display: none !important; }
 .row-actions { display: flex; gap: 8px; }
 .toggles { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-muted); }
 .toggles label { display: flex; align-items: center; gap: 4px; cursor: pointer; }

@@ -2,37 +2,52 @@
 type Handler = (ev: any) => void;
 
 interface RpcRequest {
-  v: 1;
   id: number;
   method: string;
   params?: unknown;
 }
 
 interface RpcSuccess {
-  v: 1;
   id: number;
-  ok: true;
-  result: unknown;
+  result?: unknown;
 }
 
 interface RpcFailure {
-  v: 1;
   id: number;
-  ok: false;
   error: {
-    code: string;
+    code: string | number;
     message: string;
-    details?: unknown;
+    data?: unknown;
   };
 }
 
 interface RpcEvent {
-  v: 1;
   event: string;
   data?: unknown;
 }
 
 type RpcResponse = RpcSuccess | RpcFailure | RpcEvent;
+
+/** Error from the bridge, carrying the stable numeric code from shared/protocol.ts. */
+export class BridgeError extends Error {
+  code: string | number;
+  data?: unknown;
+  constructor(message: string, code: string | number, data?: unknown) {
+    super(message);
+    this.name = 'BridgeError';
+    this.code = code;
+    this.data = data;
+  }
+}
+
+/** Numeric codes the UI branches on (mirror of shared/src/protocol.ts ErrorCode). */
+export const BridgeErrorCode = {
+  METHOD_NOT_FOUND: -32601,
+  MTIME_CONFLICT: -32005,
+  OPERATION_CANCELLED: -32010,
+} as const;
+
+const DEFAULT_TIMEOUT_MS = 15000;
 
 class BridgeClient {
   private port: chrome.runtime.Port | null = null;
@@ -52,16 +67,18 @@ class BridgeClient {
         this.port = chrome.runtime.connectNative("com.broagentai.host");
         
         this.port.onMessage.addListener((msg: RpcResponse) => {
+          if ('event' in msg) {
+            this.handlers.forEach((h) => h(msg));
+            return;
+          }
           if ('id' in msg && this.pending.has(msg.id)) {
             const p = this.pending.get(msg.id)!;
             this.pending.delete(msg.id);
-            if (!msg.ok) {
-              p.reject(new Error(msg.error.message));
+            if ('error' in msg) {
+              p.reject(new BridgeError(msg.error.message, msg.error.code, msg.error.data));
             } else {
               p.resolve(msg.result);
             }
-          } else if ('event' in msg) {
-            this.handlers.forEach((h) => h(msg));
           }
         });
 
@@ -78,6 +95,7 @@ class BridgeClient {
         this.call('system.ping', {}).then(() => {
           resolve();
         }).catch(() => {
+          try { this.port?.disconnect(); } catch { /* already gone */ }
           this.port = null;
           this.connectPromise = null;
           reject(new Error('BRIDGE_OFFLINE'));
@@ -92,7 +110,7 @@ class BridgeClient {
     return this.connectPromise;
   }
 
-  async call(method: string, params: any = {}): Promise<any> {
+  async call(method: string, params: any = {}, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<any> {
     await this.connect();
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
@@ -101,7 +119,7 @@ class BridgeClient {
         return;
       }
       this.pending.set(id, { resolve, reject });
-      const req: RpcRequest = { v: 1, id, method, params };
+      const req: RpcRequest = { id, method, params };
       this.port.postMessage(req);
       
       setTimeout(() => {
@@ -109,7 +127,7 @@ class BridgeClient {
           this.pending.delete(id);
           reject(new Error('TIMEOUT'));
         }
-      }, 15000);
+      }, timeoutMs);
     });
   }
 }

@@ -15,6 +15,7 @@ import { listDir, listTree, statFile, readFile, readFileLines, writeFile, search
 import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
+import { openFolderDialog } from "./dialog.ts";
 
 /** Protocol version negotiated between extension and host. */
 export const PROTOCOL_VERSION = 1;
@@ -188,6 +189,10 @@ export class RpcServer {
     });
 
     this.register("workspace.settings", () => this.#store.settings());
+
+    // Shows the OS folder picker; the panel then calls workspace.add with the
+    // result. Rejects (panel falls back to manual input) where unsupported.
+    this.register("workspace.openFolderDialog", () => openFolderDialog());
 
     this.register("fs.listDir", (params) => {
       const { path } = readParams(params);

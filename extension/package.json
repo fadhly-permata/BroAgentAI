@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
+    "e2e": "node e2e/sidepanel.spec.mjs",
     "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {

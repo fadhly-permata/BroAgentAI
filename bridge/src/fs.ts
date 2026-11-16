@@ -415,9 +415,24 @@ export function searchFiles(
   const ignorePatterns = store.settings().ignore;
   const results: FsSearchFilesResult[] = [];
 
-  const searchRegex = regex
-    ? new RegExp(query, caseSensitive ? "g" : "gi")
-    : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), caseSensitive ? "g" : "gi");
+  if (typeof query !== "string" || query === "") {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "query must be a non-empty string");
+  }
+
+  // No "g" flag: a global regex keeps lastIndex between .test() calls, which
+  // silently skips matches on consecutive lines.
+  const flags = caseSensitive ? "" : "i";
+  let searchRegex: RegExp;
+  try {
+    searchRegex = regex
+      ? new RegExp(query, flags)
+      : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+  } catch (error) {
+    throw new WorkspaceError(
+      ErrorCode.INVALID_PARAMS,
+      `invalid regular expression: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
 
   function searchDirectory(dirPath: string) {
     const entries = readdirSync(dirPath, { withFileTypes: true });

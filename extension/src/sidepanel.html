@@ -1,7 +1,7 @@
 <!doctype html><html lang="id"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>BroAgentAI</title><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" /><link rel="stylesheet" href="./sidepanel.css" /></head><body>
 <div class="app">
 <header class="header">
-  <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><circle cx="12" cy="11" r="3.2" fill="#fff"/></svg></span><div><strong>BroAgentAI</strong><small id="headerWs">Belum ada workspace</small></div></div>
+  <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><circle cx="12" cy="11" r="3.2" fill="#fff"/></svg></span><div><strong>BroAgentAI</strong><small id="headerWs">Belum ada workspace</small><span id="chatWs" class="hidden"></span><span id="resourcesList" class="hidden"></span></div></div>
   <button id="wsBtn" class="ws-btn" aria-label="Pilih workspace"><i class="fa-solid fa-folder-open"><span>Workspace</span></i><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
   <button id="hostPill" class="pill pill-warn" title="Buka Diagnostik"><span class="dot"></span>Host offline</button>
   <button id="overflowBtn" class="icon-btn" aria-label="Menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
@@ -35,7 +35,7 @@
   <div class="panel-head"><h2>Search</h2></div>
   <div class="search-box"><i class="fa-solid fa-magnifying-glass"></i><input id="searchInput" placeholder="Cari teks di workspace..." /></div>
   <div class="toggles"><label><input type="checkbox" id="caseChk"> Case sensitive</label><label><input type="checkbox" id="regexChk"> Regex</label></div>
-  <p id="searchErr" class="err hidden"></p><div id="searchResults"></div>
+  <p id="searchErr" class="err hidden"></p><p id="searchInfo" class="muted"></p><div id="searchResults"></div>
 </section>
 <section id="tab-scm" class="panel">
   <div class="panel-head"><h2>Source Control</h2><div><button id="fetchBtn" class="mini">Fetch</button><button id="pullBtn" class="mini">Pull</button><button id="pushBtn" class="mini primary">Push</button></div></div>
@@ -47,11 +47,11 @@
   <button id="commitBtn" class="primary full" disabled>Commit</button><p id="commitOut" class="muted"></p>
 </section>
 <section id="tab-agent" class="panel">
-  <div class="panel-head"><h2>Agent</h2><span class="pill pill-ok"><span class="dot"></span><span id="agentSession">Siap</span></span></div>
+  <div class="panel-head"><h2>Agent</h2><span class="pill pill-ok"><span class="dot"></span><span id="agentSession">Siap</span><span id="sessionStatus" class="hidden"></span></span></div>
   <div class="notice"><i class="fa-solid fa-robot" style="font-size: 18px; color: var(--accent); margin-top: 2px;"></i><div><strong>Monitoring &amp; Approval Agent</strong><p>Panel ini memantau sesi dan menampilkan konfirmasi tool dari tab chat AI Anda.</p></div></div>
-  <div class="chat-detect"><div><span class="muted">Tab terdeteksi</span><strong id="detectedChat">-</strong></div><button id="openChatBtn" class="mini primary">Buka tab</button></div>
-  <div class="agent-controls"><label>Approval mode <select id="modeSel"><option>Read-only</option><option selected>Ask</option><option>Auto-edit</option><option>Full-auto</option></select></label><label>Agent profile <select id="agentSel"><option>Default</option><option>reviewer</option><option>planner</option></select></label></div>
-  <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span class="risk risk-write">WRITE</span><b id="apTool">fs.writeFile</b></div><p id="apSummary"></p><pre id="apDiff"></pre><div><button id="apAllow" class="primary">Allow once</button><button id="apSession" class="mini">Allow session</button><button id="apDeny" class="mini danger">Deny</button></div></div>
+  <div class="chat-detect"><div><span class="muted">Tab terdeteksi</span><strong id="detectedChat">-</strong><span id="chatSiteName" class="hidden"></span><span id="chatSiteUrl" class="hidden"></span><span id="chatSiteTab" class="hidden"></span><span id="chatSiteName2" class="hidden"></span></div><button id="openChatBtn" class="mini primary">Buka tab</button></div>
+  <button id="simulateBtn" class="mini primary">Simulate tool call</button><div class="agent-controls"><label>Approval mode <select id="modeSel"><option>Read-only</option><option selected>Ask</option><option>Auto-edit</option><option>Full-auto</option></select></label><label>Agent profile <select id="agentSel"><option>Default</option><option>reviewer</option><option>planner</option></select></label></div>
+  <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span class="risk risk-write">WRITE</span><b id="apTool">fs.writeFile</b></div><p id="apSummary"></p><pre id="apDiff"></pre><pre id="apParams"></pre><div><button id="apAllow" class="primary">Allow once</button><button id="apSession" class="mini">Allow session</button><button id="apDeny" class="mini danger">Deny</button></div></div>
   <div class="log-head"><strong>Aktivitas</strong><select id="logFilter"><option value="all">Semua</option><option value="ok">Sukses</option><option value="denied">Ditolak</option></select><button id="clearLog" class="mini">Clear</button></div>
   <div id="cmdLog" class="cmdlog"></div>
   <div id="chat" class="chat"><div class="msg assistant"><div class="avatar">BA</div><div class="bubble">Panel agent siap memantau aktivitas tool call.</div></div></div>
@@ -79,7 +79,7 @@
     <h3>Companion Host</h3>
     <p>Version: <b>0.1.0-dev</b></p>
     <div><button id="diagBtn" class="mini">Diagnostik</button><button id="restart2Btn" class="mini">Restart Companion</button></div>
-    <pre id="diagOut" class="hidden"></pre>
+    <pre id="diagOut" class="hidden"></pre><p>Extension ID: <code id="extId"></code></p>
   </div>
 
   <div id="set-workspaces" class="set-panel">
@@ -90,7 +90,7 @@
 
   <div id="set-mcp" class="set-panel">
     <h3>MCP Servers <button id="mcpReload" class="mini">Reload</button></h3>
-    <div id="mcpList"></div>
+    <div id="mcpList"></div><div id="mcpTools"></div><div id="providerList"></div><select id="providerSel" class="hidden"><option>DeepSeek</option></select>
   </div>
 </section>
 </main></div>
