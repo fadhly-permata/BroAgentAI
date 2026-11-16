@@ -32,21 +32,21 @@ Target: Panel terbuka, host terhubung, workspace list berfungsi, provider manife
 - [x] 0.3.5. Buat script `scripts/native-host.mjs` untuk `install` dan `uninstall` dev registry.
 
 ### 0.4. Extension (MV3) - Core
-- [ ] 0.4.1. Setup `extension/package.json` dengan Vite + CRXJS.
-- [ ] 0.4.2. Buat `extension/manifest.json` dengan `side_panel`, `nativeMessaging`, `storage`.
-- [ ] 0.4.3. Implementasi koneksi dari Service Worker ke Native Host (ping/pong).
-- [ ] 0.4.4. Buat UI panel dasar (React + Vite): Header, Status Bar (Offline/Ready/Error).
+- [x] 0.4.1. Setup `extension/package.json` dengan Vite + CRXJS.
+- [x] 0.4.2. Buat `extension/manifest.json` dengan `side_panel`, `nativeMessaging`, `storage`.
+- [x] 0.4.3. Implementasi koneksi dari Service Worker ke Native Host (ping/pong).
+- [x] 0.4.4. Buat UI panel dasar (React + Vite): Header, Status Bar (Offline/Ready/Error).
 
 ### 0.5. Workspace Management
-- [ ] 0.5.1. Implementasi `workspace.list`, `workspace.add`, `workspace.remove` di Bridge.
-- [ ] 0.5.2. Simpan daftar workspace di `chrome.storage.local` (Extension).
-- [ ] 0.5.3. Tampilkan daftar workspace (recent) di Side Panel UI.
-- [ ] 0.5.4. Tambahkan validasi path (cek apakah folder valid, hindari duplikat).
+- [x] 0.5.1. Implementasi `workspace.list`, `workspace.add`, `workspace.remove` di Bridge.
+- [x] 0.5.2. Simpan daftar workspace di host config file (`~/.browseragent/config.json`).
+- [x] 0.5.3. Tampilkan daftar workspace (recent) di Side Panel UI.
+- [x] 0.5.4. Tambahkan validasi path (cek apakah folder valid, hindari duplikat).
 
 ### 0.6. Provider Extensibility (M0 Exit Criteria)
-- [ ] 0.6.1. Buat struktur folder `extension/src/providers/` dengan 1 fixture plugin (misal: `dummy-provider`).
-- [ ] 0.6.2. Buat script generator yang memindai folder provider dan menyuntikkan host permissions ke manifest.
-- [ ] 0.6.3. Verifikasi: Menambah folder fixture mengubah manifest tanpa mengedit core code.
+- [x] 0.6.1. Buat struktur folder `extension/src/providers/` dengan 1 fixture plugin (misal: `dummy-provider`).
+- [x] 0.6.2. Buat script generator yang memindai folder provider dan menyuntikkan host permissions ke manifest.
+- [x] 0.6.3. Verifikasi: Menambah folder fixture mengubah manifest tanpa mengedit core code.
 
 ---
 

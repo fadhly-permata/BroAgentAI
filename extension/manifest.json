@@ -13,5 +13,5 @@
   "side_panel": {
     "default_path": "src/sidepanel.html"
   },
-  "permissions": ["storage", "sidePanel", "tabs"]
+  "permissions": ["storage", "sidePanel", "tabs", "nativeMessaging"]
 }

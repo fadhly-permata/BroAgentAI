@@ -1,15 +1,41 @@
+import { bridge } from './bridge-client';
+
 type FileNode={name:string;path:string;kind:'dir'|'file';git?:string;children?:FileNode[];content?:string};
 const $=(id:string)=>document.getElementById(id) as HTMLElement;
 const on=(id:string,ev:string,fn:(e:any)=>void)=>$(id).addEventListener(ev,fn);
-let workspaces=[{name:'browseragent-demo',path:'D:/- Research/AI/BrowserAgent',last:'hari ini'},{name:'contoh-repo',path:'D:/Projects/contoh-repo',last:'kemarin'}];
-let activeWs=workspaces[0];
+let workspaces: any[] = [];
+let activeWs: any = null;
+
+async function loadWorkspaces() {
+  try {
+    const res = await bridge.call('workspace.list');
+    workspaces = (res.workspaces || []).map((w: any) => ({ ...w, last: 'baru saja' }));
+    activeWs = workspaces.find((w: any) => w.id === res.activeWorkspaceId) || workspaces[0] || null;
+    renderWs();
+  } catch (e) {
+    console.error('Failed to load workspaces', e);
+  }
+}
 let treeData:FileNode[]=[{name:'src',path:'src',kind:'dir',children:[{name:'sidepanel.ts',path:'src/sidepanel.ts',kind:'file',git:'M',content:'// sidepanel.ts - UI shell BroAgentAI'},{name:'background.ts',path:'src/background.ts',kind:'file',git:'M',content:'// background.ts'},{name:'providers',path:'src/providers',kind:'dir',children:[{name:'deepseek.ts',path:'src/providers/deepseek.ts',kind:'file',content:'// provider DeepSeek (plugin)'}]}]},{name:'specs',path:'specs',kind:'dir',children:[{name:'03-FSD.md',path:'specs/03-FSD.md',kind:'file',content:'# FSD'}]},{name:'browseragent.jsonc',path:'browseragent.jsonc',kind:'file',content:'{ "approval": "Ask" }'},{name:'AGENTS.md',path:'AGENTS.md',kind:'file',content:'# AGENTS.md'},{name:'README.md',path:'README.md',kind:'file',git:'U',content:'# BroAgentAI'}];
 let scm=[{g:'Staged changes (2)',items:[{f:'src/sidepanel.ts',s:'M',staged:true},{f:'src/sidepanel.css',s:'M',staged:true}]},{g:'Changes (3)',items:[{f:'src/background.ts',s:'M',staged:false},{f:'specs/03-FSD.md',s:'M',staged:false}]},{g:'Untracked (2)',items:[{f:'notes.md',s:'U',staged:false},{f:'tmp.log',s:'U',staged:false}]},{g:'Merge changes (0)',items:[]}];
 let logs:{tool:string;risk:string;decision:string;status:string;dur:number}[]=[{tool:'fs.readFile src/sidepanel.ts',risk:'Read',decision:'auto',status:'ok',dur:42}];
 let expanded=new Set<string>(['src','specs']); let currentFile:FileNode|null=null; let dirty=false;
 let detectedChat={name:'DeepSeek',url:'chat.deepseek.com',tab:'Tab aktif'};
 function toast(m:string){const t=$('toast');t.textContent=m;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),4000)}
-function renderWs(){ $('headerWs').textContent=activeWs?activeWs.name+' - '+activeWs.path:'Belum ada workspace'; $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'">'+(w===activeWs?'&#10003; ':'')+'<b>'+w.name+'</b><small>'+w.path+'</small></button>').join(''); $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card"><b>'+w.name+'</b><br><small>'+w.path+' - '+w.last+'</small><br><br><button class="mini" data-open="'+i+'">Open</button> <button class="mini" data-rename="'+i+'">Rename</button> <button class="mini danger" data-remove="'+i+'">Remove</button></div>').join('')||'<p class="muted">Belum ada workspace.</p>'; ($('chatWs') as HTMLElement).textContent=activeWs?.name||'-'; $('ckWs').textContent=activeWs?'x':'o'; $('ckHost').textContent='o'; }
+function renderWs(){ $('headerWs').textContent=activeWs?activeWs.name+' - '+activeWs.path:'Belum ada workspace'; $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'">'+(w===activeWs?'&#10003; ':'')+'<b>'+w.name+'</b><small>'+w.path+'</small></button>').join(''); $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card"><b>'+w.name+'</b><br><small>'+w.path+' - '+w.last+'</small><br><br><button class="mini" data-open="'+i+'">Open</button> <button class="mini" data-rename="'+i+'">Rename</button> <button class="mini danger" data-remove="'+i+'">Remove</button></div>').join('')||'<p class="muted">Belum ada workspace.</p>'; ($('chatWs') as HTMLElement).textContent=activeWs?.name||'-'; $('ckWs').textContent=activeWs?'x':'o'; }
+
+function updateHostStatus(status: 'offline' | 'ready' | 'error') {
+  const pill = $('hostPill');
+  const text = status === 'offline' ? 'Host offline' : status === 'ready' ? 'Host ready' : 'Host error';
+  pill.textContent = text;
+  pill.className = 'pill ' + (status === 'offline' ? 'pill-warn' : status === 'ready' ? 'pill-ok' : 'pill-error');
+  $('ckHost').textContent = status === 'ready' ? 'x' : 'o';
+  if (status === 'offline' || status === 'error') {
+    $('banner').classList.remove('hidden');
+  } else {
+    $('banner').classList.add('hidden');
+  }
+}
 function renderTree(){ const walk=(nodes:FileNode[],depth:number):string=>nodes.map(n=>{const pad=depth*14; if(n.kind==='dir'){const open=expanded.has(n.path); return '<div class="tree-row" data-dir="'+n.path+'" style="padding-left:'+(6+pad)+'px"><span class="ic">'+(open?'&#9662;':'&#9656;')+'</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> '+n.name+'</div>'+(open?walk(n.children||[],depth+1):'')} return '<div class="tree-row '+(currentFile===n?'sel':'')+'" data-file="'+n.path+'" style="padding-left:'+(6+pad)+'px"><span class="ic">&#128196;</span> '+n.name+(n.git?' <span class="badge-git">'+n.git+'</span>':'')+'</div>'}).join(''); $('tree').innerHTML=walk(treeData,0); document.querySelectorAll('[data-dir]').forEach(el=>el.addEventListener('click',()=>{const p=(el as HTMLElement).dataset.dir!; expanded.has(p)?expanded.delete(p):expanded.add(p); renderTree()})); document.querySelectorAll('[data-file]').forEach(el=>el.addEventListener('click',()=>openFile((el as HTMLElement).dataset.file!))); document.querySelectorAll('[data-file]').forEach(el=>el.addEventListener('contextmenu',(e)=>{e.preventDefault(); const p=(el as HTMLElement).dataset.file!; openModal('File: '+p,'<p>New File, Rename, Duplicate, Copy Path, Copy Relative Path, Delete.</p><p><button class="mini" onclick="navigator.clipboard.writeText(\''+p+'\')">Copy Relative Path</button></p>',()=>toast('Context action (demo)'))})); }
 function findFile(path:string,nodes:FileNode[]=treeData):FileNode|null{for(const n of nodes){if(n.path===path)return n; if(n.children){const f=findFile(path,n.children); if(f)return f}} return null}
 function openFile(path:string){const f=findFile(path); if(!f)return; currentFile=f; dirty=false; $('editorPreview').classList.remove('hidden'); $('edName').textContent=f.path; ($('edArea') as HTMLTextAreaElement).value=f.content||''; $('edDirty').textContent=''; $('edMeta').textContent='Preview in-panel - '+(f.content||'').length+' karakter'; renderTree(); switchTab('explorer')}
@@ -34,9 +60,9 @@ document.querySelectorAll('.set-tab').forEach(b=>b.addEventListener('click',()=>
 on('wsBtn','click',()=>{$('wsMenu').classList.toggle('hidden'); $('overflowMenu').classList.add('hidden')});
 on('overflowBtn','click',()=>{$('overflowMenu').classList.toggle('hidden'); $('wsMenu').classList.add('hidden')});
 document.querySelectorAll('#overflowMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('overflowMenu').classList.add('hidden'); if(a==='settings')switchTab('settings'); if(a==='diagnostics'){switchTab('settings'); ($('diagOut') as HTMLElement).classList.remove('hidden')} if(a==='restart')toast('Restart companion (demo - host offline)'); if(a==='reload')location.reload()}));
-document.querySelectorAll('#wsMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('wsMenu').classList.add('hidden'); if(a==='open-folder')openModal('Open folder','<label>Absolute path<br><input id="wsPath" class="input" placeholder="D:/Projects/my-repo"></label><p class="muted">Host validasi: exists, directory, realpath.</p>',()=>{const v=(document.getElementById('wsPath') as HTMLInputElement)?.value.trim(); if(!v)return toast('Path kosong'); if(!/^[A-Za-z]:\\/.test(v)&&!v.startsWith('/'))return toast('Path harus absolut'); workspaces.unshift({name:v.split(/[\\/]/).pop()||'workspace',path:v,last:'baru saja'}); activeWs=workspaces[0]; renderWs(); toast('Workspace ditambahkan (demo)')}); if(a==='manage')switchTab('settings')}));
+document.querySelectorAll('#wsMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('wsMenu').classList.add('hidden'); if(a==='open-folder')openModal('Open folder','<label>Absolute path<br><input id="wsPath" class="input" placeholder="D:/Projects/my-repo"></label><p class="muted">Host validasi: exists, directory, realpath.</p>',async()=>{const v=(document.getElementById('wsPath') as HTMLInputElement)?.value.trim(); if(!v)return toast('Path kosong'); try{ const res = await bridge.call('workspace.add', { path: v }); await loadWorkspaces(); toast('Workspace ditambahkan: ' + res.workspace.name); }catch(e){ toast('Gagal menambahkan workspace: ' + (e instanceof Error ? e.message : String(e))); }}); if(a==='manage')switchTab('settings')}));
 on('wsList','click',(e:any)=>{const t=e.target.closest('[data-ws]'); if(!t)return; activeWs=workspaces[Number(t.dataset.ws)]; renderWs(); $('wsMenu').classList.add('hidden'); toast('Workspace aktif: '+activeWs.name)});
-on('manageList','click',(e:any)=>{const o=e.target.closest('[data-open]'); const r=e.target.closest('[data-remove]'); const rn=e.target.closest('[data-rename]'); if(o){activeWs=workspaces[Number(o.dataset.open)]; renderWs(); toast('Workspace dibuka')} if(r){const idx=Number(r.dataset.remove); const removed=workspaces.splice(idx,1)[0]; if(activeWs===removed)activeWs=workspaces[0]; renderWs(); toast('Remove dari list - file TIDAK dihapus')} if(rn){openModal('Rename workspace','<input id="wsName" class="input" value="'+workspaces[Number(rn.dataset.rename)].name+'">',()=>{workspaces[Number(rn.dataset.rename)].name=(document.getElementById('wsName') as HTMLInputElement).value; renderWs()})}});
+on('manageList','click',async(e:any)=>{const o=e.target.closest('[data-open]'); const r=e.target.closest('[data-remove]'); const rn=e.target.closest('[data-rename]'); if(o){const idx=Number(o.dataset.open); activeWs=workspaces[idx]; try{ await bridge.call('workspace.setActive', { id: activeWs.id }); renderWs(); toast('Workspace dibuka'); }catch(err){ toast('Gagal set aktif: ' + err); }} if(r){const idx=Number(r.dataset.remove); const ws=workspaces[idx]; try{ await bridge.call('workspace.remove', { id: ws.id }); await loadWorkspaces(); toast('Workspace dihapus dari list'); }catch(err){ toast('Gagal hapus: ' + err); }} if(rn){const idx=Number(rn.dataset.rename); const ws=workspaces[idx]; openModal('Rename workspace','<input id="wsName" class="input" value="'+ws.name+'">',async()=>{const newName=(document.getElementById('wsName') as HTMLInputElement).value; try{ await bridge.call('workspace.rename', { id: ws.id, name: newName }); await loadWorkspaces(); toast('Workspace direname'); }catch(err){ toast('Gagal rename: ' + err); }})}});
 on('restartBtn','click',()=>toast('Restart companion (demo)')); on('restart2Btn','click',()=>toast('Restart companion (demo)')); on('setupBtn','click',()=>openModal('Setup help','<p>Host: <code>com.browseragent.host</code></p><p>Dev: build host + register sekali, lalu reload extension.</p><p>Config: <code>~/.browseragent/config.jsonc</code> - Log: <code>~/.browseragent/host.log</code></p>',()=>{}));
 on('diagBtn','click',()=>{($('diagOut') as HTMLElement).classList.toggle('hidden')}); on('resetStateBtn','click',()=>{logs=[]; renderLog(); toast('State direset - file tidak dihapus')}); on('reloadConfigBtn','click',()=>toast('Config direload (demo)')); on('createConfigBtn','click',()=>openModal('Create project config','<p>Buat <code>browseragent.jsonc</code> di root workspace dengan default Ask + ff-only?</p>',()=>toast('browseragent.jsonc dibuat (demo)')));
 on('dismissCk','click',()=>$('checklist').classList.add('hidden'));
@@ -54,4 +80,18 @@ on('openChatBtn','click',()=>{toast('Buka tab '+detectedChat.name+' (demo - di h
 on('mcpReload','click',()=>{renderMcp(); toast('MCP direload')});
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
+
+// 0.5: Koneksi ke bridge dan load workspaces
+bridge.connect().then(async () => {
+  updateHostStatus('ready');
+  await loadWorkspaces();
+}).catch((err) => {
+  console.error('Bridge connection failed:', err);
+  updateHostStatus('offline');
+});
+
+bridge.onEvent((ev) => {
+  console.log('Event from bridge:', ev);
+});
+
 renderWs(); renderTree(); renderScm(); renderLog(); renderMcp(); renderResources(); renderChatSite();
