@@ -60,7 +60,7 @@ try {
     '--env', 'BROAGENTAI_DISABLE_DIALOG=1',
   ]).trim());
 
-  ctx = await chromium.launchPersistentContext(path.join(root, 'e2e', '.pw-profile'), {
+  ctx = await chromium.launchPersistentContext(path.join(tmp, 'profile'), { // fresh profile: no state leaks between runs
     channel: 'chromium',
     headless: true,
     args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
@@ -78,7 +78,7 @@ try {
   const text = (sel) => page.locator(sel).innerText();
 
   check('host answers system.ping over real native messaging',
-    await until(async () => /Host ready/.test(await text('#hostPill'))), await text('#hostPill'));
+    await until(async () => /Host (ready|siap)/.test(await text('#hostPill'))), await text('#hostPill'));
   check('offline banner hidden', !(await page.locator('#banner').isVisible()));
 
   await page.locator('#wsBtn').click();

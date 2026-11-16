@@ -84,6 +84,32 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 
 ---
 
+## Fase 3: SCM (M3 + remote) - Selesai
+- [x] 3.1. `git.status` (parser porcelain v2), `git.diff`, stage/unstage/discard, commit, branch, init.
+- [x] 3.2. Remote: fetch, pull (ff-only/merge/rebase), push tanpa force, abort, test remote.
+- [x] 3.3. Panel SCM nyata + test repo fixture + e2e terhadap bare remote lokal.
+
+## Fase 4: Terminal - Selesai
+- [x] 4.1. Kanal event bridge -> extension, request ditangani konkuren.
+- [x] 4.2. `term.*` di atas node-pty; tab Terminal dengan xterm.js.
+
+## Fase 5: MCP (M7/M8) - Selesai
+- [x] 5.1. Layer config global/project/local, trust store berbasis hash.
+- [x] 5.2. Transport stdio + Streamable HTTP (fallback SSE), risk mapping, timeout, cap hasil.
+- [x] 5.3. Settings > MCP nyata (review, trust, start/stop/restart, tool browser).
+
+## Fase 6: Agent relay (M5) - Selesai, provider experimental
+- [x] 6.1. Katalog tool, tabel approval, `agent.check` / `agent.callTool` / `agent.prompt` di bridge.
+- [x] 6.2. Provider sebagai data + manifest digenerate dari `provider.json`; content script relay.
+- [x] 6.3. Parser balasan, kartu approval, log aktivitas; e2e di halaman chat tiruan.
+- [ ] 6.4. Verifikasi selector DeepSeek, Gemini, Qwen di situs asli (butuh akun login), lalu ubah status ke `ready`.
+
+## Fase 7: E2E
+- [x] 7.1. `npm run e2e`: panel + bridge asli, dan lewat native messaging Chromium asli.
+- [ ] 7.2. Verifikasi manual di Chrome stable setelah Reload extension.
+
+---
+
 ## Aturan Pengerjaan
 - Validasi Wajib: Jangan lanjut ke tugas berikutnya jika `npm run typecheck` atau `npm run test` gagal.
 - Commit Message: Gunakan format konvensional, misal: `feat(bridge): add fs.listDir with path confinement`.

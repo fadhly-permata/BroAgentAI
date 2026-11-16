@@ -53,10 +53,13 @@ Event (bridge -> extension): `{ event, data? }`.
 
 Method v1:
 - `system.ping`, `system.info`
-- `workspace.list|add|remove|rename|setActive|validate|settings|openFolderDialog`
-- `fs.listDir|listTree|stat|readFile|readFileLines|writeFile|searchFiles`
+- `workspace.list|add|remove|rename|setActive|validate|settings|setIgnore|openFolderDialog|trust|untrust`
+- `fs.listDir|listTree|stat|readFile|readFileLines|writeFile|searchFiles|createFile|mkdir|rename|delete`
 - `git.status`, `git.diff { path, staged? }`, `git.stage { paths[] }`, `git.unstage { paths[] }`, `git.discard { paths[] }`, `git.commit { message }`, `git.branches`, `git.createBranch { name }`, `git.checkout { branch }`, `git.init`
-- Menyusul: `git.fetch|pull|push`, `term.*`, `chat.command`.
+- `git.fetch`, `git.pull { mode: ff-only|merge|rebase }`, `git.push` (tanpa force), `git.abort`, `git.testRemote`
+- `term.create|input|resize|close|list` + event `term.output`, `term.exit`
+- `mcp.servers|tools|start|stop|restart|callTool` + event `mcp.status`
+- `tools.list`, `agent.prompt`, `agent.check`, `agent.callTool`
 
 Semua method `fs.*` dan `git.*` bekerja pada workspace aktif; path selalu relatif terhadap root workspace.
 
@@ -64,7 +67,11 @@ Semua method `fs.*` dan `git.*` bekerja pada workspace aktif; path selalu relati
 - Hanya extension dengan origin terdaftar yang bisa menjalankan bridge.
 - Semua path dikurung di workspace aktif (realpath, anti symlink escape).
 - Approval: setiap `fs.write/delete`, `git.commit/push`, `term.input` yang dikirim dari chat HARUS approval. Aksi manual user di panel (klik tombol sendiri) tidak butuh approval kedua.
-- Mode Agent: `ask` (default) | `auto` (hanya allowlist tool + workspace, bisa dimatikan kapan saja).
+- Mode Agent: `read-only` | `ask` (default) | `auto-edit` | `full-auto`. Tabel keputusan ada di bridge (`agent.ts`) dan ditegakkan di sana: `agent.callTool` menolak yang dilarang mode, dan yang butuh approval kecuali panel menyatakan user sudah menyetujui. Push/pull dan tool MCP destruktif selalu minta approval.
+- Loop agent berjalan di side panel, bukan service worker: menutup panel menghentikan loop, jadi tidak ada tool yang jalan tanpa UI approval terbuka.
+- Terminal (PTY) bukan tool agent; hanya user yang mengetik di tab Terminal.
+- MCP: server dari file project tidak bisa start sebelum user Review & trust; trust terikat hash command/URL/cwd/nama env+header, jadi perubahan config mencabutnya.
+- Provider chat adalah data (`extension/src/providers/<id>/provider.json`: pola URL + selector). Content script hanya mengetik prompt dan melaporkan balasan; tidak punya akses file/Git/MCP.
 - Bridge TIDAK pernah mengirim file/token user ke internet. Git dijalankan dengan `GIT_TERMINAL_PROMPT=0` sehingga tidak pernah menggantung menunggu kredensial.
 
 ## 5. SCM = Git Asli
@@ -76,7 +83,7 @@ Semua method `fs.*` dan `git.*` bekerja pada workspace aktif; path selalu relati
 - Tidak ada Git pura-pura, tidak ada snapshot lokal sebagai pengganti Git.
 
 ## 6. Terminal = PTY Asli
-- Terminal di panel adalah PTY asli via Bridge (menyusul di M4).
+- Terminal di panel adalah PTY asli (node-pty, ConPTY di Windows) via Bridge, dirender dengan xterm.js.
 - Mendukung perintah apapun yang bisa jalan di shell user, termasuk `git`, `npm`, `dir`.
 - Output streaming via event `term.output`.
 
@@ -89,7 +96,8 @@ Semua method `fs.*` dan `git.*` bekerja pada workspace aktif; path selalu relati
 ## 8. Milestone
 - M1: Bridge skeleton (native messaging + ping) + extension deteksi bridge (online/offline). — selesai
 - M2: fs.* + Explorer/Editor/Search end-to-end lewat Bridge. — selesai
-- M3: git.* + SCM end-to-end (loop lokal: status, diff, stage, commit, branch). Remote (fetch/pull/push) menyusul.
-- M4: term.* + Terminal tab end-to-end.
-- M5: chat.command + approval + log end-to-end.
+- M3: git.* + SCM end-to-end, termasuk remote (fetch/pull/push/abort). — selesai
+- M4: term.* + Terminal tab end-to-end. — selesai
+- M5: relay chat + approval + log end-to-end. — selesai di halaman chat tiruan; selector DeepSeek/Gemini/Qwen berstatus experimental sampai diverifikasi di situs asli.
+- M7/M8: MCP stdio + Streamable HTTP/SSE, trust, katalog tool. — selesai
 - M6: Playwright E2E (extension + bridge asli) — setiap perubahan UI wajib screenshot + cek console error. — berjalan (`npm run e2e`)

@@ -4,6 +4,7 @@ import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
 import { initAgent, showAgent } from './agent-panel.js';
+import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
 
 type FileNode={name:string;path:string;kind:'dir'|'file';git?:string;children?:FileNode[];content?:string};
 const $=(id:string)=>document.getElementById(id) as HTMLElement;
@@ -26,13 +27,19 @@ async function loadWorkspaces() {
 let currentFile:FileNode|null=null; let currentMtime:number|null=null; let dirty=false;
 let toastTimer:any=null;
 function toast(m:string){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.add('hidden'),4000)}
-function renderWs(){ $('headerWs').textContent=activeWs?activeWs.name+' - '+activeWs.path:'Belum ada workspace'; $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'">'+(w===activeWs?'&#10003; ':'')+'<b>'+w.name+'</b><small>'+w.path+'</small></button>').join(''); $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card"><b>'+w.name+'</b><br><small>'+w.path+' - '+w.last+'</small><br><br><button class="mini" data-open="'+i+'">Open</button> <button class="mini" data-rename="'+i+'">Rename</button> <button class="mini danger" data-remove="'+i+'">Remove</button></div>').join('')||'<p class="muted">Belum ada workspace.</p>'; $('ckWs').textContent=activeWs?'x':'o'; }
+function renderWs(){ 
+  $('headerWs').textContent=activeWs?activeWs.name+' - '+activeWs.path:t('noWorkspace'); 
+  $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'">'+(w===activeWs?'&#10003; ':'')+'<b>'+w.name+'</b><small>'+w.path+'</small></button>').join(''); 
+  $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card"><b>'+w.name+'</b><br><small>'+w.path+' - '+w.last+'</small><br><br><button class="mini" data-open="'+i+'">Open</button> <button class="mini" data-rename="'+i+'">Rename</button> <button class="mini danger" data-remove="'+i+'">Remove</button></div>').join('')||'<p class="muted">Belum ada workspace.</p>'; 
+  $('ckWs').textContent=activeWs?'x':'o'; 
+}
 
 function updateHostStatus(status: 'offline' | 'ready' | 'error') {
   const pill = $('hostPill');
-  const text = status === 'offline' ? 'Host offline' : status === 'ready' ? 'Host ready' : 'Host error';
-  pill.innerHTML = '<span class="dot"></span>';
-  pill.appendChild(document.createTextNode(text));
+  const tKey = status === 'offline' ? 'hostOffline' : status === 'ready' ? 'hostOnline' : 'hostError';
+  // Keep a data-i18n span so a language switch retranslates the pill too.
+  pill.innerHTML = '<span class="dot"></span><span data-i18n="' + tKey + '"></span>';
+  (pill.lastElementChild as HTMLElement).textContent = t(tKey);
   pill.className = 'pill ' + (status === 'offline' ? 'pill-warn' : status === 'ready' ? 'pill-ok' : 'pill-error');
   $('ckHost').textContent = status === 'ready' ? 'x' : 'o';
   if (status === 'offline' || status === 'error') {
@@ -43,7 +50,8 @@ function updateHostStatus(status: 'offline' | 'ready' | 'error') {
 }
 async function renderTree(){
   if (!activeWs) {
-    $('tree').innerHTML = '<p class="muted">Pilih workspace untuk melihat file.</p>';
+    const msg = ((v=>v==='selectWorkspaceForFiles'?'Pilih workspace untuk melihat file.':v)(t('selectWorkspaceForFiles')));
+    $('tree').innerHTML = '<p class="muted">' + msg + '</p>';
     return;
   }
   const showIgnored = ($('showIgnored') as HTMLInputElement).checked;
@@ -205,11 +213,9 @@ function askWorkspacePath(){
 async function openFolder(){
   let picked:any=null;
   try{
-    // Dialog native bisa lama (user memilih folder), jadi timeout dilonggarkan.
     picked=await bridge.call('workspace.openFolderDialog', {}, 5*60*1000);
   }catch(e:any){
     if(e?.code===BridgeErrorCode.OPERATION_CANCELLED) return;
-    // Dialog native tidak tersedia (platform lain / host lama): input path manual.
     return askWorkspacePath();
   }
   if(!picked?.path) return;
@@ -225,27 +231,37 @@ async function connectBridge(){
     updateHostStatus('offline');
   }
 }
-function switchTab(t:string){ document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t)); document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t)); if(t==='settings') refreshMcp(); if(t==='agent') showAgent(); if(t==='scm') refreshScm(); if(t==='terminal') showTerminal(); }
+function switchTab(t:string){ 
+  document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t)); 
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t)); 
+  if(t==='settings') refreshMcp(); 
+  if(t==='agent') showAgent(); 
+  if(t==='scm') refreshScm(); 
+  if(t==='terminal') showTerminal(); 
+}
 let modalCb:(()=>void)|null=null;
 function openModal(title:string,body:string,cb:()=>void){ $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
 function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null }
 async function doSearch(){
   const query = ($('searchInput') as HTMLInputElement).value.trim();
   if (!query) {
-    $('searchResults').innerHTML = '<p class="muted">Masukkan query pencarian.</p>';
+    const msg = ((v=>v==='enterQuery'?'Masukkan query pencarian.':v)(t('enterQuery')));
+    $('searchResults').innerHTML = '<p class="muted">' + msg + '</p>';
     $('searchErr').classList.add('hidden');
     return;
   }
   
   if (!activeWs) {
-    $('searchResults').innerHTML = '<p class="muted">Pilih workspace terlebih dahulu.</p>';
+    const msg = ((v=>v==='selectWorkspaceFirst'?'Pilih workspace terlebih dahulu.':v)(t('selectWorkspaceFirst')));
+    $('searchResults').innerHTML = '<p class="muted">' + msg + '</p>';
     return;
   }
   
   const caseSensitive = ($('caseChk') as HTMLInputElement).checked;
   const useRegex = ($('regexChk') as HTMLInputElement).checked;
   
-  $('searchResults').innerHTML = '<p class="muted">Mencari...</p>';
+  const msg = ((v=>v==='searching'?'Mencari...':v)(t('searching')));
+  $('searchResults').innerHTML = '<p class="muted">' + msg + '</p>';
   $('searchErr').classList.add('hidden');
   
   try {
@@ -253,12 +269,12 @@ async function doSearch(){
     const results: any[] = Array.isArray(res) ? res : (res?.results || []);
 
     if (results.length === 0) {
-      $('searchResults').innerHTML = '<p class="muted">Tidak ada hasil ditemukan.</p>';
-      $('searchInfo').textContent = 'Tidak ada hasil';
+      const msg = ((v=>v==='noMatches'?'Tidak ada hasil':v)(t('noMatches')));
+      $('searchResults').innerHTML = '<p class="muted">' + msg + '</p>';
+      $('searchInfo').textContent = msg;
       return;
     }
     
-    // Group by file
     const grouped: { [file: string]: { line: number; text: string }[] } = {};
     results.forEach((r: any) => {
       if (!grouped[r.file]) grouped[r.file] = [];
@@ -268,7 +284,7 @@ async function doSearch(){
     let html = '';
     
     Object.entries(grouped).forEach(([file, matches]) => {
-      html += `<div class="card search-group">`;
+      html += `<div class="search-group">`;
       html += `<strong class="search-file">${escapeHtml(file)} <span class="muted">(${matches.length} match)</span></strong>`;
       html += `<div class="search-matches">`;
       matches.forEach((m: any) => {
@@ -281,9 +297,11 @@ async function doSearch(){
     });
     
     $('searchResults').innerHTML = html;
-    $('searchInfo').textContent = 'Ditemukan ' + results.length + ' match di ' + Object.keys(grouped).length + ' file';
+    const matchMsg = (((v=>v==='matchesFound'?'Ditemukan {count} match di {files} file':v)(t('matchesFound'))))
+      .replace('{count}', String(results.length))
+      .replace('{files}', String(Object.keys(grouped).length));
+    $('searchInfo').textContent = matchMsg;
     
-    // Add click handlers to open file at line
     document.querySelectorAll('.search-match').forEach(el => {
       el.addEventListener('click', () => {
         const file = (el as HTMLElement).dataset.file!;
@@ -306,7 +324,6 @@ function escapeHtml(text: string): string {
 }
 
 function openFileAtLine(path: string, line: number) {
-  // Buka file di editor tab dengan parameter line
   const editorUrl = chrome.runtime.getURL(`src/editor.html?path=${encodeURIComponent(path)}&line=${line}`);
   chrome.tabs.create({ url: editorUrl });
 }
@@ -333,7 +350,10 @@ async function restartHost() {
 async function createProjectConfig() {
   if (!activeWs) return toast('Pilih workspace terlebih dahulu');
   try {
-    await bridge.call('fs.createFile', { path: 'broagentai.jsonc', content: '{\n  "approvalMode": "ask",\n  "git": {\n    "pushDefault": "ff-only"\n  }\n}\n' });
+    // fs.createFile refuses to overwrite; the starter content is written only into the new file.
+    await bridge.call('fs.createFile', { path: 'broagentai.jsonc' });
+    await bridge.call('fs.writeFile', { path: 'broagentai.jsonc', content: '{\n  "version": 1,\n  // MCP servers defined here need "Review & trust" in Settings > MCP before they can start.\n  "mcp": {}\n}\n' });
+    await renderTree(); refreshScm();
     toast('broagentai.jsonc dibuat di root workspace');
   } catch (err: any) {
     toast('Gagal membuat config: ' + (err?.message || err));
@@ -359,8 +379,8 @@ const UI_SETTINGS_KEY = 'broagentai.ui';
 function loadUISettings() {
   try {
     const raw = localStorage.getItem(UI_SETTINGS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+    return raw ? JSON.parse(raw) : { lang: 'id', theme: 'system', fontSize: 13, tabSize: 2, wrap: false };
+  } catch { return { lang: 'id', theme: 'system', fontSize: 13, tabSize: 2, wrap: false }; }
 }
 function saveUISettings(settings: any) {
   try {
@@ -370,14 +390,19 @@ function saveUISettings(settings: any) {
 }
 function applyUISettings() {
   const s = loadUISettings();
-  if (s.lang) {
-    ($('langSel') as HTMLSelectElement).value = s.lang;
-    document.documentElement.lang = s.lang;
-  }
-  if (s.theme) {
-    ($('themeSel') as HTMLSelectElement).value = s.theme;
-    document.documentElement.dataset.theme = s.theme;
-  }
+  
+  // Apply Language
+  const lang = (s.lang || 'id') as Lang;
+  if (($('langSel') as HTMLSelectElement)) ($('langSel') as HTMLSelectElement).value = lang;
+  document.documentElement.lang = lang;
+  translatePage(lang);
+  
+  // Apply Theme
+  const theme = (s.theme || 'system') as Theme;
+  if (($('themeSel') as HTMLSelectElement)) ($('themeSel') as HTMLSelectElement).value = theme;
+  applyTheme(theme);
+  
+  // Apply Font & Editor settings
   if (s.fontSize) {
     ($('fontSize') as HTMLInputElement).value = String(s.fontSize);
     document.documentElement.style.setProperty('--font-size', s.fontSize + 'px');
@@ -386,17 +411,30 @@ function applyUISettings() {
     ($('tabSize') as HTMLInputElement).value = String(s.tabSize);
     document.documentElement.style.setProperty('--tab-size', String(s.tabSize));
   }
-  if (s.wrap) {
+  if (s.wrap !== undefined) {
     ($('wrapChk') as HTMLInputElement).checked = s.wrap;
     document.documentElement.style.setProperty('--editor-wrap', s.wrap ? 'wrap' : 'nowrap');
   }
 }
-on('langSel','change',(e)=>{const v=(e.target as HTMLSelectElement).value; saveUISettings({lang:v}); document.documentElement.lang=v;});
-on('themeSel','change',(e)=>{const v=(e.target as HTMLSelectElement).value; saveUISettings({theme:v}); document.documentElement.dataset.theme=v;});
+
+on('langSel','change',(e)=>{
+  const v = (e.target as HTMLSelectElement).value as Lang; 
+  saveUISettings({lang: v}); 
+  document.documentElement.lang = v;
+  translatePage(v);
+  renderWs(); // dynamic text is not covered by data-i18n
+});
+on('themeSel','change',(e)=>{
+  const v = (e.target as HTMLSelectElement).value as Theme; 
+  saveUISettings({theme: v}); 
+  applyTheme(v);
+});
 on('fontSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({fontSize:v}); document.documentElement.style.setProperty('--font-size',v+'px');}});
 on('tabSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({tabSize:v}); document.documentElement.style.setProperty('--tab-size',String(v));}});
 on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; saveUISettings({wrap:v}); document.documentElement.style.setProperty('--editor-wrap',v?'wrap':'nowrap');});
+
 applyUISettings();
+
 on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')});
 on('newFileBtn','click',()=>newFile());
 on('newFolderBtn','click',()=>newFolder());
@@ -413,7 +451,6 @@ initMcp({ toast, openModal, hasWorkspace: ()=>!!activeWs });
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });
 initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); } });
 
-// 0.5: Koneksi ke bridge dan load workspaces
 connectBridge();
 
 bridge.onEvent((ev) => {
@@ -421,6 +458,4 @@ bridge.onEvent((ev) => {
 });
 
 renderWs();
-
-// Render tree setelah workspace dimuat
 renderTree();

@@ -60,7 +60,7 @@ const visible = (page, sel) => page.locator(sel).first().isVisible();
 const toastHas = (page, re) => until(async () => re.test(await text(page, '#toast')) && await visible(page, '#toast'));
 
 const bridge = startRealBridge({ configDir });
-const ctx = await chromium.launchPersistentContext(path.join(root, 'e2e', '.pw-profile'), {
+const ctx = await chromium.launchPersistentContext(path.join(tmp, 'profile'), { // fresh profile: no state leaks between runs
   channel: 'chromium',
   headless: true,
   args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
@@ -78,13 +78,15 @@ try {
 
   const page = await ctx.newPage();
   watch(page, 'panel');
-  page.on('dialog', (d) => d.accept());
+  // prompt()/confirm() answers: set dialogAnswer before triggering a prompt.
+  let dialogAnswer;
+  page.on('dialog', (d) => d.accept(dialogAnswer));
   await page.goto(panelUrl);
 
   // ---- 1. boot + host handshake
   check('title is BroAgentAI', (await page.title()) === 'BroAgentAI');
   check('host pill shows ready after real system.ping',
-    await until(async () => /Host ready/.test(await text(page, '#hostPill'))), await text(page, '#hostPill'));
+    await until(async () => /Host (ready|siap)/.test(await text(page, '#hostPill'))), await text(page, '#hostPill'));
   check('offline banner hidden when host is up', !(await visible(page, '#banner')));
   check('tree asks for a workspace when none exists',
     await until(async () => /Pilih workspace/.test(await text(page, '#tree'))), await text(page, '#tree'));
@@ -157,6 +159,65 @@ try {
   await fileRow('image.bin').click();
   check('binary file shows an error toast', await toastHas(page, /Gagal membuka file/), await text(page, '#toast'));
   check('binary file does not open the editor', !(await visible(page, '#editorPreview')));
+
+  // ---- 7b. explorer file operations, show ignored, diagnostics, language, theme
+  {
+    await page.locator('.rail-btn[data-tab="explorer"]').click();
+    dialogAnswer = 'made-by-e2e.txt';
+    await page.locator('#newFileBtn').click();
+    check('explorer: New File creates a real empty file',
+      await until(() => fileRow('made-by-e2e.txt').isVisible()) && fs.readFileSync(path.join(wsA, 'made-by-e2e.txt'), 'utf8') === '');
+    dialogAnswer = 'made-dir';
+    await page.locator('#newFolderBtn').click();
+    check('explorer: New Folder creates a real directory',
+      await until(() => dirRow('made-dir').isVisible()) && fs.statSync(path.join(wsA, 'made-dir')).isDirectory());
+    dialogAnswer = 'README.md';
+    await page.locator('#newFileBtn').click();
+    check('explorer: creating over an existing file is refused', await toastHas(page, /already exists/), await text(page, '#toast'));
+
+    dialogAnswer = 'made-dir/renamed-by-e2e.txt';
+    await fileRow('made-by-e2e.txt').click({ button: 'right' });
+    await page.locator('#ctxMenu .ctx-item', { hasText: 'Rename' }).click();
+    check('explorer: context menu Rename moves the file on disk',
+      await until(() => fs.existsSync(path.join(wsA, 'made-dir', 'renamed-by-e2e.txt')) && !fs.existsSync(path.join(wsA, 'made-by-e2e.txt'))));
+    await dirRow('made-dir').click();
+    await until(() => fileRow('made-dir/renamed-by-e2e.txt').isVisible());
+    dialogAnswer = undefined; // confirm() -> OK
+    await fileRow('made-dir/renamed-by-e2e.txt').click({ button: 'right' });
+    await page.locator('#ctxMenu .ctx-item', { hasText: 'Delete' }).click();
+    check('explorer: context menu Delete removes the file on disk',
+      await until(() => !fs.existsSync(path.join(wsA, 'made-dir', 'renamed-by-e2e.txt'))));
+    fs.rmdirSync(path.join(wsA, 'made-dir'));
+
+    await page.locator('#showIgnored').check();
+    check('explorer: Show ignored lists ignored folders', await until(() => dirRow('node_modules').isVisible()), await text(page, '#tree'));
+    await page.locator('#showIgnored').uncheck();
+    check('explorer: ignored folders hide again', await until(async () => (await page.locator('[data-path="node_modules"]').count()) === 0));
+
+    await page.locator('.rail-btn[data-tab="settings"]').click();
+    await page.locator('.set-tab[data-set="companion"]').click();
+    await page.locator('#diagBtn').click();
+    check('settings: diagnostics shows real host info',
+      await until(async () => /"hostName": "com\.broagentai\.host"/.test(await text(page, '#diagOut'))), (await text(page, '#diagOut')).slice(0, 200));
+
+    await page.locator('.set-tab[data-set="editor"]').click();
+    const searchHeading = () => page.locator('#tab-search .panel-head h2').textContent();
+    await page.locator('#langSel').selectOption('en');
+    check('settings: switching to English retranslates the UI',
+      await until(async () => (await searchHeading()) === 'Search' && /Host ready/.test(await text(page, '#hostPill'))),
+      (await searchHeading()) + ' / ' + await text(page, '#hostPill'));
+    check('settings: language switch keeps the workspace header', /alpha-project/.test(await text(page, '#headerWs')), await text(page, '#headerWs'));
+    await page.locator('#langSel').selectOption('id');
+    check('settings: switching back to Indonesian works',
+      await until(async () => (await searchHeading()) === 'Pencarian' && /Host siap/.test(await text(page, '#hostPill'))), await searchHeading());
+    await page.locator('#themeSel').selectOption('light');
+    const bodyBg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const lightBg = await bodyBg();
+    await page.locator('#themeSel').selectOption('dark');
+    check('settings: theme switch changes the actual colours',
+      (await page.evaluate(() => document.documentElement.dataset.theme)) === 'dark' && lightBg !== await bodyBg(), lightBg + ' vs ' + await bodyBg());
+    await page.locator('.rail-btn[data-tab="explorer"]').click();
+  }
 
   // ---- 8. search
   await page.locator('.rail-btn[data-tab="search"]').click();

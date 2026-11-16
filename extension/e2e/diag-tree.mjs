@@ -14,7 +14,7 @@ const workspace = path.resolve(process.argv[2] ?? path.join(root, '..'));
 const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'broagentai-diag-'));
 
 const bridge = startRealBridge({ configDir });
-const ctx = await chromium.launchPersistentContext(path.join(root, 'e2e', '.pw-profile'), {
+const ctx = await chromium.launchPersistentContext(path.join(configDir, 'profile'), {
   channel: 'chromium', headless: true,
   args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
 });

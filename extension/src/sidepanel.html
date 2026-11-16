@@ -1,107 +1,125 @@
 <!doctype html><html lang="id"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>BroAgentAI</title><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" /><link rel="stylesheet" href="./sidepanel.css" /></head><body>
 <div class="app">
 <header class="header">
-  <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><circle cx="12" cy="11" r="3.2" fill="#fff"/></svg></span><div><strong>BroAgentAI</strong><small id="headerWs">Belum ada workspace</small></div></div>
-  <button id="wsBtn" class="ws-btn" aria-label="Pilih workspace"><i class="fa-solid fa-folder-open"><span>Workspace</span></i><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
-  <button id="hostPill" class="pill pill-warn" title="Buka Diagnostik"><span class="dot"></span>Host offline</button>
+  <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><circle cx="12" cy="11" r="3.2" fill="#fff"/></svg></span><div><strong data-i18n="workspace">Workspace</strong><small id="headerWs" data-i18n="noWorkspace">Belum ada workspace</small></div></div>
+  <button id="wsBtn" class="ws-btn" aria-label="Pilih workspace"><i class="fa-solid fa-folder-open"><span data-i18n="workspace">Workspace</span></i><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+  <button id="hostPill" class="pill pill-warn" title="Buka Diagnostik"><span class="dot"></span><span data-i18n="hostOffline">Host offline</span></button>
   <button id="overflowBtn" class="icon-btn" aria-label="Menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
   <div id="overflowMenu" class="menu hidden" role="menu">
-    <button data-act="settings"><i class="fa-solid fa-gear"></i>Settings</button><button data-act="diagnostics"><i class="fa-solid fa-stethoscope"></i>Diagnostics</button><button data-act="restart"><i class="fa-solid fa-rotate-right"></i>Restart companion</button><button data-act="reload"><i class="fa-solid fa-arrows-rotate"></i>Reload panel</button>
+    <button data-act="settings"><i class="fa-solid fa-gear"></i> <span data-i18n="settings">Settings</span></button>
+    <button data-act="diagnostics"><i class="fa-solid fa-stethoscope"></i> <span data-i18n="diagnostics">Diagnostics</span></button>
+    <button data-act="restart"><i class="fa-solid fa-rotate-right"></i> <span data-i18n="restartCompanion">Restart companion</span></button>
+    <button data-act="reload"><i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="reloadPanel">Reload panel</span></button>
   </div>
-  <div id="wsMenu" class="menu ws-menu hidden" role="menu"><div class="menu-title">Workspace terbaru</div><div id="wsList"></div><button data-act="open-folder">+ Open folder...</button><button data-act="manage">Manage workspaces...</button></div>
+  <div id="wsMenu" class="menu ws-menu hidden" role="menu">
+    <div class="menu-title" data-i18n="recentWorkspaces">Workspace terbaru</div>
+    <div id="wsList"></div>
+    <button data-act="open-folder">+ <span data-i18n="openFolder">Open folder...</span></button>
+    <button data-act="manage"><span data-i18n="manageWorkspacesBtn">Manage workspaces...</span></button>
+  </div>
 </header>
-<div id="banner" class="banner hidden"><span><b>Companion not running.</b></span><div><button id="restartBtn">Restart</button><button id="setupBtn">Setup</button></div></div>
+<div id="banner" class="banner hidden"><span><b data-i18n="hostOffline">Companion not running.</b></span><div><button id="restartBtn" data-i18n="restartCompanion">Restart</button><button id="setupBtn">Setup</button></div></div>
 <div class="shell">
 <nav class="rail" aria-label="Navigasi utama">
-  <button class="rail-btn" data-tab="explorer" title="Explorer"><i class="fa-regular fa-folder-closed"></i></button>
-  <button class="rail-btn" data-tab="search" title="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
-  <button class="rail-btn" data-tab="scm" title="Source Control"><i class="fa-solid fa-code-branch"></i><b id="scmBadge" class="badge hidden">0</b></button>
-  <button class="rail-btn" data-tab="terminal" title="Terminal"><i class="fa-solid fa-terminal"></i></button>
-  <button class="rail-btn" data-tab="agent" title="Agent"><i class="fa-solid fa-robot"></i></button>
-  <button class="rail-btn" data-tab="settings" title="Settings"><i class="fa-solid fa-gear"></i></button>
+  <button class="rail-btn active" data-tab="explorer" data-i18n-title="explorer"><i class="fa-regular fa-folder-closed"></i></button>
+  <button class="rail-btn" data-tab="search" data-i18n-title="search"><i class="fa-solid fa-magnifying-glass"></i></button>
+  <button class="rail-btn" data-tab="scm" data-i18n-title="scm"><i class="fa-solid fa-code-branch"></i><b id="scmBadge" class="badge hidden">0</b></button>
+  <button class="rail-btn" data-tab="terminal" data-i18n-title="terminal"><i class="fa-solid fa-terminal"></i></button>
+  <button class="rail-btn" data-tab="agent" data-i18n-title="agent"><i class="fa-solid fa-robot"></i></button>
+  <button class="rail-btn" data-tab="settings" data-i18n-title="settings"><i class="fa-solid fa-gear"></i></button>
 </nav>
 <main class="content">
 <section id="tab-explorer" class="panel active">
-  <div class="panel-head"><h2>Explorer</h2><div class="head-actions"><label class="chk"><input type="checkbox" id="showIgnored"> Show ignored</label><button id="refreshTree" class="mini">Refresh</button></div></div>
-  <div id="checklist" class="card checklist"><div class="card-head"><strong>First-run checklist</strong><button id="dismissCk" class="mini">Dismiss</button></div><ol>
-    <li><span id="ckHost" class="ck">o</span> Companion installed <button class="link" data-ck="host">Recheck</button></li>
-    <li><span id="ckWs" class="ck">o</span> Workspace dibuka <button class="link" data-ck="ws">Open folder</button></li>
-    <li><span id="ckAi" class="ck">o</span> Tab chat AI terbuka <button class="link" data-ck="ai">Buka tab chat</button></li>
-    <li><span id="ckMode" class="ck done">x</span> Approval mode - <b>Ask</b></li></ol></div>
-  <div id="tree" class="tree"></div>
-  <div class="row-actions"><button id="newFileBtn" class="mini">+ New File</button><button id="newFolderBtn" class="mini">+ New Folder</button></div>
-  <div id="editorPreview" class="editor-preview hidden"><div class="ed-head"><b id="edName">-</b><span id="edDirty"></span><button id="edSave" class="mini primary">Save</button><button id="edClose" class="mini">Close</button></div><textarea id="edArea" spellcheck="false"></textarea><p id="edMeta" class="muted"></p></div>
+  <div class="panel-head"><h2 data-i18n="explorer">Explorer</h2><div class="head-actions"><label class="chk"><input type="checkbox" id="showIgnored"> <span data-i18n="showIgnored">Show ignored</span></label><button id="refreshTree" class="mini" data-i18n="refresh">Refresh</button></div></div>
+  <div class="panel-body">
+    <div id="checklist" class="card checklist"><div class="card-head"><strong data-i18n="firstRun">First-run checklist</strong><button id="dismissCk" class="mini" data-i18n="dismiss">Dismiss</button></div><ol>
+      <li><span id="ckHost" class="ck">o</span> <span data-i18n="companionInstalled">Companion installed</span> <button class="link" data-ck="host" data-i18n="recheck">Recheck</button></li>
+      <li><span id="ckWs" class="ck">o</span> <span data-i18n="workspaceOpened">Workspace opened</span> <button class="link" data-ck="ws" data-i18n="openFolder">Open folder</button></li>
+      <li><span id="ckAi" class="ck">o</span> <span data-i18n="chatTabOpened">AI chat tab open</span> <button class="link" data-ck="ai" data-i18n="openChatTab">Open chat tab</button></li>
+      <li><span id="ckMode" class="ck done">x</span> <span data-i18n="approvalModeLabel">Approval mode</span> - <b>Ask</b></li></ol></div>
+    <div id="tree" class="tree-container"></div>
+    <div class="row-actions"><button id="newFileBtn" class="mini" data-i18n="newFile">+ New File</button><button id="newFolderBtn" class="mini" data-i18n="newFolder">+ New Folder</button></div>
+    <div id="editorPreview" class="editor-preview hidden"><div class="ed-head"><b id="edName">-</b><span id="edDirty"></span><button id="edSave" class="mini primary" data-i18n="save">Save</button><button id="edClose" class="mini" data-i18n="close">Close</button></div><textarea id="edArea" spellcheck="false"></textarea><p id="edMeta" class="muted"></p></div>
+  </div>
 </section>
 <section id="tab-search" class="panel">
-  <div class="panel-head"><h2>Search</h2></div>
-  <div class="search-box"><i class="fa-solid fa-magnifying-glass"></i><input id="searchInput" placeholder="Cari teks di workspace..." /></div>
-  <div class="toggles"><label><input type="checkbox" id="caseChk"> Case sensitive</label><label><input type="checkbox" id="regexChk"> Regex</label></div>
-  <p id="searchErr" class="err hidden"></p><p id="searchInfo" class="muted"></p><div id="searchResults"></div>
+  <div class="panel-head"><h2 data-i18n="search">Search</h2></div>
+  <div class="panel-body">
+    <div class="search-box"><i class="fa-solid fa-magnifying-glass"></i><input id="searchInput" data-i18n-ph="searchPlaceholder" placeholder="Cari teks di workspace..." /></div>
+    <div class="toggles"><label><input type="checkbox" id="caseChk"> <span data-i18n="caseSensitive">Case sensitive</span></label><label><input type="checkbox" id="regexChk"> <span data-i18n="regex">Regex</span></label></div>
+    <p id="searchErr" class="err hidden"></p><p id="searchInfo" class="muted"></p><div id="searchResults"></div>
+  </div>
 </section>
 <section id="tab-scm" class="panel">
-  <div class="panel-head"><h2>Source Control</h2><div><button id="scmRefresh" class="mini">Refresh</button><button id="fetchBtn" class="mini" disabled>Fetch</button><button id="pullBtn" class="mini" disabled>Pull</button><button id="pushBtn" class="mini primary" disabled>Push</button></div></div>
-  <div id="scmState" class="card"><p>Memuat status Git...</p></div>
-  <div id="scmBody" class="hidden">
-    <div class="branch-row"><label>Branch <select id="branchSel"></select></label><span class="sync-pill" title="ahead / behind upstream">up <b id="ahead">0</b> &nbsp; down <b id="behind">0</b> &nbsp; <span id="scmUpstream" class="muted"></span></span><button id="newBranchBtn" class="mini">+ Branch</button></div>
-    <div id="conflictBanner" class="banner hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
-    <div id="scmGroups"></div>
-    <label class="lbl">Commit message</label>
-    <textarea id="commitMsg" rows="3" placeholder="feat: ..."></textarea>
-    <button id="commitBtn" class="primary full" disabled>Commit</button><p id="commitOut" class="muted"></p>
+  <div class="panel-head"><h2 data-i18n="scm">Source Control</h2><div><button id="scmRefresh" class="mini" data-i18n="refresh">Refresh</button><button id="fetchBtn" class="mini" disabled data-i18n="fetch">Fetch</button><button id="pullBtn" class="mini" disabled data-i18n="pull">Pull</button><button id="pushBtn" class="mini primary" disabled data-i18n="push">Push</button></div></div>
+  <div class="panel-body">
+    <div id="scmState" class="card"><p data-i18n="loadingGit">Memuat status Git...</p></div>
+    <div id="scmBody" class="hidden">
+      <div class="branch-row"><label><span data-i18n="branch">Branch</span> <select id="branchSel"></select></label><span class="sync-pill" title="ahead / behind upstream"><span data-i18n="upstream">up</span> <b id="ahead">0</b> &nbsp; down <b id="behind">0</b> &nbsp; <span id="scmUpstream" class="muted"></span></span><button id="newBranchBtn" class="mini" data-i18n="newBranch">+ Branch</button></div>
+      <div id="conflictBanner" class="banner hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
+      <div id="scmGroups"></div>
+      <label class="lbl" data-i18n="commitMessage">Commit message</label>
+      <textarea id="commitMsg" rows="3" data-i18n-ph="commitPlaceholder" placeholder="feat: ..."></textarea>
+      <button id="commitBtn" class="primary full" disabled data-i18n="commit">Commit</button><p id="commitOut" class="muted"></p>
+    </div>
   </div>
 </section>
 <section id="tab-terminal" class="panel">
-  <div class="panel-head"><h2>Terminal</h2><div><button id="termNew" class="mini">New</button><button id="termClear" class="mini">Clear</button><button id="termKill" class="mini danger">Kill</button></div></div>
-  <p id="termStatus" class="muted">Terminal belum dibuka.</p>
-  <div id="termView" class="term-view"></div>
+  <div class="panel-head"><h2 data-i18n="terminal">Terminal</h2><div><button id="termNew" class="mini" data-i18n="termNew">New</button><button id="termClear" class="mini" data-i18n="termClear">Clear</button><button id="termKill" class="mini danger" data-i18n="termKill">Kill</button></div></div>
+  <div class="panel-body">
+    <p id="termStatus" class="muted" data-i18n="terminalNotOpen">Terminal belum dibuka.</p>
+    <div id="termView" class="term-view"></div>
+  </div>
 </section>
 <section id="tab-agent" class="panel">
-  <div class="panel-head"><h2>Agent</h2><span id="agentPill" class="pill pill-warn"><span class="dot"></span><span id="agentSession">Belum ada sesi</span></span></div>
-  <div class="notice"><i class="fa-solid fa-robot" style="font-size: 18px; color: var(--accent); margin-top: 2px;"></i><div><strong>Monitoring &amp; Approval Agent</strong><p>Chat tetap di tab AI Anda. Panel ini menjalankan perintah tool dari AI, meminta persetujuan bila perlu, dan mencatat semuanya.</p></div></div>
-  <div class="chat-detect"><div><span class="muted">Tab chat</span><strong id="detectedChat">-</strong></div><div><button id="agentStart" class="mini primary">Start session</button><button id="agentStop" class="mini danger hidden">Stop</button></div></div>
-  <div class="agent-controls"><label>Approval mode <select id="modeSel"><option value="read-only">Read-only</option><option value="ask" selected>Ask</option><option value="auto-edit">Auto-edit</option><option value="full-auto">Full-auto</option></select></label></div>
-  <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><div><button id="apAllow" class="primary">Allow once</button><button id="apSession" class="mini">Allow for session</button><button id="apDeny" class="mini danger">Deny</button></div></div>
-  <div class="log-head"><strong>Aktivitas</strong><select id="logFilter"><option value="all">Semua</option><option value="ok">Sukses</option><option value="denied">Ditolak</option><option value="error">Error</option></select><button id="copyLog" class="mini">Copy</button><button id="clearLog" class="mini">Clear</button></div>
-  <div id="cmdLog" class="cmdlog"></div>
+  <div class="panel-head"><h2 data-i18n="agent">Agent</h2><span id="agentPill" class="pill pill-warn"><span class="dot"></span><span id="agentSession" data-i18n="noSession">Belum ada sesi</span></span></div>
+  <div class="panel-body">
+    <div class="notice"><i class="fa-solid fa-robot" style="font-size: 18px; color: var(--accent); margin-top: 2px;"></i><div><strong data-i18n="monitoringAgent">Monitoring &amp; Approval Agent</strong><p data-i18n="agentDesc">Chat tetap di tab AI Anda. Panel ini menjalankan perintah tool dari AI, meminta persetujuan bila perlu, dan mencatat semuanya.</p></div></div>
+    <div class="chat-detect"><div><span class="muted" data-i18n="chatTabLabel">Tab chat</span><strong id="detectedChat" data-i18n="noChatTab">-</strong></div><div><button id="agentStart" class="mini primary" data-i18n="startSession">Start session</button><button id="agentStop" class="mini danger hidden" data-i18n="stopSession">Stop</button></div></div>
+    <div class="agent-controls"><label><span data-i18n="approvalMode">Approval mode</span> <select id="modeSel"><option value="read-only" data-i18n="readOnly">Read-only</option><option value="ask" selected data-i18n="ask">Ask</option><option value="auto-edit" data-i18n="autoEdit">Auto-edit</option><option value="full-auto" data-i18n="fullAuto">Full-auto</option></select></label></div>
+    <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><div><button id="apAllow" class="primary">Allow once</button><button id="apSession" class="mini">Allow for session</button><button id="apDeny" class="mini danger">Deny</button></div></div>
+    <div class="log-head" style="display:flex;justify-content:space-between;align-items:center;padding:0 12px;"><strong data-i18n="activity">Aktivitas</strong><div style="display:flex;gap:8px;"><select id="logFilter"><option value="all" data-i18n="all">Semua</option><option value="ok" data-i18n="success">Sukses</option><option value="denied" data-i18n="denied">Ditolak</option><option value="error" data-i18n="error">Error</option></select><button id="copyLog" class="mini" data-i18n="copy">Copy</button><button id="clearLog" class="mini" data-i18n="clear">Clear</button></div></div>
+    <div id="cmdLog" class="cmdlog"></div>
+  </div>
 </section>
 <section id="tab-settings" class="panel">
-  <div class="panel-head"><h2>Settings</h2></div>
+  <div class="panel-head"><h2 data-i18n="settingsTitle">Settings</h2></div>
   <div class="set-nav">
-    <button class="set-tab active" data-set="editor">Tampilan &amp; Bahasa</button>
-    <button class="set-tab" data-set="companion">Companion</button>
-    <button class="set-tab" data-set="workspaces">Workspaces</button>
-    <button class="set-tab" data-set="mcp">MCP</button>
+    <button class="set-tab active" data-set="editor" data-i18n="displayLang">Tampilan &amp; Bahasa</button>
+    <button class="set-tab" data-set="companion" data-i18n="companionHost">Companion</button>
+    <button class="set-tab" data-set="workspaces" data-i18n="manageWorkspaces">Workspaces</button>
+    <button class="set-tab" data-set="mcp" data-i18n="mcpServers">MCP</button>
   </div>
   
   <div id="set-editor" class="set-panel active">
-    <h3>Tampilan, Tema &amp; Bahasa</h3>
-    <label>Bahasa / Language <select id="langSel"><option value="id">Bahasa Indonesia</option><option value="en">English</option></select></label>
-    <label>Tema <select id="themeSel"><option value="system">System (Otomatis)</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
-    <label>Font Size <input type="number" id="fontSize" value="13" class="input-sm"> px</label>
-    <label>Tab Size <input type="number" id="tabSize" value="2" class="input-sm"></label>
-    <label><input type="checkbox" id="wrapChk"> Word wrap</label>
+    <h3 data-i18n="displayLang">Tampilan, Tema &amp; Bahasa</h3>
+    <label><span data-i18n="langLabel">Bahasa / Language</span> <select id="langSel"><option value="id">Bahasa Indonesia</option><option value="en">English</option></select></label>
+    <label><span data-i18n="themeLabel">Tema</span> <select id="themeSel"><option value="system" data-i18n="systemTheme">System (Otomatis)</option><option value="dark" data-i18n="darkTheme">Dark</option><option value="light" data-i18n="lightTheme">Light</option></select></label>
+    <label><span data-i18n="fontSizeLabel">Font Size</span> <input type="number" id="fontSize" value="13" class="input-sm"> px</label>
+    <label><span data-i18n="tabSizeLabel">Tab Size</span> <input type="number" id="tabSize" value="2" class="input-sm"></label>
+    <label><input type="checkbox" id="wrapChk"> <span data-i18n="wordWrapLabel">Word wrap</span></label>
   </div>
 
   <div id="set-companion" class="set-panel">
-    <h3>Companion Host</h3>
-    <p>Version: <b>0.1.0-dev</b></p>
-    <div><button id="diagBtn" class="mini">Diagnostik</button><button id="restart2Btn" class="mini">Restart Companion</button></div>
-    <pre id="diagOut" class="hidden"></pre><p>Extension ID: <code id="extId"></code></p>
+    <h3 data-i18n="companionHost">Companion Host</h3>
+    <p><span data-i18n="versionLabel">Version</span>: <b>0.1.0-dev</b></p>
+    <div><button id="diagBtn" class="mini" data-i18n="diagnostics">Diagnostik</button><button id="restart2Btn" class="mini" data-i18n="restartCompanion">Restart Companion</button></div>
+    <pre id="diagOut" class="hidden"></pre><p><span data-i18n="extIdLabel">Extension ID</span>: <code id="extId"></code></p>
   </div>
 
   <div id="set-workspaces" class="set-panel">
-    <h3>Manage Workspaces</h3>
+    <h3 data-i18n="manageWorkspaces">Manage Workspaces</h3>
     <div id="manageList"></div>
-    <label>Ignore patterns <input id="ignoreInput" class="input" value=".git, node_modules, dist"></label>
+    <label><span data-i18n="ignorePatterns">Ignore patterns</span> <input id="ignoreInput" class="input" value=".git, node_modules, dist"></label>
   </div>
 
   <div id="set-mcp" class="set-panel">
-    <h3>MCP Servers <button id="mcpReload" class="mini">Reload</button></h3>
+    <h3 data-i18n="mcpServers">MCP Servers</h3> <button id="mcpReload" class="mini" data-i18n="reload">Reload</button>
     <div id="mcpList"></div><div id="mcpTools"></div><div id="providerList"></div>
   </div>
 </section>
 </main></div>
 </div>
-<div id="modalBackdrop" class="backdrop hidden"><div class="modal" role="dialog" aria-modal="true"><h3 id="modalTitle">Modal</h3><div id="modalBody"></div><div class="modal-actions"><button id="modalCancel" class="mini">Cancel</button><button id="modalOk" class="primary">OK</button></div><button id="modalClose" class="icon-btn modal-x">x</button></div></div>
+<div id="modalBackdrop" class="backdrop hidden"><div class="modal" role="dialog" aria-modal="true"><h3 id="modalTitle">Modal</h3><div id="modalBody"></div><div class="modal-actions"><button id="modalCancel" class="mini" data-i18n="close">Cancel</button><button id="modalOk" class="primary">OK</button></div><button id="modalClose" class="icon-btn modal-x">x</button></div></div>
 <div id="toast" class="toast hidden"></div>
 <script type="module" src="./sidepanel.ts"></script></body></html>

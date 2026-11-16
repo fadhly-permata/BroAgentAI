@@ -122,7 +122,7 @@ Write files safely and find code quickly.
 - External change handling for clean/dirty buffers.
 - Create/rename/delete flows with confirmations.
 - Search UI: query, toggles (case, regex, include/exclude), grouped results, open at line.
-- Explorer Git badges (data from M3; mocked until then).
+- Explorer Git badges (data from M3; fully implemented).
 - Keyboard shortcuts and accessibility pass.
 
 ### Acceptance
