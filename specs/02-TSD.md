@@ -45,7 +45,7 @@ Key decisions:
 - **Config and resources are files, not a database.** JSONC + Markdown, merged global → project → local.
 - **MCP is first-class.** The companion is the MCP client/host; project MCP servers require trust.
 - **Providers are plugins.** Each web chat is a folder with metadata + adapter; Vite generates manifest entries.
-- **Clean-room implementation.** Do not copy GPL code from snapgent unless the project adopts GPL-3.0.
+- **Clean-room implementation.** Do not copy GPL code from legacy connectors unless the project adopts GPL-3.0.
 
 Detailed extensibility design: `07-PLUGIN-MCP.md`.
 
@@ -600,7 +600,7 @@ The registry matches the current tab URL to a plugin, creates one adapter per ta
 
 | Order | Provider | URL | Transport | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | DeepSeek | `https://chat.deepseek.com/*` | DOM | Most stable in snapgent; recommended first. |
+| 1 | DeepSeek | `https://chat.deepseek.com/*` | DOM | Most stable in legacy connectors; recommended first. |
 | 2 | Gemini | `https://gemini.google.com/*` | DOM | Quill composer, Angular DOM, code-block masking. |
 | 3 | Qwen | `https://chat.qwen.ai/*` | DOM + optional MAIN-world SSE tap | Vue DOM; may need a fetch/SSE tap for reliable streaming. |
 

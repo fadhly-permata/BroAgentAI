@@ -10,7 +10,7 @@
 
 **Status:** Accepted
 
-**Context:** snapgent starts a local WebSocket bridge with `start.bat`. Users must keep a terminal open, a localhost port is exposed, and pairing/origin checks must be implemented manually. Chrome extensions can instead launch a native host through Native Messaging.
+**Context:** legacy connectors start a local WebSocket bridge with `start.bat`. Users must keep a terminal open, a localhost port is exposed, and pairing/origin checks must be implemented manually. Chrome extensions can instead launch a native host through Native Messaging.
 
 **Decision:** Use a single native companion registered as `com.broagentai.host` over stdio. The extension calls `chrome.runtime.connectNative`; the host lifecycle is tied to the port.
 
@@ -26,7 +26,7 @@
 
 **Status:** Accepted
 
-**Context:** snapgent injects a floating control bar into AI pages. That keeps users in the chat but provides no persistent workspace, SCM, or file cockpit. Embedding provider sites in an iframe is blocked by `X-Frame-Options`/CSP.
+**Context:** legacy connectors inject a floating control bar into AI pages. That keeps users in the chat but provides no persistent workspace, SCM, or file cockpit. Embedding provider sites in an iframe is blocked by `X-Frame-Options`/CSP.
 
 **Decision:** Build a Chrome side panel as the primary UI. The AI chat stays in its provider tab. A content script relays prompts and replies between the panel/service worker and the AI tab.
 
@@ -146,13 +146,13 @@
 
 **Status:** Accepted (license subject to final review)
 
-**Context:** snapgent is GPL-3.0-or-later. Copying its code would force BroAgentAI to GPL-3.0.
+**Context:** legacy connectors are GPL-3.0-or-later. Copying their code would force BroAgentAI to GPL-3.0.
 
 **Decision:** Implement from concepts and public behavior, not copied code. Default license: MIT or Apache-2.0. Revisit if code reuse becomes desirable.
 
 **Consequences:**
 
-- Contributors must not paste snapgent code.
+- Contributors must not paste legacy connector code.
 - Concepts (provider adapters, command parser, tool catalog, workspace confinement) can be reimplemented.
 - A license review is required before public release.
 
@@ -189,7 +189,7 @@
 
 **Status:** Accepted
 
-**Context:** Provider adapters are the most fragile part. snapgent reports DeepSeek as the most stable, Gemini as moderate, Qwen as more complex.
+**Context:** Provider adapters are the most fragile part. Legacy connectors report DeepSeek as the most stable, Gemini as moderate, Qwen as more complex.
 
 **Decision:** Implement DeepSeek first, then Gemini, then Qwen. Keep a provider registry so others (ChatGPT, Claude, Grok, Kimi, GLM, Meta, Mistral, Ptero, Arena) can follow.
 

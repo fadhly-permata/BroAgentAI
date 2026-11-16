@@ -4,7 +4,7 @@
 - Produk ini HANYA terdiri dari 2 komponen buatan sendiri:
   1. **BroAgentAI Extension** (Chrome/Edge, MV3)
   2. **BroAgentAI Bridge** (aplikasi desktop Go, 1 file .exe)
-- TIDAK ada dependency ke: VS Code, Roblox Studio, EffectCraft, Git CLI sistem, Python, Node runtime, atau aplikasi pihak ketiga lainnya.
+- TIDAK ada dependency ke: editor atau aplikasi eksternal apa pun, Git CLI sistem, Python, Node runtime, atau aplikasi pihak ketiga lainnya.
 - Jika sebuah fitur butuh sesuatu di luar 2 komponen di atas, fitur itu TIDAK boleh dibangun dengan cara itu.
 
 ## 2. Arsitektur
@@ -77,7 +77,7 @@ Types v1:
 - Output streaming via event `term.output`.
 
 ## 7. Yang DILARANG
-- Dilarang memanggil VS Code / Roblox / EffectCraft / aplikasi lain.
+- Dilarang memanggil editor lain, aplikasi pihak ketiga, atau aplikasi apa pun di luar 2 komponen ini.
 - Dilarang memanggil `git.exe`, `code`, atau binary sistem dari extension.
 - Dilarang mode demo yang menampilkan hasil palsu sebagai hasil nyata.
 - Dilarang menyimpan token/credential di repo.

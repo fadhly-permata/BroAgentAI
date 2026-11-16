@@ -16,7 +16,7 @@ The product requires **no API key** and, after a one-time development setup, **n
 ## 2. Problem
 
 - Web AI chats are good at reasoning and code generation, but they cannot inspect, edit, search, or version-control a local project.
-- Existing browser connectors such as snapgent inject an agent bar into AI pages but require a manually started local bridge, and they do not provide a persistent workspace/SCM cockpit.
+- Existing browser connectors inject an agent bar into AI pages but require a manually started local bridge, and they do not provide a persistent workspace/SCM cockpit.
 - Developers constantly switch between an IDE, a terminal, a Git UI, and an AI chat; context and file paths are lost between tools.
 - API-key-based coding agents require billing, configuration, and trust in a cloud agent. Many users already have capable, logged-in web AI accounts.
 - Local automation tools often expose broad filesystem or shell access without clear approval boundaries.
@@ -300,7 +300,7 @@ A contributor adds a new folder under `extension/src/providers/<id>/` with `prov
 | Merge/rebase conflicts | Repo put in intermediate state | Show conflict state, Abort action, no auto-resolution |
 | Service-worker suspension | Connection drops | Reconnect on panel activity, persisted session state |
 | Provider terms of service | Account risk | User-driven automation only; document limitations |
-| GPL contamination | Licensing constraints | Clean-room implementation; no copy from snapgent unless GPL-3.0 |
+| GPL contamination | Licensing constraints | Clean-room implementation; no copy from legacy connectors unless GPL-3.0 |
 | Malicious project config | Repo executes MCP commands on open | Project MCP is untrusted by default; explicit trust + config hash |
 | Compromised MCP server | Data exfiltration or destructive actions | Approval modes, risk annotations, result caps, trust review |
 | Secret leakage in MCP logs | Credential exposure | Env refs only; redaction everywhere; diagnostics show key names |
@@ -319,7 +319,7 @@ Assumptions:
 
 ## 12. Open questions
 
-- Project license: MIT/Apache-2.0 clean-room vs GPL-3.0 reuse of snapgent code.
+- Project license: MIT/Apache-2.0 clean-room vs GPL-3.0 reuse of legacy connector code.
 - Final product name and branding.
 - Host packaging: Bun compile vs Node SEA vs `pkg`.
 - Whether `Full-auto` may push/pull without a separate confirmation.

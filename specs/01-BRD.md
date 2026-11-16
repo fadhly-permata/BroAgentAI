@@ -8,14 +8,14 @@
 
 ## 1. Background and opportunity
 
-Developers increasingly use web AI chats (Qwen, DeepSeek, Gemini, ChatGPT, Claude) for coding help. Those chats cannot access a local repository, so users copy-paste code, switch to a terminal, and lose context. Existing connectors such as snapgent prove the demand for browser-to-local automation, but they:
+Developers increasingly use web AI chats (Qwen, DeepSeek, Gemini, ChatGPT, Claude) for coding help. Those chats cannot access a local repository, so users copy-paste code, switch to a terminal, and lose context. Existing connectors prove the demand for browser-to-local automation, but they:
 
 - inject a control bar into AI pages instead of offering a persistent workspace cockpit;
 - require a manually started local bridge (`start.bat`);
 - expose broad filesystem and Git access without a visible approval model;
 - do not provide a source-control UI.
 
-BroAgentAI combines the snapgent connector concept with a side-panel workspace cockpit and a native companion that the extension can start, stop, and restart. It targets users who already pay for or have access to capable web AI accounts and do not want another API key or cloud coding agent.
+BroAgentAI combines the legacy connector concept with a side-panel workspace cockpit and a native companion that the extension can start, stop, and restart. It targets users who already pay for or have access to capable web AI accounts and do not want another API key or cloud coding agent.
 
 ## 2. Business objectives
 
@@ -39,7 +39,7 @@ BroAgentAI combines the snapgent connector concept with a side-panel workspace c
 
 ## 4. Value proposition
 
-**For** developers who already use a web AI chat, **who** need the AI to work on a local repository, **BroAgentAI** is a Chrome side-panel companion **that** lets the AI read, search, edit, and version-control the active workspace with explicit approvals. **Unlike** snapgent, it provides a persistent workspace/SCM cockpit and removes the per-session bridge start; **unlike** API-key agents, it uses the AI session the user already has.
+**For** developers who already use a web AI chat, **who** need the AI to work on a local repository, **BroAgentAI** is a Chrome side-panel companion **that** lets the AI read, search, edit, and version-control the active workspace with explicit approvals. **Unlike** legacy connectors, it provides a persistent workspace/SCM cockpit and removes the per-session bridge start; **unlike** API-key agents, it uses the AI session the user already has.
 
 Differentiators:
 
@@ -103,7 +103,7 @@ Differentiators:
 Two viable paths:
 
 1. **Clean-room (recommended):** implement from concepts and public documentation; license the project under MIT or Apache-2.0.
-2. **Reuse snapgent code:** snapgent is GPL-3.0-or-later; any copied code requires BroAgentAI to be GPL-3.0.
+2. **Reuse legacy connector code:** legacy connectors are GPL-3.0-or-later; any copied code requires BroAgentAI to be GPL-3.0.
 
 Decision is tracked in `05-ADR.md`; the default assumption for the MVP is clean-room.
 

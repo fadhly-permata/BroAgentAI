@@ -1,4 +1,4 @@
-/* BroAgentAI - VS Code Style Activity Bar */
+/* BroAgentAI - Activity Bar */
 :root {
   --bg-base: #1e1e1e;
   --bg-surface: #252526;
@@ -54,7 +54,7 @@ body { background: var(--bg-base); color: var(--text-main); font-family: var(--f
 .banner.hidden { display: none !important; }
 .banner div { display: flex; gap: 6px; }
 
-/* Shell & VS Code Activity Bar */
+/* Shell & Activity Bar */
 .shell { display: flex; flex: 1; overflow: hidden; position: relative; }
 .rail { width: 48px; background: var(--bg-surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding-top: 4px; gap: 2px; z-index: 5; }
 .rail-btn { width: 48px; height: 48px; border: none; background: transparent; color: var(--text-muted); border-radius: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; transition: all 0.1s; }
