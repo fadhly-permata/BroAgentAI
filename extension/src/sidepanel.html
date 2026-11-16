@@ -39,6 +39,7 @@
 </section>
 <section id="tab-scm" class="panel">
   <div class="panel-head"><h2>Source Control</h2><div><button id="fetchBtn" class="mini">Fetch</button><button id="pullBtn" class="mini">Pull</button><button id="pushBtn" class="mini primary">Push</button></div></div>
+  <p class="demo-note" data-demo="scm"><b>Demo.</b> Data di tab ini contoh, belum terhubung ke Git workspace (menyusul di M3).</p>
   <div class="branch-row"><label>Branch <select id="branchSel"><option>main</option><option>feat/agent-ui</option></select></label><span class="sync-pill">up <b id="ahead">2</b> &nbsp; down <b id="behind">1</b></span><button id="newBranchBtn" class="mini">+ Branch</button></div>
   <div id="conflictBanner" class="banner hidden">Merge/rebase in progress - <button class="mini" id="abortBtn">Abort</button></div>
   <div id="scmGroups"></div>
@@ -49,6 +50,7 @@
 <section id="tab-agent" class="panel">
   <div class="panel-head"><h2>Agent</h2><span class="pill pill-ok"><span class="dot"></span><span id="agentSession">Siap</span><span id="sessionStatus" class="hidden"></span></span></div>
   <div class="notice"><i class="fa-solid fa-robot" style="font-size: 18px; color: var(--accent); margin-top: 2px;"></i><div><strong>Monitoring &amp; Approval Agent</strong><p>Panel ini memantau sesi dan menampilkan konfirmasi tool dari tab chat AI Anda.</p></div></div>
+  <p class="demo-note" data-demo="agent"><b>Demo.</b> Relay tab chat belum aktif (menyusul di M5); tombol Simulate hanya memperagakan alur approval.</p>
   <div class="chat-detect"><div><span class="muted">Tab terdeteksi</span><strong id="detectedChat">-</strong><span id="chatSiteName" class="hidden"></span><span id="chatSiteUrl" class="hidden"></span><span id="chatSiteTab" class="hidden"></span><span id="chatSiteName2" class="hidden"></span></div><button id="openChatBtn" class="mini primary">Buka tab</button></div>
   <button id="simulateBtn" class="mini primary">Simulate tool call</button><div class="agent-controls"><label>Approval mode <select id="modeSel"><option>Read-only</option><option selected>Ask</option><option>Auto-edit</option><option>Full-auto</option></select></label><label>Agent profile <select id="agentSel"><option>Default</option><option>reviewer</option><option>planner</option></select></label></div>
   <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span class="risk risk-write">WRITE</span><b id="apTool">fs.writeFile</b></div><p id="apSummary"></p><pre id="apDiff"></pre><pre id="apParams"></pre><div><button id="apAllow" class="primary">Allow once</button><button id="apSession" class="mini">Allow session</button><button id="apDeny" class="mini danger">Deny</button></div></div>
@@ -90,6 +92,7 @@
 
   <div id="set-mcp" class="set-panel">
     <h3>MCP Servers <button id="mcpReload" class="mini">Reload</button></h3>
+    <p class="demo-note" data-demo="mcp"><b>Demo.</b> Daftar server dan provider di bawah contoh, belum terhubung ke host (menyusul di M7).</p>
     <div id="mcpList"></div><div id="mcpTools"></div><div id="providerList"></div><select id="providerSel" class="hidden"><option>DeepSeek</option></select>
   </div>
 </section>

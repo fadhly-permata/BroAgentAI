@@ -1,5 +1,6 @@
 // Editor: CodeMirror 6 dengan dukungan read_file_lines dan write_file + MTIME_CONFLICT detection
 import { EditorView, basicSetup } from 'codemirror';
+import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorState } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { javascript } from '@codemirror/lang-javascript';
@@ -79,6 +80,8 @@ async function loadFile(path: string, targetLine = 0) {
       doc: content,
       extensions: [
         basicSetup,
+        oneDark,
+        EditorView.theme({ '&': { height: '100%' }, '.cm-scroller': { overflow: 'auto' } }),
         getLanguageExtension(path),
         keymap.of([
           ...defaultKeymap,

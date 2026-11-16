@@ -18,7 +18,7 @@ function tryParse() {
   }
 }
 child.on('exit', (code) => { console.log('EXIT', code); console.log('STDERR\n' + err.slice(-2000)); });
-const req = { v: 1, id: 1, method: 'system.ping', params: {} };
+const req = { id: 1, method: 'system.ping', params: {} };
 const body = Buffer.from(JSON.stringify(req));
 const frame = Buffer.alloc(4 + body.length);
 frame.writeUInt32LE(body.length, 0);

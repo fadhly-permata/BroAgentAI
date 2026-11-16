@@ -116,6 +116,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .ck { font-weight: bold; width: 16px; display: inline-block; text-align: center; color: var(--warning); }
 .ck.done { color: var(--success); }
 
+.demo-note { background: rgba(204, 167, 0, 0.12); border: 1px solid rgba(204, 167, 0, 0.35); border-radius: 4px; padding: 6px 10px; margin: 0 0 8px; font-size: 11px; color: var(--text-main); }
 .notice { background: rgba(0, 122, 204, 0.1); border: 1px solid rgba(0, 122, 204, 0.2); border-radius: 4px; padding: 10px; display: flex; gap: 10px; align-items: flex-start; }
 .notice svg { width: 18px; height: 18px; fill: var(--accent); flex-shrink: 0; margin-top: 2px; }
 

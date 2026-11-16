@@ -179,7 +179,7 @@ async function doSearch(){
       grouped[r.file].push({ line: r.line, text: r.text });
     });
     
-    let html = `<p class="muted">Ditemukan ${results.length} match di ${Object.keys(grouped).length} file:</p>`;
+    let html = '';
     
     Object.entries(grouped).forEach(([file, matches]) => {
       html += `<div class="card search-group">`;
