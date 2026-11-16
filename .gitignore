@@ -29,3 +29,6 @@ bridge/dist/
 
 # Native host build
 bridge/build/
+
+# Playwright e2e profiles
+extension/e2e/.pw-profile/

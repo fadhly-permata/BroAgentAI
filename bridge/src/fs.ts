@@ -1,5 +1,5 @@
 /**
- * Secure filesystem operations for the BrowserAgent bridge.
+ * Secure filesystem operations for the BroAgentAI bridge.
  *
  * All paths are confined to the active workspace. Symlinks are resolved
  * to prevent path escape attacks. Binary files and oversized files are
@@ -8,10 +8,12 @@
 
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
@@ -276,4 +278,182 @@ export function readFile(store: WorkspaceStore, requestedPath: string): FsReadFi
     content: buffer.toString("utf8"),
     isBinary: false,
   };
+}
+
+export interface FsReadFileLinesResult {
+  path: string;
+  content: string;
+  isBinary: boolean;
+  totalLines: number;
+  mtime: number;
+}
+
+/**
+ * Read a bounded line range from a workspace file.
+ */
+export function readFileLines(
+  store: WorkspaceStore,
+  requestedPath: string,
+  startLine?: number,
+  endLine?: number
+): FsReadFileLinesResult {
+  const active = store.active();
+  if (!active) {
+    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+  }
+
+  const realPath = confinePath(active.path, requestedPath);
+  const stat = statSync(realPath);
+
+  if (stat.isDirectory()) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "Cannot read a directory");
+  }
+
+  if (stat.size > DEFAULT_MAX_FILE_BYTES) {
+    throw new WorkspaceError(
+      ErrorCode.FILE_TOO_LARGE,
+      `File exceeds max size of ${DEFAULT_MAX_FILE_BYTES} bytes`
+    );
+  }
+
+  const buffer = readFileSync(realPath);
+  if (checkIsBinary(buffer)) {
+    throw new WorkspaceError(ErrorCode.BINARY_FILE, "File appears to be binary");
+  }
+
+  const content = buffer.toString("utf8");
+  const lines = content.split("\n");
+  const totalLines = lines.length;
+
+  let start = startLine !== undefined ? Math.max(0, startLine) : 0;
+  let end = endLine !== undefined && endLine >= 0 ? Math.min(totalLines, endLine + 1) : totalLines;
+
+  const slicedContent = lines.slice(start, end).join("\n");
+  const relPath = relative(active.path, realPath).replace(/\\/g, "/");
+
+  return {
+    path: relPath,
+    content: slicedContent,
+    isBinary: false,
+    totalLines,
+    mtime: stat.mtimeMs,
+  };
+}
+
+export interface FsWriteFileResult {
+  path: string;
+  mtime: number;
+}
+
+/**
+ * Write or replace a UTF-8 text file inside the workspace, with optional MTIME_CONFLICT detection.
+ */
+export function writeFile(
+  store: WorkspaceStore,
+  requestedPath: string,
+  content: string,
+  expectedMtime?: number
+): FsWriteFileResult {
+  const active = store.active();
+  if (!active) {
+    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+  }
+
+  const realPath = confinePath(active.path, requestedPath);
+
+  // Check for MTIME_CONFLICT if file exists and expectedMtime is provided
+  if (expectedMtime !== undefined && existsSync(realPath)) {
+    const currentStat = statSync(realPath);
+    if (currentStat.mtimeMs !== expectedMtime) {
+      throw new WorkspaceError(
+        ErrorCode.MTIME_CONFLICT,
+        "File has been modified externally since it was opened"
+      );
+    }
+  }
+
+  // Ensure parent directory exists
+  const parentDir = dirname(realPath);
+  if (!existsSync(parentDir)) {
+    mkdirSync(parentDir, { recursive: true });
+  }
+
+  writeFileSync(realPath, content, "utf8");
+
+  const newStat = statSync(realPath);
+  const relPath = relative(active.path, realPath).replace(/\\/g, "/");
+
+  return {
+    path: relPath,
+    mtime: newStat.mtimeMs,
+  };
+}
+
+export interface FsSearchFilesResult {
+  file: string;
+  line: number;
+  text: string;
+}
+
+/**
+ * Search text in workspace files.
+ */
+export function searchFiles(
+  store: WorkspaceStore,
+  requestedPath: string,
+  query: string,
+  caseSensitive?: boolean,
+  regex?: boolean
+): FsSearchFilesResult[] {
+  const active = store.active();
+  if (!active) {
+    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+  }
+
+  const activePath = active.path;
+  const realPath = confinePath(activePath, requestedPath);
+  const ignorePatterns = store.settings().ignore;
+  const results: FsSearchFilesResult[] = [];
+
+  const searchRegex = regex
+    ? new RegExp(query, caseSensitive ? "g" : "gi")
+    : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), caseSensitive ? "g" : "gi");
+
+  function searchDirectory(dirPath: string) {
+    const entries = readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (isIgnored(entry.name, ignorePatterns)) continue;
+
+      const fullPath = join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        searchDirectory(fullPath);
+      } else {
+        try {
+          const stat = statSync(fullPath);
+          if (stat.size > 0 && stat.size <= DEFAULT_MAX_FILE_BYTES) {
+            const buffer = readFileSync(fullPath);
+            if (!checkIsBinary(buffer)) {
+              const content = buffer.toString("utf8");
+              const lines = content.split("\n");
+              lines.forEach((line, index) => {
+                if (searchRegex.test(line)) {
+                  const relPath = relative(activePath, fullPath).replace(/\\/g, "/");
+                  results.push({
+                    file: relPath,
+                    line: index + 1,
+                    text: line.trim(),
+                  });
+                }
+              });
+            }
+          }
+        } catch {
+          // Ignore files that cannot be read
+        }
+      }
+    }
+  }
+
+  searchDirectory(realPath);
+  return results;
 }

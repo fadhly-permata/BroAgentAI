@@ -1,5 +1,5 @@
 /**
- * Native Messaging framing for the BrowserAgent bridge.
+ * Native Messaging framing for the BroAgentAI bridge.
  *
  * Both directions of the browser <-> native host channel share the same wire
  * format: a 4-byte unsigned little-endian length prefix followed by a UTF-8

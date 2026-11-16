@@ -1,6 +1,6 @@
 import { bridge } from './bridge-client';
 
-console.log('BrowserAgent background loaded');
+console.log('BroAgentAI background loaded');
 
 // Gemini-style: klik ikon = buka split panel di kanan, bukan popup kecil yang nutup sendiri.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});

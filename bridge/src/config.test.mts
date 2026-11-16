@@ -25,11 +25,11 @@ test("config.get returns merged config with defaults", async () => {
   assert.equal(typeof cfg.maxFileBytes, "number");
 });
 
-test("config.get loads project config from browseragent.jsonc", async () => {
+test("config.get loads project config from broagentai.jsonc", async () => {
   const s = server();
   const wsDir = mkdtempSync(join(tmpdir(), "ba-ws-cfg-proj-"));
   writeFileSync(
-    join(wsDir, "browseragent.jsonc"),
+    join(wsDir, "broagentai.jsonc"),
     `{
       // Override approval
       "approval": "auto",

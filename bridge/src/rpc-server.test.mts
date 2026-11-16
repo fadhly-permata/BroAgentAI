@@ -16,7 +16,7 @@ test("system.ping returns host + protocol version", async () => {
   const res = await s.handle({ id: 1, method: "system.ping" });
   assert.equal(res.id, 1);
   assert.equal((res.result as any).protocolVersion, 1);
-  assert.equal((res.result as any).hostName, "com.browseragent.host");
+  assert.equal((res.result as any).hostName, "com.broagentai.host");
 });
 
 test("system.info reports platform and config paths", async () => {

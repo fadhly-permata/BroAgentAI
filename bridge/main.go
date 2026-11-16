@@ -4,6 +4,7 @@ import (
   "encoding/json"
   "flag"
   "fmt"
+  "io"
   "log"
   "net"
   "net/http"
@@ -76,15 +77,22 @@ func handle(w http.ResponseWriter, r *http.Request) {
   if host != "127.0.0.1" && host != "::1" { http.Error(w, "forbidden", 403); return }
   c, err := upgrader.Upgrade(w, r, nil)
   if err != nil { return }
-  mu.Lock(); clients[c] = true; mu.Unlock()
-  defer func(){ mu.Lock(); delete(clients, c); mu.Unlock(); c.Close() }()
+  mu.Lock(); clients[c] = true; count := len(clients); mu.Unlock()
+  log.Printf("client connected host=%s clients=%d", host, count)
+  defer func(){ mu.Lock(); delete(clients, c); mu.Unlock(); c.Close(); log.Printf("client disconnected host=%s", host) }()
   token := ensureToken()
   for {
     var req Req
     if err := c.ReadJSON(&req); err != nil { return }
     if req.Token != token { c.WriteJSON(Resp{ID: req.ID, OK: false, Error: "bad token"}); continue }
     result, err := dispatch(req)
-    if err != nil { c.WriteJSON(Resp{ID: req.ID, OK: false, Error: err.Error()}) } else { c.WriteJSON(Resp{ID: req.ID, OK: true, Result: result}) }
+    if err != nil {
+      log.Printf("req id=%s type=%s error=%v", req.ID, req.Type, err)
+      c.WriteJSON(Resp{ID: req.ID, OK: false, Error: err.Error()})
+    } else {
+      log.Printf("req id=%s type=%s ok", req.ID, req.Type)
+      c.WriteJSON(Resp{ID: req.ID, OK: true, Result: result})
+    }
   }
 }
 var portFlag = flag.Int("port", 0, "port to listen on")
@@ -92,6 +100,11 @@ var portFlag = flag.Int("port", 0, "port to listen on")
 func main(){
   flag.Parse()
   ensureToken()
+  if f, err := os.OpenFile(filepath.Join(appDir(), "bridge.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+    log.SetOutput(io.MultiWriter(os.Stderr, f))
+  } else {
+    log.Printf("warn: cannot open bridge.log: %v", err)
+  }
   var ln net.Listener; var port int
   if *portFlag > 0 {
     l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *portFlag))

@@ -1,4 +1,4 @@
-# BrowserAgent - Granular Backlog
+# BroAgentAI - Granular Backlog
 
 Dokumen ini memecah roadmap (`06-ROADMAP.md`) menjadi tugas-tugas kecil yang dapat dikerjakan secara inkremental. Centang [x] saat tugas selesai, lulus typecheck, dan teruji.
 
@@ -39,7 +39,7 @@ Target: Panel terbuka, host terhubung, workspace list berfungsi, provider manife
 
 ### 0.5. Workspace Management
 - [x] 0.5.1. Implementasi `workspace.list`, `workspace.add`, `workspace.remove` di Bridge.
-- [x] 0.5.2. Simpan daftar workspace di host config file (`~/.browseragent/config.json`).
+- [x] 0.5.2. Simpan daftar workspace di host config file (`~/.broagentai/config.json`).
 - [x] 0.5.3. Tampilkan daftar workspace (recent) di Side Panel UI.
 - [x] 0.5.4. Tambahkan validasi path (cek apakah folder valid, hindari duplikat).
 
@@ -60,7 +60,7 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 1.1.4. Tambahkan aturan ignore default (`.git`, `node_modules`, `dist`).
 
 ### 1.2. Configuration & Resources
-- [x] 1.2.1. Buat parser JSONC untuk `browseragent.jsonc`.
+- [x] 1.2.1. Buat parser JSONC untuk `broagentai.jsonc`.
 - [x] 1.2.2. Implementasi logika merge config: Global < Project < Local.
 - [x] 1.2.3. Buat resource loader untuk menemukan `AGENTS.md`, `rules/`, `skills/`.
 - [x] 1.2.4. Buat RPC `config.get`, `instructions.list`, `skills.list` di Bridge.

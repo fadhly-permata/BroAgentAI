@@ -1,4 +1,4 @@
-// Shared protocol types for BrowserAgent extension <-> bridge communication
+// Shared protocol types for BroAgentAI extension <-> bridge communication
 
 // ============================================================================
 // RPC Envelope
@@ -48,7 +48,7 @@ export enum ErrorCode {
   INVALID_PARAMS = -32602,
   INTERNAL_ERROR = -32603,
 
-  // Custom BrowserAgent errors
+  // Custom BroAgentAI errors
   PATH_ESCAPE = -32001,
   FILE_NOT_FOUND = -32002,
   FILE_TOO_LARGE = -32003,
@@ -97,7 +97,7 @@ export enum ApprovalMode {
 }
 
 /**
- * Global configuration (stored in BROWSERAGENT_CONFIG_DIR)
+ * Global configuration (stored in BROAGENTAI_CONFIG_DIR)
  */
 export interface GlobalConfig {
   /** Default approval mode */
@@ -111,7 +111,7 @@ export interface GlobalConfig {
 }
 
 /**
- * Project-level configuration (browseragent.jsonc in workspace root)
+ * Project-level configuration (broagentai.jsonc in workspace root)
  */
 export interface ProjectConfig {
   /** Project-specific approval mode override */

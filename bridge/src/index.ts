@@ -1,4 +1,4 @@
-// @browseragent/bridge - Native messaging host entry point
+// @broagentai/bridge - Native messaging host entry point
 //
 // stdout is reserved for Native Messaging frames: never write to it.
 // All diagnostics go through the logger, which targets stderr.

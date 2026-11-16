@@ -1,8 +1,8 @@
-// Install / uninstall the com.browseragent.host native-messaging manifest.
+// Install / uninstall the com.broagentai.host native-messaging manifest.
 // Usage:
 //   node scripts/native-host.mjs install --extension-id <id> [--browser chrome|chromium|firefox] [--dry-run]
 //   node scripts/native-host.mjs uninstall [--browser chrome|chromium|firefox]
-// Extension id: pass --extension-id, set BROWSERAGENT_EXTENSION_ID, or
+// Extension id: pass --extension-id, set BROAGENTAI_EXTENSION_ID, or
 // put it in extension/dist/manifest.json (key: "key" is NOT the id; use the
 // id Chrome assigns after loading the unpacked extension).
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const HOST_NAME = "com.browseragent.host";
+const HOST_NAME = "com.broagentai.host";
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BRIDGE_ENTRY = join(ROOT, "bridge", "dist", "index.js");
 
@@ -56,7 +56,7 @@ function hostDir(browser) {
 function manifest({ browser, extensionId, hostPath }) {
   const m = {
     name: HOST_NAME,
-    description: "BrowserAgent native messaging host (local bridge)",
+    description: "BroAgentAI native messaging host (local bridge)",
     path: hostPath ?? process.execPath,
     type: "stdio",
   };
@@ -79,9 +79,9 @@ if (cmd === "uninstall") {
   process.exit(0);
 }
 
-const extensionId = opts.extensionId ?? process.env.BROWSERAGENT_EXTENSION_ID;
+const extensionId = opts.extensionId ?? process.env.BROAGENTAI_EXTENSION_ID;
 if (!extensionId) {
-  console.error("Missing extension id: pass --extension-id <id> or set BROWSERAGENT_EXTENSION_ID.");
+  console.error("Missing extension id: pass --extension-id <id> or set BROAGENTAI_EXTENSION_ID.");
   console.error("Find it on chrome://extensions after loading the unpacked extension.");
   process.exitCode = 2;
   process.exit(2);

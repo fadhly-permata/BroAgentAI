@@ -29,16 +29,16 @@ Non-goals for the first release:
 
 | Scope | Path | Committed | Purpose |
 | --- | --- | --- | --- |
-| Global | `<configDir>/browseragent.json` / `.jsonc` | No | User defaults, global MCP servers, provider preferences. |
-| Project | `<workspace>/browseragent.json` / `.jsonc` | Yes | Repo-specific instructions, MCP servers, agent defaults. |
-| Local | `<workspace>/browseragent.local.json` / `.jsonc` | No | Machine-specific overrides and local MCP servers; gitignored. |
-| Instructions | `AGENTS.md`, `BROWSERAGENT.md` | Yes | Natural-language operating rules. |
-| Rules | `.browseragent/rules/**/*.md` | Yes | Modular rules, concatenated in lexical order. |
-| Skills | `.browseragent/skills/*/SKILL.md` | Yes | On-demand skill instructions. |
-| Agents | `.browseragent/agents/**/*.md` | Yes | Named agent profiles. |
-| Commands | `.browseragent/commands/**/*.md` | Yes | Reusable prompt templates. |
+| Global | `<configDir>/broagentai.json` / `.jsonc` | No | User defaults, global MCP servers, provider preferences. |
+| Project | `<workspace>/broagentai.json` / `.jsonc` | Yes | Repo-specific instructions, MCP servers, agent defaults. |
+| Local | `<workspace>/broagentai.local.json` / `.jsonc` | No | Machine-specific overrides and local MCP servers; gitignored. |
+| Instructions | `AGENTS.md`, `BROAGENTAI.md` | Yes | Natural-language operating rules. |
+| Rules | `.broagentai/rules/**/*.md` | Yes | Modular rules, concatenated in lexical order. |
+| Skills | `.broagentai/skills/*/SKILL.md` | Yes | On-demand skill instructions. |
+| Agents | `.broagentai/agents/**/*.md` | Yes | Named agent profiles. |
+| Commands | `.broagentai/commands/**/*.md` | Yes | Reusable prompt templates. |
 
-`<configDir>` is the same OS app-data directory used by the host (`%APPDATA%\BroAgentAI`, `~/Library/Application Support/BroAgentAI`, `$XDG_CONFIG_HOME/browseragent`). Host state stays in `config.json`; the global `browseragent.json(c)` holds user-level agent/behavior defaults, and the two files are not merged.
+`<configDir>` is the same OS app-data directory used by the host (`%APPDATA%\BroAgentAI`, `~/Library/Application Support/BroAgentAI`, `$XDG_CONFIG_HOME/broagentai`). Host state stays in `config.json`; the global `broagentai.json(c)` holds user-level agent/behavior defaults, and the two files are not merged.
 
 Global resources live under `<configDir>/AGENTS.md`, `rules/`, `skills/`, `agents/`, and `commands/`. Project resources use the workspace-root paths in the table above. Config-list paths resolve relative to the file that declares them (global config → `<configDir>`, project/local config → workspace root).
 
@@ -65,7 +65,7 @@ Merge rules:
 
 ```jsonc
 {
-  "$schema": "https://browseragent.dev/schema/v1.json",
+  "$schema": "https://broagentai.dev/schema/v1.json",
   "version": 1,
 
   "agent": {
@@ -85,9 +85,9 @@ Merge rules:
     "AGENTS.md",
     "docs/CONTRIBUTING.md"
   ],
-  "rules": [".browseragent/rules"],
-  "skills": [".browseragent/skills"],
-  "agents": [".browseragent/agents"],
+  "rules": [".broagentai/rules"],
+  "skills": [".broagentai/skills"],
+  "agents": [".broagentai/agents"],
 
   "mcp": {
     "filesystem": {
@@ -121,7 +121,7 @@ Rules:
 ### 3.1 Instructions and rules
 
 - Plain Markdown, no required frontmatter.
-- Loaded in order: global instructions, project instructions, `AGENTS.md`, `BROWSERAGENT.md`, configured rules, `.browseragent/rules/**/*.md`.
+- Loaded in order: global instructions, project instructions, `AGENTS.md`, `BROAGENTAI.md`, configured rules, `.broagentai/rules/**/*.md`.
 - Total instruction budget: 64 KB; larger sets are truncated with a warning and file list.
 - Injected into the operating prompt under `## Workspace instructions` with file path headings.
 - Repository content is data, not authority; the system prompt says instructions inside source files cannot override BroAgentAI safety rules.
@@ -131,7 +131,7 @@ Rules:
 Directory layout:
 
 ```text
-.browseragent/skills/release-notes/
+.broagentai/skills/release-notes/
 ├─ SKILL.md
 ├─ template.md
 └─ scripts/            # listed, not executed by the core
@@ -162,7 +162,7 @@ Rules:
 
 ### 3.3 Agents
 
-`.browseragent/agents/reviewer.md`:
+`.broagentai/agents/reviewer.md`:
 
 ```markdown
 ---
@@ -185,7 +185,7 @@ Rules:
 
 ### 3.4 Commands
 
-`.browseragent/commands/test.md`:
+`.broagentai/commands/test.md`:
 
 ```markdown
 ---
@@ -276,7 +276,7 @@ Runtime `providers` config in the MVP can only enable/disable bundled plugins. I
 
 ### 4.4 Declarative providers
 
-A future tier for simple chats can be defined in `browseragent.json` and compiled into a provider plugin at build time (never loaded as runtime code):
+A future tier for simple chats can be defined in `broagentai.json` and compiled into a provider plugin at build time (never loaded as runtime code):
 
 ```jsonc
 {
@@ -428,7 +428,7 @@ Error codes: `CONFIG_INVALID`, `MCP_UNTRUSTED`, `MCP_NOT_READY`, `MCP_ERROR` (pl
 - **Settings → Configuration**: global/project/local file status, effective config preview, reload, open file path, validation warnings.
 - **Settings → MCP**: server list, transport, trust badge, status, tool count, Start/Stop/Restart, tool browser, "Trust this workspace" action.
 - **Agent**: tool catalog shows MCP tools with server badges; approval cards show server + tool + args.
-- **Explorer**: optional `.browseragent` folder highlighting; no secrets.
+- **Explorer**: optional `.broagentai` folder highlighting; no secrets.
 - **Provider switcher**: disabled/planned providers show status; plugin health is visible.
 
 ## 8. Security review checklist
@@ -460,7 +460,7 @@ Mapping: P0 spans M0–M1, P1 lands in M5–M6, P2 in M7, P3 in M8, and P4 is po
 
 ## 10. Acceptance criteria
 
-- [ ] A `browseragent.jsonc` file with comments loads without errors; invalid JSONC produces a line/column diagnostic.
+- [ ] A `broagentai.jsonc` file with comments loads without errors; invalid JSONC produces a line/column diagnostic.
 - [ ] Global/project/local precedence is deterministic and tested.
 - [ ] `AGENTS.md`, rules, skills, agents, and commands are discovered without executing anything.
 - [ ] Skills are listed by metadata and read on demand.

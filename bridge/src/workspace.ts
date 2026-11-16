@@ -1,5 +1,5 @@
 /**
- * Workspace registry for the BrowserAgent bridge.
+ * Workspace registry for the BroAgentAI bridge.
  *
  * Owns the host app config (`config.json`) that stores the workspace list, the
  * active workspace, and host settings. Writes are atomic (temp file + rename)
@@ -27,7 +27,7 @@ import { ErrorCode } from "./rpc.ts";
 import type { AppConfig, WorkspaceInfo } from "./rpc.ts";
 
 /** Environment variable that overrides the config directory (dev + tests). */
-export const CONFIG_DIR_ENV = "BROWSERAGENT_CONFIG_DIR";
+export const CONFIG_DIR_ENV = "BROAGENTAI_CONFIG_DIR";
 
 /** File name of the host app config inside the config directory. */
 export const CONFIG_FILE_NAME = "config.json";
@@ -62,7 +62,7 @@ export class WorkspaceError extends Error {
 /**
  * Resolve the host config directory for the current platform.
  *
- * `BROWSERAGENT_CONFIG_DIR` wins so tests and parallel dev sessions never
+ * `BROAGENTAI_CONFIG_DIR` wins so tests and parallel dev sessions never
  * touch the real user profile.
  */
 export function resolveConfigDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -76,7 +76,7 @@ export function resolveConfigDir(env: NodeJS.ProcessEnv = process.env): string {
     case "darwin":
       return join(home, "Library", "Application Support", "BroAgentAI");
     default:
-      return join(process.env.XDG_CONFIG_HOME ?? join(home, ".config"), "browseragent");
+      return join(process.env.XDG_CONFIG_HOME ?? join(home, ".config"), "broagentai");
   }
 }
 

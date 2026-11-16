@@ -1,5 +1,5 @@
 /**
- * Structured logger for the BrowserAgent bridge.
+ * Structured logger for the BroAgentAI bridge.
  *
  * Two rules are non-negotiable here:
  *
@@ -28,7 +28,7 @@ const LEVEL_RANK: Record<LogLevel, number> = {
 };
 
 /** Environment variable used to pick a minimum level at startup. */
-export const LOG_LEVEL_ENV = "BROWSERAGENT_LOG_LEVEL";
+export const LOG_LEVEL_ENV = "BROAGENTAI_LOG_LEVEL";
 
 /** Maximum characters kept for any single string value. */
 export const MAX_STRING_LENGTH = 400;
@@ -65,7 +65,7 @@ export interface LogEntry {
 }
 
 export interface LoggerOptions {
-  /** Minimum level to emit. Defaults to `info`, or `BROWSERAGENT_LOG_LEVEL`. */
+  /** Minimum level to emit. Defaults to `info`, or `BROAGENTAI_LOG_LEVEL`. */
   level?: LogLevel;
 
   /** Sink for emitted lines. Defaults to writing to `process.stderr`. */

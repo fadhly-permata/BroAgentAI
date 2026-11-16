@@ -45,7 +45,7 @@ Prove the end-to-end plumbing: Chrome side panel ↔ service worker ↔ native h
 - Provider registry with `import.meta.glob` and a fixture plugin.
 - React + Vite + CRXJS panel shell: header, activity rail placeholders, status bar.
 - Native host: frame reader/writer, `system.ping`, `system.info`, `workspace.list/add/remove/setActive/validate`, graceful shutdown.
-- App config store with atomic writes and `BROWSERAGENT_CONFIG_DIR`.
+- App config store with atomic writes and `BROAGENTAI_CONFIG_DIR`.
 - Dev scripts: `host:build`, `host:install:dev`, `host:uninstall:dev`.
 - Panel states: host offline/ready/outdated/error, no workspace, recent list.
 - README setup steps.
@@ -54,7 +54,7 @@ Prove the end-to-end plumbing: Chrome side panel ↔ service worker ↔ native h
 
 - [ ] `npm install` and `npm run typecheck` pass.
 - [ ] `npm run host:build` produces an executable.
-- [ ] `host:install:dev` registers `com.browseragent.host` for the extension ID.
+- [ ] `host:install:dev` registers `com.broagentai.host` for the extension ID.
 - [ ] Loading `extension/dist` unpacked opens the side panel.
 - [ ] Panel shows `Ready` after `system.ping` without a terminal.
 - [ ] Add a folder; it appears in recent and survives restart.
@@ -84,7 +84,7 @@ A dependable local foundation: workspace/config loading, resource discovery, and
 - Binary detection and size caps.
 - Watcher with debounced `fs.changed`.
 - JSONC parser + config loader: global/project/local precedence, diagnostics, size caps.
-- Resource loader: `AGENTS.md`, `BROWSERAGENT.md`, rules, skills, agents, commands; frontmatter; budgets.
+- Resource loader: `AGENTS.md`, `BROAGENTAI.md`, rules, skills, agents, commands; frontmatter; budgets.
 - RPC: `config.get/reload/validate`, `instructions.list`, `skills.list/read`, `agents.list/read`, `commands.list`.
 - Explorer tree: expand/collapse, icons, ignored toggle, loading/empty/error states.
 - Host unit tests: traversal, symlink escape, caps, search limits, config precedence, resource discovery.
@@ -96,7 +96,7 @@ A dependable local foundation: workspace/config loading, resource discovery, and
 - [ ] `../` and symlink escapes return `PATH_ESCAPE`.
 - [ ] Search returns grouped results (backend only; UI in M2) capped at 500.
 - [ ] Creating/deleting files in the OS updates the tree within ~1 s.
-- [ ] `browseragent.jsonc` with comments loads; invalid JSONC shows line/column.
+- [ ] `broagentai.jsonc` with comments loads; invalid JSONC shows line/column.
 - [ ] Global/project/local precedence is deterministic and tested.
 - [ ] `AGENTS.md`, rules, skills, agents, and commands are discovered without executing anything.
 - [ ] Skill body is read on demand, not injected wholesale.

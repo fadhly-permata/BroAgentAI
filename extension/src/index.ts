@@ -1,2 +1,2 @@
-// @browseragent/extension - Browser extension entry point
+// @broagentai/extension - Browser extension entry point
 export {};

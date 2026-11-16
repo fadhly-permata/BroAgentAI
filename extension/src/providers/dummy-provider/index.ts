@@ -1,4 +1,4 @@
-// Dummy provider fixture for BrowserAgent
+// Dummy provider fixture for BroAgentAI
 // This file represents a plugin that can be loaded by the extension.
 
 export const providerInfo = {

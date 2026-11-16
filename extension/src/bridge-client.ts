@@ -49,7 +49,7 @@ class BridgeClient {
 
     this.connectPromise = new Promise((resolve, reject) => {
       try {
-        this.port = chrome.runtime.connectNative("com.browseragent.host");
+        this.port = chrome.runtime.connectNative("com.broagentai.host");
         
         this.port.onMessage.addListener((msg: RpcResponse) => {
           if ('id' in msg && this.pending.has(msg.id)) {

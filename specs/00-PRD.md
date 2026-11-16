@@ -107,15 +107,15 @@ The user changes the approval dropdown (Read-only, Ask, Auto-edit, Full-auto) at
 
 ### J8 - Project configuration
 
-The user adds `browseragent.jsonc` and `AGENTS.md` to a repo. Global defaults merge with project and local overrides. The panel shows the effective config, sources, and warnings; invalid JSONC shows line/column and does not crash the host.
+The user adds `broagentai.jsonc` and `AGENTS.md` to a repo. Global defaults merge with project and local overrides. The panel shows the effective config, sources, and warnings; invalid JSONC shows line/column and does not crash the host.
 
 ### J9 - Skills, agents, and rules
 
-The repo contains `.browseragent/rules`, `.browseragent/skills`, `.browseragent/agents`, and `.browseragent/commands`. The panel lists them without executing anything. The AI sees instruction text and skill metadata, reads a skill body on demand, and the user can start with a selected agent profile.
+The repo contains `.broagentai/rules`, `.broagentai/skills`, `.broagentai/agents`, and `.broagentai/commands`. The panel lists them without executing anything. The AI sees instruction text and skill metadata, reads a skill body on demand, and the user can start with a selected agent profile.
 
 ### J10 - MCP tools
 
-The user configures a local or remote MCP server in `browseragent.jsonc`. For a project-defined server, the panel shows it as untrusted and requires explicit trust. For global or local user-authored servers, the panel treats it as trusted and honors the configured start behavior; a project override of a global server does not inherit global trust. After starting, MCP tools appear in the agent catalog and obey the same approval modes, timeouts, and result caps as built-in tools.
+The user configures a local or remote MCP server in `broagentai.jsonc`. For a project-defined server, the panel shows it as untrusted and requires explicit trust. For global or local user-authored servers, the panel treats it as trusted and honors the configured start behavior; a project override of a global server does not inherit global trust. After starting, MCP tools appear in the agent catalog and obey the same approval modes, timeouts, and result caps as built-in tools.
 
 ### J11 - Add a provider plugin
 
@@ -206,9 +206,9 @@ A contributor adds a new folder under `extension/src/providers/<id>/` with `prov
 
 | ID | Requirement |
 | --- | --- |
-| FR-G1 | Load `browseragent.json`/`.jsonc` from global, project, and local scopes with deterministic precedence. |
+| FR-G1 | Load `broagentai.json`/`.jsonc` from global, project, and local scopes with deterministic precedence. |
 | FR-G2 | Parse JSONC with comments and report diagnostics with file, line, and column without crashing the host. |
-| FR-G3 | Discover `AGENTS.md`, `BROWSERAGENT.md`, rules, skills, agents, and commands without executing anything. |
+| FR-G3 | Discover `AGENTS.md`, `BROAGENTAI.md`, rules, skills, agents, and commands without executing anything. |
 | FR-G4 | Inject instruction/rule text and skill/agent metadata into the agent prompt within a fixed budget. |
 | FR-G5 | Read a skill body on demand through a read-only, path-confined method. |
 | FR-G6 | Let the user adopt a named agent profile for instructions and optional provider/mode restrictions; a profile may narrow but never elevate the current approval mode. |

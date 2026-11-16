@@ -1,5 +1,5 @@
 /**
- * JSONC (JSON with Comments) parser for browseragent.jsonc config files.
+ * JSONC (JSON with Comments) parser for broagentai.jsonc config files.
  *
  * Supports:
  * - Single-line comments (//)

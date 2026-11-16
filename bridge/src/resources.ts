@@ -1,5 +1,5 @@
 /**
- * Resource loader for BrowserAgent workspace resources.
+ * Resource loader for BroAgentAI workspace resources.
  *
  * Discovers:
  * - AGENTS.md (project-level agent instructions)

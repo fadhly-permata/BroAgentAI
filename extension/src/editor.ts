@@ -61,8 +61,8 @@ async function loadFile(path: string) {
   $('fileName').textContent = path.split('/').pop() || path;
   
   try {
-    // Gunakan read_file_lines untuk membaca file
-    const res: any = await bridge.call('read_file_lines', { path, start_line: 0, end_line: -1 });
+    // Gunakan fs.readFileLines untuk membaca file
+    const res: any = await bridge.call('fs.readFileLines', { path, startLine: 0, endLine: -1 });
     const content = res.content || '';
     
     // Dapatkan info file untuk mtime
@@ -126,14 +126,14 @@ async function saveFile() {
   
   try {
     // Kirim content dan mtime untuk deteksi konflik
-    await bridge.call('write_file', { 
+    await bridge.call('fs.writeFile', { 
       path: currentPath, 
       content, 
       expectedMtime: currentMtime 
     });
     
     // Update mtime setelah save berhasil
-    const info: any = await bridge.call('get_file_info', { path: currentPath });
+    const info: any = await bridge.call('fs.stat', { path: currentPath });
     currentMtime = info.mtime || null;
     
     dirty = false;

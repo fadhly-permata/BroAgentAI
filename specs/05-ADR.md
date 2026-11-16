@@ -12,7 +12,7 @@
 
 **Context:** snapgent starts a local WebSocket bridge with `start.bat`. Users must keep a terminal open, a localhost port is exposed, and pairing/origin checks must be implemented manually. Chrome extensions can instead launch a native host through Native Messaging.
 
-**Decision:** Use a single native companion registered as `com.browseragent.host` over stdio. The extension calls `chrome.runtime.connectNative`; the host lifecycle is tied to the port.
+**Decision:** Use a single native companion registered as `com.broagentai.host` over stdio. The extension calls `chrome.runtime.connectNative`; the host lifecycle is tied to the port.
 
 **Consequences:**
 
@@ -87,7 +87,7 @@
 
 **Context:** The host must persist a workspace list and app settings without a database. The extension cannot read arbitrary host files. Project repositories also need their own portable configuration and Markdown resources.
 
-**Decision:** Store host app config as `config.json` under the OS app-data directory (`%APPDATA%`, `~/Library/Application Support`, `$XDG_CONFIG_HOME`). Allow `BROWSERAGENT_CONFIG_DIR` for development. Write atomically. Project configuration is separate: `browseragent.json(c)` and `browseragent.local.json(c)` merged over global defaults, plus Markdown resources (ADR-017).
+**Decision:** Store host app config as `config.json` under the OS app-data directory (`%APPDATA%`, `~/Library/Application Support`, `$XDG_CONFIG_HOME`). Allow `BROAGENTAI_CONFIG_DIR` for development. Write atomically. Project configuration is separate: `broagentai.json(c)` and `broagentai.local.json(c)` merged over global defaults, plus Markdown resources (ADR-017).
 
 **Consequences:**
 
@@ -254,7 +254,7 @@
 
 **Context:** Users want portable, human-editable configuration for instructions, rules, skills, agents, and commands. OpenCode has established a familiar convention (JSON/JSONC config plus Markdown resources) that other tools are beginning to share.
 
-**Decision:** Support `browseragent.json`/`.jsonc` at global, project, and local scope, plus `AGENTS.md`, `.browseragent/rules`, `.browseragent/skills/*/SKILL.md`, `.browseragent/agents`, and `.browseragent/commands`. Markdown resources use optional YAML frontmatter. Merge precedence is built-in → global → project → local.
+**Decision:** Support `broagentai.json`/`.jsonc` at global, project, and local scope, plus `AGENTS.md`, `.broagentai/rules`, `.broagentai/skills/*/SKILL.md`, `.broagentai/agents`, and `.broagentai/commands`. Markdown resources use optional YAML frontmatter. Merge precedence is built-in → global → project → local.
 
 **Consequences:**
 
@@ -289,7 +289,7 @@
 
 **Status:** Accepted
 
-**Context:** A repository can contain a `browseragent.jsonc` that starts arbitrary MCP server commands. Opening a folder must not silently execute a repository's commands.
+**Context:** A repository can contain a `broagentai.jsonc` that starts arbitrary MCP server commands. Opening a folder must not silently execute a repository's commands.
 
 **Decision:** Project-defined MCP servers start only after the user trusts the workspace and explicitly starts them; they never auto-start. Trust records the realpath and a hash of the effective MCP configuration. Any change to commands, URLs, working directories, environment/header keys, or risk overrides invalidates trust and requires re-approval. Global MCP servers are user-authored, trusted by default, and may opt into auto-start. A project-layer override of a global server does not inherit that trust.
 

@@ -1,5 +1,5 @@
 {
-  "name": "browseragent",
+  "name": "broagentai",
   "version": "0.1.0",
   "private": true,
   "description": "Browser extension that sends plain-text JSON commands to user-selected MCP servers through a local bridge",
@@ -9,11 +9,11 @@
     "bridge"
   ],
   "scripts": {
-    "dev": "npm run dev -w @browseragent/extension",
-    "dev:extension": "npm run dev -w @browseragent/extension",
+    "dev": "npm run dev -w @broagentai/extension",
+    "dev:extension": "npm run dev -w @broagentai/extension",
     "build": "npm run build:extension && npm run build:host",
-    "build:extension": "npm run build -w @browseragent/extension",
-    "build:host": "npm run build -w @browseragent/bridge",
+    "build:extension": "npm run build -w @broagentai/extension",
+    "build:host": "npm run build -w @broagentai/bridge",
     "host:build": "npm run build:host",
     "host:install:dev": "node scripts/native-host.mjs install",
     "host:uninstall:dev": "node scripts/native-host.mjs uninstall",

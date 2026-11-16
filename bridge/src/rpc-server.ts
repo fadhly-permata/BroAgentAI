@@ -1,5 +1,5 @@
 /**
- * RPC router for the BrowserAgent bridge.
+ * RPC router for the BroAgentAI bridge.
  *
  * Maps wire methods to handlers and converts thrown errors into structured
  * {@link RpcResponse} envelopes. The router is transport-agnostic: it receives
@@ -11,9 +11,10 @@ import { ErrorCode } from "./rpc.ts";
 import type { RpcRequest, RpcResponse } from "./rpc.ts";
 import { WorkspaceError, WorkspaceStore, validateWorkspacePath } from "./workspace.ts";
 import type { WorkspaceInfo } from "./rpc.ts";
-import { listDir, listTree, statFile, readFile } from "./fs.ts";
+import { listDir, listTree, statFile, readFile, readFileLines, writeFile, searchFiles } from "./fs.ts";
 import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
+import { createLogger } from "./logger.ts";
 
 /** Protocol version negotiated between extension and host. */
 export const PROTOCOL_VERSION = 1;
@@ -22,7 +23,10 @@ export const PROTOCOL_VERSION = 1;
 export const HOST_VERSION = "0.1.0";
 
 /** Host name used for the Native Messaging registration. */
-export const HOST_NAME = "com.browseragent.host";
+export const HOST_NAME = "com.broagentai.host";
+
+/** Logger for RPC request lifecycle events. */
+const log = createLogger({ scope: "rpc" });
 
 /** A single registered RPC handler. */
 export type RpcHandler = (params: unknown) => unknown | Promise<unknown>;
@@ -98,12 +102,33 @@ export class RpcServer {
       };
     }
 
+    const startedAt = performance.now();
+    log.info("rpc request", { fields: { id: request.id, method: request.method } });
+
+    let response: RpcResponse;
     try {
       const result = await handler(request.params);
-      return { id: request.id, result };
+      response = { id: request.id, result };
     } catch (error) {
-      return { id: request.id, error: toRpcError(error) };
+      response = { id: request.id, error: toRpcError(error) };
     }
+
+    const durationMs = Math.round(performance.now() - startedAt);
+    if (response.error) {
+      log.warn("rpc method failed", {
+        fields: {
+          id: request.id,
+          method: request.method,
+          code: response.error.code,
+          durationMs,
+        },
+      });
+    } else {
+      log.info("rpc method ok", {
+        fields: { id: request.id, method: request.method, durationMs },
+      });
+    }
+    return response;
   }
 
   /** Register the built-in handlers for system and workspace methods. */
@@ -183,6 +208,21 @@ export class RpcServer {
     this.register("fs.readFile", (params) => {
       const { path } = readParams(params);
       return readFile(this.#store, path);
+    });
+
+    this.register("fs.readFileLines", (params) => {
+      const { path, startLine, endLine } = readParams(params);
+      return readFileLines(this.#store, path, startLine, endLine);
+    });
+
+    this.register("fs.writeFile", (params) => {
+      const { path, content, expectedMtime } = readParams(params);
+      return writeFile(this.#store, path, content, expectedMtime);
+    });
+
+    this.register("fs.searchFiles", (params) => {
+      const { path, query, caseSensitive, regex } = readParams(params);
+      return searchFiles(this.#store, path || ".", query, caseSensitive, regex);
     });
 
     this.register("config.get", () => {

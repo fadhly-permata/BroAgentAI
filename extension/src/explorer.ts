@@ -1,5 +1,5 @@
 /**
- * File Explorer Tree View for the BrowserAgent Side Panel.
+ * File Explorer Tree View for the BroAgentAI Side Panel.
  */
 import { bridge } from "./bridge-client.js";
 

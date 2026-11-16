@@ -111,16 +111,16 @@ MVP adapters: **DeepSeek**, **Gemini**, **Qwen**. The registry is provider-agnos
 
 ### 2.4 Configuration and resource subsystem
 
-- **Sources:** global `<configDir>/browseragent.json(c)`, project `<workspace>/browseragent.json(c)`, local `<workspace>/browseragent.local.json(c)`.
+- **Sources:** global `<configDir>/broagentai.json(c)`, project `<workspace>/broagentai.json(c)`, local `<workspace>/broagentai.local.json(c)`.
 - **Parser:** JSONC with line/column diagnostics; invalid config is reported without crashing the host.
 - **Precedence:** built-in defaults → global → project → local.
 - **Merge:** deep merge for `agent`, `providers`; map merge for `mcp`; path-deduplicated concatenation for resource lists. No config key can grant MCP trust or bypass approvals.
 - **Resources:**
-  - `AGENTS.md` and `BROWSERAGENT.md`;
-  - `.browseragent/rules/**/*.md`;
-  - `.browseragent/skills/*/SKILL.md`;
-  - `.browseragent/agents/**/*.md`;
-  - `.browseragent/commands/**/*.md`.
+  - `AGENTS.md` and `BROAGENTAI.md`;
+  - `.broagentai/rules/**/*.md`;
+  - `.broagentai/skills/*/SKILL.md`;
+  - `.broagentai/agents/**/*.md`;
+  - `.broagentai/commands/**/*.md`.
 - **Frontmatter:** optional YAML; invalid frontmatter is a warning.
 - **Budgets:** 64 KB instructions, 200 resource files, depth 4; paths confined to the workspace or global config root.
 - **Signals:** config/resource changes emit `config.changed`; the host does not hot-reload the agent session automatically.
@@ -151,9 +151,9 @@ MVP adapters: **DeepSeek**, **Gemini**, **Qwen**. The registry is provider-agnos
 
 ```json
 {
-  "name": "com.browseragent.host",
+  "name": "com.broagentai.host",
   "description": "BroAgentAI native companion",
-  "path": "C:\\Users\\<user>\\AppData\\Local\\BroAgentAI\\native-host\\browseragent-host.exe",
+  "path": "C:\\Users\\<user>\\AppData\\Local\\BroAgentAI\\native-host\\broagentai-host.exe",
   "type": "stdio",
   "allowed_origins": ["chrome-extension://<extension-id>/"]
 }
@@ -163,9 +163,9 @@ Registration locations:
 
 | OS | Registration |
 | --- | --- |
-| Windows | `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.browseragent.host` → manifest path |
-| macOS | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.browseragent.host.json` |
-| Linux | `~/.config/google-chrome/NativeMessagingHosts/com.browseragent.host.json` |
+| Windows | `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.broagentai.host` → manifest path |
+| macOS | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.broagentai.host.json` |
+| Linux | `~/.config/google-chrome/NativeMessagingHosts/com.broagentai.host.json` |
 
 The host receives the caller origin as the first process argument. It must verify that the origin matches the allowed extension ID and exit otherwise.
 
@@ -280,7 +280,7 @@ A generic chunking layer can be added later if real usage requires it. It would 
 
 ### 4.1 Dev installation
 
-1. `npm run host:build` builds `bridge/dist/browseragent-host.exe` (or platform equivalent).
+1. `npm run host:build` builds `bridge/dist/broagentai-host.exe` (or platform equivalent).
 2. `npm run host:install:dev` computes the extension ID from `extension/manifest.json` `key`, writes the host manifest, and registers it with Chrome.
 3. Load `extension/dist` as an unpacked extension.
 4. Open the side panel; the service worker calls `connectNative`.
@@ -288,7 +288,7 @@ A generic chunking layer can be added later if real usage requires it. It would 
 ### 4.2 Connect
 
 ```ts
-const port = chrome.runtime.connectNative("com.browseragent.host");
+const port = chrome.runtime.connectNative("com.broagentai.host");
 port.onMessage.addListener(handleNativeMessage);
 port.onDisconnect.addListener(handleDisconnect);
 port.postMessage({ v: 1, id: nextId++, method: "system.ping" });
@@ -315,7 +315,7 @@ The host sends a `host.ready` event after initialization. The panel shows `ready
 
 ### 5.1 App config
 
-This file stores host state (workspaces, ignore list), not project agent behavior. Project behavior lives in `browseragent.json(c)` (section 5.2).
+This file stores host state (workspaces, ignore list), not project agent behavior. Project behavior lives in `broagentai.json(c)` (section 5.2).
 
 Location:
 
@@ -323,9 +323,9 @@ Location:
 | --- | --- |
 | Windows | `%APPDATA%\BroAgentAI\config.json` |
 | macOS | `~/Library/Application Support/BroAgentAI/config.json` |
-| Linux | `${XDG_CONFIG_HOME:-~/.config}/browseragent/config.json` |
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/broagentai/config.json` |
 
-Dev override: `BROWSERAGENT_CONFIG_DIR`.
+Dev override: `BROAGENTAI_CONFIG_DIR`.
 
 ```json
 {
@@ -348,10 +348,10 @@ Dev override: `BROWSERAGENT_CONFIG_DIR`.
 
 ### 5.2 Project configuration and resources
 
-- Discover `browseragent.json`, `browseragent.jsonc`, `browseragent.local.json`, and `browseragent.local.jsonc` at the workspace root and global config directory.
+- Discover `broagentai.json`, `broagentai.jsonc`, `broagentai.local.json`, and `broagentai.local.jsonc` at the workspace root and global config directory.
 - Parse with a JSONC parser; collect diagnostics with line/column.
 - Merge built-in defaults → global → project → local.
-- Discover global resources under `<configDir>/{AGENTS.md,rules,skills,agents,commands}` and project resources via `AGENTS.md`, `BROWSERAGENT.md`, `.browseragent/rules`, `.browseragent/skills`, `.browseragent/agents`, and `.browseragent/commands`.
+- Discover global resources under `<configDir>/{AGENTS.md,rules,skills,agents,commands}` and project resources via `AGENTS.md`, `BROAGENTAI.md`, `.broagentai/rules`, `.broagentai/skills`, `.broagentai/agents`, and `.broagentai/commands`.
 - Do not execute anything during discovery.
 - Cache the effective config and resource index per workspace; invalidate on `fs.changed` or explicit `config.reload`.
 - Return the effective config plus source paths, hashes, and warnings to the panel.
@@ -483,7 +483,7 @@ interface GitStatus {
 
 1. User selects provider, workspace, approval mode.
 2. Service worker finds an existing provider tab or creates one.
-3. Content script health check (`browseragent.ping` → adapter health).
+3. Content script health check (`broagentai.ping` → adapter health).
 4. Service worker sends the operating prompt as a user turn through the content script.
 5. The prompt is visually collapsed into a "Workspace context" chip when the provider DOM allows it.
 6. The AI is asked to reply with a one-line readiness confirmation.
@@ -494,7 +494,7 @@ The prompt includes:
 
 - Role and constraints: local coding agent, no native AI tools for local work.
 - Workspace name, path, OS, Git branch.
-- Effective instructions and rules from config (`AGENTS.md`, `BROWSERAGENT.md`, `.browseragent/rules`).
+- Effective instructions and rules from config (`AGENTS.md`, `BROAGENTAI.md`, `.broagentai/rules`).
 - Available skills and agent profiles (metadata only).
 - Tool catalog (name, description, parameters) from the host, including MCP tools for ready servers.
 - Command format: one fenced JSON object per reply.
@@ -612,7 +612,7 @@ Later plugins: ChatGPT, Claude, Grok, Kimi, GLM, Meta, Mistral, Ptero, Arena.
 2. Add `plugin.ts` and `adapter.ts` implementing the provider contract.
 3. Add fixture tests for composer, reply extraction, and generation state.
 4. Run the manifest generator; host permissions and content-script matches are derived from `provider.json`.
-5. Enable the provider in `browseragent.json` and verify health.
+5. Enable the provider in `broagentai.json` and verify health.
 
 No edits to the panel, service worker, agent loop, or parser are required.
 
@@ -677,7 +677,7 @@ No `downloads`, `history`, `cookies`, `scripting`, or broad `<all_urls>` in the 
 | Store | Contents | Lifetime |
 | --- | --- | --- |
 | Host app config JSON | Workspaces, active workspace, host settings | Persistent |
-| Project config | `browseragent.json(c)` + local override | User-managed |
+| Project config | `broagentai.json(c)` + local override | User-managed |
 | Resource files | Instructions, rules, skills, agents, commands | User-managed |
 | Trust store | Workspace realpath + MCP config hash + timestamp | Persistent |
 | Host log file | Diagnostics | Rotated/persistent |
@@ -691,7 +691,7 @@ No `downloads`, `history`, `cookies`, `scripting`, or broad `<all_urls>` in the 
 ### 12.1 Monorepo
 
 ```text
-browseragent/
+broagentai/
 ├─ package.json            # npm workspaces
 ├─ shared/                 # protocol, config, MCP, provider, risk types
 ├─ extension/              # Vite + React + CRXJS MV3 app
@@ -718,7 +718,7 @@ browseragent/
 - Preferred: `bun build --compile`.
 - Fallback: Node SEA or `@yao-pkg/pkg`.
 - MCP SDK and config parser are bundled into the executable; no runtime npm install.
-- Output: `bridge/dist/browseragent-host[.exe]`.
+- Output: `bridge/dist/broagentai-host[.exe]`.
 - Dev registration script writes the host manifest, allowed origins, and registry key.
 
 ### 12.4 Dev scripts

@@ -1,10 +1,10 @@
 /**
- * Configuration loader and merger for BrowserAgent.
+ * Configuration loader and merger for BroAgentAI.
  *
  * Config precedence: Global < Project < Local
- * - Global: ~/.browseragent/config.json
- * - Project: <workspace>/browseragent.jsonc
- * - Local: <workspace>/.browseragent/config.json
+ * - Global: ~/.broagentai/config.json
+ * - Project: <workspace>/broagentai.jsonc
+ * - Local: <workspace>/.broagentai/config.json
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -26,7 +26,7 @@ export interface ToolApproval {
   approval: ApprovalMode;
 }
 
-/** Project-level configuration from browseragent.jsonc. */
+/** Project-level configuration from broagentai.jsonc. */
 export interface ProjectConfig {
   approval?: ApprovalMode;
   toolOverrides?: ToolApproval[];
@@ -35,7 +35,7 @@ export interface ProjectConfig {
   [key: string]: unknown;
 }
 
-/** Global configuration from ~/.browseragent/config.json. */
+/** Global configuration from ~/.broagentai/config.json. */
 export interface GlobalConfig {
   defaultApproval?: ApprovalMode;
   defaultIgnore?: string[];
@@ -43,7 +43,7 @@ export interface GlobalConfig {
   [key: string]: unknown;
 }
 
-/** Local configuration from <workspace>/.browseragent/config.json. */
+/** Local configuration from <workspace>/.broagentai/config.json. */
 export interface LocalConfig {
   approval?: ApprovalMode;
   toolOverrides?: ToolApproval[];
@@ -64,10 +64,10 @@ export interface MergedConfig {
 }
 
 /**
- * Load global config from ~/.browseragent/config.json.
+ * Load global config from ~/.broagentai/config.json.
  */
 export function loadGlobalConfig(): { config: GlobalConfig | null; path: string } {
-  const configDir = join(homedir(), ".browseragent");
+  const configDir = join(homedir(), ".broagentai");
   const configPath = join(configDir, "config.json");
 
   if (!existsSync(configPath)) {
@@ -84,12 +84,12 @@ export function loadGlobalConfig(): { config: GlobalConfig | null; path: string 
 }
 
 /**
- * Load project config from <workspace>/browseragent.jsonc.
+ * Load project config from <workspace>/broagentai.jsonc.
  */
 export function loadProjectConfig(
   workspacePath: string
 ): { config: ProjectConfig | null; path: string } {
-  const configPath = join(workspacePath, "browseragent.jsonc");
+  const configPath = join(workspacePath, "broagentai.jsonc");
 
   if (!existsSync(configPath)) {
     return { config: null, path: configPath };
@@ -104,12 +104,12 @@ export function loadProjectConfig(
 }
 
 /**
- * Load local config from <workspace>/.browseragent/config.json.
+ * Load local config from <workspace>/.broagentai/config.json.
  */
 export function loadLocalConfig(
   workspacePath: string
 ): { config: LocalConfig | null; path: string } {
-  const configPath = join(workspacePath, ".browseragent", "config.json");
+  const configPath = join(workspacePath, ".broagentai", "config.json");
 
   if (!existsSync(configPath)) {
     return { config: null, path: configPath };
@@ -153,7 +153,7 @@ export function mergeConfig(
     if (global.defaultMaxFileBytes) {
       merged.maxFileBytes = global.defaultMaxFileBytes;
     }
-    merged.sources.global = "~/.browseragent/config.json";
+    merged.sources.global = "~/.broagentai/config.json";
   }
 
   // Apply project config (overrides global)
@@ -170,7 +170,7 @@ export function mergeConfig(
     if (project.maxFileBytes) {
       merged.maxFileBytes = project.maxFileBytes;
     }
-    merged.sources.project = "<workspace>/browseragent.jsonc";
+    merged.sources.project = "<workspace>/broagentai.jsonc";
   }
 
   // Apply local config (overrides project)
@@ -182,7 +182,7 @@ export function mergeConfig(
       // Local overrides take precedence, so we prepend them
       merged.toolOverrides = [...local.toolOverrides, ...merged.toolOverrides];
     }
-    merged.sources.local = "<workspace>/.browseragent/config.json";
+    merged.sources.local = "<workspace>/.broagentai/config.json";
   }
 
   return merged;
@@ -206,13 +206,13 @@ export function loadMergedConfig(store: WorkspaceStore): MergedConfig {
 
   // Add actual paths to sources
   if (global) {
-    merged.sources.global = join(homedir(), ".browseragent", "config.json");
+    merged.sources.global = join(homedir(), ".broagentai", "config.json");
   }
   if (project) {
-    merged.sources.project = join(active.path, "browseragent.jsonc");
+    merged.sources.project = join(active.path, "broagentai.jsonc");
   }
   if (local) {
-    merged.sources.local = join(active.path, ".browseragent", "config.json");
+    merged.sources.local = join(active.path, ".broagentai", "config.json");
   }
 
   return merged;

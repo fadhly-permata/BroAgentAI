@@ -1,2 +1,2 @@
-// @browseragent/shared - Protocol types and shared utilities
+// @broagentai/shared - Protocol types and shared utilities
 export * from "./protocol.js";

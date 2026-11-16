@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Manifest generator for BrowserAgent extension.
+ * Manifest generator for BroAgentAI extension.
  * 
  * Scans extension/src/providers/ directory for provider plugins and injects
  * their hostPermissions into extension/manifest.json.
