@@ -28,6 +28,7 @@ export function startRealBridge({ configDir }) {
   });
 
   const pending = new Map();
+  const eventListeners = [];
   let nextId = 0;
   let buffer = Buffer.alloc(0);
   const state = { stderr: '', exited: false };
@@ -40,6 +41,10 @@ export function startRealBridge({ configDir }) {
       if (buffer.length < 4 + length) break;
       const message = JSON.parse(buffer.subarray(4, 4 + length).toString('utf8'));
       buffer = buffer.subarray(4 + length);
+      if (typeof message.event === 'string') {
+        eventListeners.forEach((fn) => fn(message));
+        continue;
+      }
       const entry = pending.get(message.id);
       if (entry) {
         pending.delete(message.id);
@@ -78,7 +83,10 @@ export function startRealBridge({ configDir }) {
     if (!state.exited) { child.stdin.end(); child.kill(); }
   }
 
-  return { rpc, call, stop, state };
+  /** Subscribe to bridge -> extension events (term.output, mcp.status, ...). */
+  function onEvent(fn) { eventListeners.push(fn); }
+
+  return { rpc, call, stop, state, onEvent };
 }
 
 /**
@@ -90,9 +98,21 @@ export async function attachBridge(ctx, bridge) {
   await ctx.exposeBinding('__broagentaiBridgeRpc', async (_source, json) => {
     return JSON.stringify(await bridge.rpc(JSON.parse(json)));
   });
+  // Events are pushed by the bridge, so they are fanned out to every open page.
+  bridge.onEvent((message) => {
+    const json = JSON.stringify(message);
+    for (const page of ctx.pages()) {
+      page.evaluate((m) => window.__broagentaiBridgeEvent?.(m), json).catch(() => {});
+    }
+  });
   await ctx.addInitScript(() => {
     if (!globalThis.chrome?.runtime) return;
     const offline = location.hash === '#offline';
+    const openPorts = new Set();
+    window.__broagentaiBridgeEvent = (json) => {
+      const message = JSON.parse(json);
+      openPorts.forEach((deliver) => deliver(message));
+    };
     chrome.runtime.connectNative = () => {
       const messageListeners = [];
       const disconnectListeners = [];
@@ -111,6 +131,7 @@ export async function attachBridge(ctx, bridge) {
           });
         },
       };
+      if (!offline) openPorts.add((message) => { if (open) messageListeners.forEach((fn) => fn(message)); });
       if (offline) setTimeout(() => { open = false; disconnectListeners.forEach((fn) => fn(port)); }, 0);
       return port;
     };

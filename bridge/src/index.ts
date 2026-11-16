@@ -24,17 +24,31 @@ async function main(): Promise<void> {
   const origin = readCallerOrigin(process.argv.slice(2));
   log.info("bridge ready", { fields: { origin } });
 
-  const server = new RpcServer();
+  const send = (payload: unknown): void => {
+    writeFrame(process.stdout, payload).catch((error) => {
+      log.error("failed to write frame", { fields: { error } });
+    });
+  };
+
+  const server = new RpcServer({
+    emit: (event, data) => send({ event, data }),
+  });
 
   try {
     for await (const message of readFrames(process.stdin)) {
-      const response = await server.handle(message);
-      await writeFrame(process.stdout, response);
+      // Requests run concurrently: a slow call (pull, MCP tool, folder dialog)
+      // must not block terminal input or other panels. Responses carry the
+      // request id, so arrival order does not matter.
+      void server.handle(message).then(send);
     }
     log.info("stdin closed, shutting down");
   } catch (error) {
     log.error("bridge loop failed", { fields: { error } });
     process.exitCode = 1;
+  } finally {
+    await server.shutdown();
+    // Child processes (PTYs, MCP servers) can keep the event loop alive.
+    setTimeout(() => process.exit(process.exitCode ?? 0), 500).unref();
   }
 }
 

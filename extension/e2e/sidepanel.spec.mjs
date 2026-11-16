@@ -88,7 +88,7 @@ try {
     await until(async () => /Pilih workspace/.test(await text(page, '#tree'))), await text(page, '#tree'));
 
   // ---- 2. rail tabs
-  for (const tab of ['explorer', 'search', 'scm', 'agent', 'settings']) {
+  for (const tab of ['explorer', 'search', 'scm', 'terminal', 'agent', 'settings']) {
     await page.locator(`.rail-btn[data-tab="${tab}"]`).click();
     check(`tab ${tab} activates`, (await page.locator(`#tab-${tab}.active`).count()) === 1);
     await page.screenshot({ path: path.join(shots, `tab-${tab}.png`), fullPage: true });
@@ -371,6 +371,28 @@ try {
       await until(async () => !(await visible(page, '#conflictBanner')))
         && fs.readFileSync(readme, 'utf8').replace(/\r\n/g, '\n') === 'local version\n'
         && !fs.existsSync(path.join(wsA, '.git', 'MERGE_HEAD')));
+  }
+
+  // ---- TERM. terminal: real PTY in the workspace
+  {
+    const termText = () => page.evaluate(() => window.__broagentaiTermText?.() ?? '');
+    await page.locator('.rail-btn[data-tab="terminal"]').click();
+    check('terminal: shell starts in the workspace',
+      await until(async () => /alpha-project/.test(await text(page, '#termStatus')), 15000), await text(page, '#termStatus'));
+    await page.locator('#termView').click();
+    // The shell computes the marker, so it cannot come from the echo of the keystrokes.
+    await page.keyboard.type(process.platform === 'win32' ? 'Write-Output "$(6*7)-from-pty"' : 'echo "$((6*7))-from-pty"');
+    await page.keyboard.press('Enter');
+    check('terminal: typed command runs and output is rendered',
+      await until(async () => /42-from-pty/.test(await termText()), 15000), (await termText()).slice(-400));
+    await page.keyboard.type(process.platform === 'win32' ? 'Set-Content -Path term-made.txt -Value pty' : 'echo pty > term-made.txt');
+    await page.keyboard.press('Enter');
+    check('terminal: commands act on the real workspace folder',
+      await until(() => fs.existsSync(path.join(wsA, 'term-made.txt')), 15000));
+    await page.screenshot({ path: path.join(shots, 'tab-terminal.png'), fullPage: true });
+    await page.locator('#termKill').click();
+    check('terminal: Kill ends the session',
+      await until(async () => /tertutup/.test(await text(page, '#termStatus')), 15000), await text(page, '#termStatus'));
   }
 
   // ---- 11. agent approval flow

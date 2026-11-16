@@ -103,6 +103,17 @@ try {
   check('fs.searchFiles works through the native host',
     await until(async () => /Ditemukan 1 match di 1 file/.test(await text('#searchInfo'))), await text('#searchInfo'));
 
+  await page.locator('.rail-btn[data-tab="terminal"]').click();
+  await until(async () => /native-project/.test(await text('#termStatus')), 15000);
+  await page.locator('#termView').click();
+  await page.keyboard.type(process.platform === 'win32' ? 'Write-Output "$(6*7)-native-pty"' : 'echo "$((6*7))-native-pty"');
+  await page.keyboard.press('Enter');
+  check('terminal events stream through the native host',
+    await until(async () => /42-native-pty/.test(await page.evaluate(() => window.__broagentaiTermText?.() ?? '')), 15000),
+    await text('#termStatus'));
+  await page.locator('#termKill').click();
+  await until(async () => /tertutup/.test(await text('#termStatus')), 10000);
+
   check('host persisted its config in the isolated config dir',
     fs.existsSync(path.join(tmp, 'config', 'config.json')), fs.readdirSync(tmp).join(','));
   await page.screenshot({ path: path.join(shots, 'native-host.png'), fullPage: true });

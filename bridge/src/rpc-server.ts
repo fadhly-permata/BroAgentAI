@@ -16,6 +16,8 @@ import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
+import { TerminalManager } from "./terminal.ts";
+import type { EmitEvent } from "./terminal.ts";
 import {
   gitAbort, gitBranches, gitCheckout, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitPull, gitPush,
   gitStage, gitStatus, gitTestRemote, gitUnstage,
@@ -42,6 +44,8 @@ export interface RpcServerOptions {
   store?: WorkspaceStore;
   /** Host version reported by `system.info`. */
   hostVersion?: string;
+  /** Sink for bridge -> extension events (`term.output`, `mcp.status`, ...). */
+  emit?: EmitEvent;
 }
 
 /**
@@ -55,10 +59,20 @@ export class RpcServer {
   readonly #hostVersion: string;
   readonly #handlers = new Map<string, RpcHandler>();
 
+  readonly #emit: EmitEvent;
+  readonly #terminals: TerminalManager;
+
   constructor(options: RpcServerOptions = {}) {
     this.#store = options.store ?? new WorkspaceStore();
     this.#hostVersion = options.hostVersion ?? HOST_VERSION;
+    this.#emit = options.emit ?? (() => {});
+    this.#terminals = new TerminalManager(this.#store, this.#emit);
     this.#registerCoreHandlers();
+  }
+
+  /** Release everything that outlives a request (terminals, child servers). */
+  async shutdown(): Promise<void> {
+    this.#terminals.closeAll();
   }
 
   /** The workspace registry backing this server. */
@@ -254,6 +268,22 @@ export class RpcServer {
     this.register("git.push", () => gitPush(this.#store));
     this.register("git.abort", () => gitAbort(this.#store));
     this.register("git.testRemote", (params) => gitTestRemote(this.#store, readParams(params).remote));
+
+    // Terminal: a real PTY in the active workspace. Output arrives as events.
+    this.register("term.create", (params) => {
+      const { cols, rows } = readParams(params);
+      return this.#terminals.create(cols, rows);
+    });
+    this.register("term.input", (params) => {
+      const { sessionId, data } = readParams(params);
+      return this.#terminals.input(sessionId, data);
+    });
+    this.register("term.resize", (params) => {
+      const { sessionId, cols, rows } = readParams(params);
+      return this.#terminals.resize(sessionId, cols, rows);
+    });
+    this.register("term.close", (params) => this.#terminals.close(readParams(params).sessionId));
+    this.register("term.list", () => ({ sessions: this.#terminals.list() }));
 
     this.register("config.get", () => {
       return loadMergedConfig(this.#store);

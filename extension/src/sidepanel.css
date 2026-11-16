@@ -122,6 +122,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .scm-actions { display: flex; gap: 4px; flex: none; }
 pre.diff { max-height: 50vh; overflow: auto; font-size: 11px; line-height: 1.4; margin: 0; }
 .diff-add { color: #4ec9b0; } .diff-del { color: #f14c4c; } .diff-hunk { color: #569cd6; }
+#tab-terminal.active { flex: 1; min-height: 0; }
+.term-view { flex: 1; min-height: 240px; background: #1e1e1e; border: 1px solid var(--border); border-radius: 4px; padding: 4px; overflow: hidden; }
 .demo-note { background: rgba(204, 167, 0, 0.12); border: 1px solid rgba(204, 167, 0, 0.35); border-radius: 4px; padding: 6px 10px; margin: 0 0 8px; font-size: 11px; color: var(--text-main); }
 .notice { background: rgba(0, 122, 204, 0.1); border: 1px solid rgba(0, 122, 204, 0.2); border-radius: 4px; padding: 10px; display: flex; gap: 10px; align-items: flex-start; }
 .notice svg { width: 18px; height: 18px; fill: var(--accent); flex-shrink: 0; margin-top: 2px; }
