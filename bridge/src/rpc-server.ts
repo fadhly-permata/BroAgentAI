@@ -16,6 +16,7 @@ import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
+import { McpManager } from "./mcp.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import {
@@ -61,18 +62,26 @@ export class RpcServer {
 
   readonly #emit: EmitEvent;
   readonly #terminals: TerminalManager;
+  readonly #mcp: McpManager;
 
   constructor(options: RpcServerOptions = {}) {
     this.#store = options.store ?? new WorkspaceStore();
     this.#hostVersion = options.hostVersion ?? HOST_VERSION;
     this.#emit = options.emit ?? (() => {});
     this.#terminals = new TerminalManager(this.#store, this.#emit);
+    this.#mcp = new McpManager(this.#store, this.#emit);
     this.#registerCoreHandlers();
+  }
+
+  /** The MCP manager (exposed for the tool catalog). */
+  get mcp(): McpManager {
+    return this.#mcp;
   }
 
   /** Release everything that outlives a request (terminals, child servers). */
   async shutdown(): Promise<void> {
     this.#terminals.closeAll();
+    await this.#mcp.stopAll();
   }
 
   /** The workspace registry backing this server. */
@@ -284,6 +293,19 @@ export class RpcServer {
     });
     this.register("term.close", (params) => this.#terminals.close(readParams(params).sessionId));
     this.register("term.list", () => ({ sessions: this.#terminals.list() }));
+
+    // MCP: the bridge is the MCP host. See mcp.ts for trust and safety rules.
+    this.register("mcp.servers", () => this.#mcp.servers());
+    this.register("mcp.tools", () => this.#mcp.tools());
+    this.register("mcp.start", (params) => this.#mcp.start(readParams(params).server));
+    this.register("mcp.stop", (params) => this.#mcp.stop(readParams(params).server));
+    this.register("mcp.restart", (params) => this.#mcp.restart(readParams(params).server));
+    this.register("mcp.callTool", (params) => {
+      const p = readParams(params);
+      return this.#mcp.callTool(p.server, p.tool, p.arguments);
+    });
+    this.register("workspace.trust", () => this.#mcp.trust());
+    this.register("workspace.untrust", () => this.#mcp.untrust());
 
     this.register("config.get", () => {
       return loadMergedConfig(this.#store);

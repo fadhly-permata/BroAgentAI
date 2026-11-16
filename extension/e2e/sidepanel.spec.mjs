@@ -395,6 +395,44 @@ try {
       await until(async () => /tertutup/.test(await text(page, '#termStatus')), 15000), await text(page, '#termStatus'));
   }
 
+  // ---- MCP. project server: untrusted -> review -> trust -> start -> tools -> stop -> config change revokes
+  {
+    const fixtureServer = path.resolve(root, '..', 'bridge', 'src', 'fixtures', 'mcp-fixture-server.mjs');
+    const writeMcp = (extra = {}) => fs.writeFileSync(path.join(wsA, 'broagentai.json'),
+      JSON.stringify({ version: 1, mcp: { fx: { type: 'local', command: [process.execPath, fixtureServer], ...extra } } }, null, 2));
+    writeMcp();
+    const card = page.locator('[data-mcp-server="fx"]');
+    const status = () => card.locator('.mcp-status').innerText();
+    await page.locator('.rail-btn[data-tab="settings"]').click();
+    await page.locator('.set-tab[data-set="mcp"]').click();
+    check('mcp: project server is listed as untrusted', await until(async () => (await status()) === 'untrusted'), await text(page, '#mcpList'));
+    check('mcp: untrusted server cannot be started', await card.locator('[data-mcp-act="start"]').isDisabled());
+    await page.locator('[data-mcp-act="review"]').click();
+    check('mcp: review shows the exact command before trusting',
+      await until(async () => (await text(page, '#modalBody')).includes('mcp-fixture-server.mjs')), await text(page, '#modalBody'));
+    await page.locator('#modalOk').click();
+    check('mcp: trust does not auto-start the server', await until(async () => (await status()) === 'stopped'), await text(page, '#mcpList'));
+    await card.locator('[data-mcp-act="start"]').click();
+    check('mcp: server starts and reports its tools',
+      await until(async () => (await status()) === 'ready' && /7 tools/.test(await card.innerText()), 20000), await text(page, '#mcpList'));
+    check('mcp: tool catalog shows namespaced tools with risk',
+      await until(async () => /read/.test(await page.locator('[data-mcp-tool="mcp.fx.echo"]').innerText()))
+        && /destructive/.test(await page.locator('[data-mcp-tool="mcp.fx.wipe"]').innerText()));
+    check('mcp: a tool call really reaches the server',
+      (await bridge.call('mcp.callTool', { server: 'fx', tool: 'echo', arguments: { text: 'e2e' } })).text === 'echo: e2e');
+    await page.screenshot({ path: path.join(shots, 'settings-mcp.png'), fullPage: true });
+    await card.locator('[data-mcp-act="stop"]').click();
+    check('mcp: Stop stops the server', await until(async () => (await status()) === 'stopped'));
+    await card.locator('[data-mcp-act="start"]').click();
+    await until(async () => (await status()) === 'ready', 20000);
+    writeMcp({ environment: { INJECTED: '1' } });
+    await page.locator('#mcpReload').click();
+    check('mcp: changing the project config revokes trust and stops the server',
+      await until(async () => (await status()) === 'untrusted') && (await bridge.call('mcp.tools')).tools.length === 0,
+      await text(page, '#mcpList'));
+    fs.rmSync(path.join(wsA, 'broagentai.json'));
+  }
+
   // ---- 11. agent approval flow
   await page.locator('.rail-btn[data-tab="agent"]').click();
   await page.locator('#simulateBtn').click();

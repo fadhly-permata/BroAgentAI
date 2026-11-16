@@ -2,6 +2,7 @@ import { bridge, BridgeErrorCode } from './bridge-client.js';
 import { renderExplorer, ExplorerOptions } from './explorer.js';
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
+import { initMcp, refreshMcp } from './mcp-panel.js';
 
 type FileNode={name:string;path:string;kind:'dir'|'file';git?:string;children?:FileNode[];content?:string};
 const $=(id:string)=>document.getElementById(id) as HTMLElement;
@@ -136,11 +137,10 @@ async function connectBridge(){
   }
 }
 function renderLog(){const f=($('logFilter') as HTMLSelectElement).value; $('cmdLog').innerHTML=logs.filter(l=>f==='all'||l.status===f).map(l=>'<div class="log-row">'+l.tool+' - '+l.risk+' - '+l.decision+' - '+l.status+' - '+l.dur+'ms</div>').join('')||'<p class="muted">Belum ada tool call.</p>'}
-function renderMcp(){ if(!document.getElementById('mcpList')) return; $('mcpList').innerHTML='<div class="card"><strong>filesystem</strong> - stdio - ready - 12 tools<br><small>npx -y @modelcontextprotocol/server-filesystem (command ter-redaksi di log)</small><br><br><button class="mini" data-mcp="stop">Stop</button> <button class="mini" data-mcp="restart">Restart</button></div><div class="card"><strong>project-docs</strong> - http - untrusted - 0 tools<br><small>URL project, butuh Review &amp; trust</small><br><br><button class="mini primary" data-mcp="review">Review &amp; trust</button> <button class="mini" data-mcp="start">Start (butuh trust dulu)</button></div>'; $('mcpTools').innerHTML='<div class="log-row">mcp.filesystem.readFile - Read</div><div class="log-row">mcp.filesystem.search - Read</div><div class="log-row">mcp.project-docs.searchDocs - Read (locked sampai trust)</div>'; document.querySelectorAll('[data-mcp]').forEach(el=>el.addEventListener('click',()=>{const a=(el as HTMLElement).dataset.mcp; if(a==='review') openModal('Review MCP: project-docs','<p>Origin: <b>project</b> (untrusted)</p><p>URL: https://docs.example.local/mcp</p><p>Env var names (bukan value): <code>DOCS_TOKEN</code></p><p>Risk default: Read. Trust menyimpan realpath + config hash.</p>',()=>{toast('Trust disimpan (demo). Klik Start untuk menjalankan.'); ($('mcpTrustBanner') as HTMLElement).textContent='Trust tersimpan (demo). Klik Start untuk menjalankan server project-docs.'}); else if(a==='start') toast('Start diblokir sampai trust (demo)'); else toast('MCP '+a+' (demo)') })); }
 function renderProviders(){ $('providerList').innerHTML=[['DeepSeek','chat.deepseek.com'],['Qwen','chat.qwen.ai'],['Gemini','gemini.google.com'],['ChatGPT','chatgpt.com'],['Claude','claude.ai']].map(p=>'<div class="card"><strong>'+p[0]+'</strong> - <code>'+p[1]+'</code> - plugin aktif <label><input type="checkbox" checked> Enabled</label> <button class="mini" data-health="'+p[0]+'">Health check</button></div>').join(''); document.querySelectorAll('[data-health]').forEach(el=>el.addEventListener('click',()=>toast('Health check '+(el as HTMLElement).dataset.health+': OK (demo)'))) }
 function renderResources(){ $('resourcesList').innerHTML='<h4>Instructions</h4><div class="log-row">AGENTS.md - 0.4 KB</div><div class="log-row">.broagentai/rules/*.md - 3 files</div><h4>Skills (6, metadata saja)</h4><div class="log-row">review-code - Review patch <button class="mini" data-skill="review-code">Preview body</button></div><div class="log-row">write-tests - Buat test</div><h4>Agents</h4><div class="log-row">default / reviewer / planner</div><h4>Commands</h4><div class="log-row">/review - template prompt <button class="mini" data-cmd="/review">Salin template</button></div>'; document.querySelectorAll('[data-skill]').forEach(el=>el.addEventListener('click',()=>openModal('Skill: review-code','<p>Body dibaca on-demand via skills.read. Isi: cek diff, cari bug, sarankan test.</p>',()=>{}))); document.querySelectorAll('[data-cmd]').forEach(el=>el.addEventListener('click',()=>{navigator.clipboard.writeText('/review ').then(()=>toast('Template /review disalin - paste di halaman chat')) })); }
 function renderChatSite(){ ($('chatSiteName') as HTMLElement).textContent=detectedChat.name; ($('chatSiteUrl') as HTMLElement).textContent=detectedChat.url; ($('chatSiteTab') as HTMLElement).textContent=detectedChat.tab; ($('chatSiteName2') as HTMLElement).textContent=detectedChat.name; }
-function switchTab(t:string){ document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t)); document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t)); if(t==='settings') renderProviders(); if(t==='scm') refreshScm(); if(t==='terminal') showTerminal(); }
+function switchTab(t:string){ document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t)); document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t)); if(t==='settings'){ renderProviders(); refreshMcp(); } if(t==='scm') refreshScm(); if(t==='terminal') showTerminal(); }
 let modalCb:(()=>void)|null=null;
 function openModal(title:string,body:string,cb:()=>void){ $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
 function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null }
@@ -250,10 +250,10 @@ on('simulateBtn','click',simulateToolFromChat);
 on('apAllow','click',()=>finishApproval('allow once')); on('apSession','click',()=>finishApproval('allow for session')); on('apDeny','click',()=>finishApproval('deny'));
 on('logFilter','change',renderLog); on('clearLog','click',()=>{logs=[]; renderLog()}); on('copyLog','click',()=>{navigator.clipboard.writeText(JSON.stringify(logs,null,2)).then(()=>toast('Command JSON disalin'))});
 on('openChatBtn','click',()=>{toast('Buka tab '+detectedChat.name+' (demo - di host: chrome.tabs.create '+detectedChat.url+')'); ($('sessionStatus') as HTMLElement).textContent='Session: ready - tab chat dibuka'});
-on('mcpReload','click',()=>{renderMcp(); toast('MCP direload')});
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
 
+initMcp({ toast, openModal, hasWorkspace: ()=>!!activeWs });
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });
 initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); } });
 
@@ -264,7 +264,7 @@ bridge.onEvent((ev) => {
   console.log('Event from bridge:', ev);
 });
 
-renderWs(); renderLog(); renderMcp(); renderResources(); renderChatSite();
+renderWs(); renderLog(); renderResources(); renderChatSite();
 
 // Render tree setelah workspace dimuat
 renderTree();

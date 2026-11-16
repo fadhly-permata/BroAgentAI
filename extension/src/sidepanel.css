@@ -124,6 +124,9 @@ pre.diff { max-height: 50vh; overflow: auto; font-size: 11px; line-height: 1.4; 
 .diff-add { color: #4ec9b0; } .diff-del { color: #f14c4c; } .diff-hunk { color: #569cd6; }
 #tab-terminal.active { flex: 1; min-height: 0; }
 .term-view { flex: 1; min-height: 240px; background: #1e1e1e; border: 1px solid var(--border); border-radius: 4px; padding: 4px; overflow: hidden; }
+.mcp-status { font-size: 10px; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--border); }
+.mcp-ready { color: #4ec9b0; border-color: #4ec9b0; } .mcp-error, .mcp-untrusted { color: #f14c4c; border-color: #f14c4c; }
+.risk-read { color: #4ec9b0; } .risk-write { color: #cca700; } .risk-destructive { color: #f14c4c; }
 .demo-note { background: rgba(204, 167, 0, 0.12); border: 1px solid rgba(204, 167, 0, 0.35); border-radius: 4px; padding: 6px 10px; margin: 0 0 8px; font-size: 11px; color: var(--text-main); }
 .notice { background: rgba(0, 122, 204, 0.1); border: 1px solid rgba(0, 122, 204, 0.2); border-radius: 4px; padding: 10px; display: flex; gap: 10px; align-items: flex-start; }
 .notice svg { width: 18px; height: 18px; fill: var(--accent); flex-shrink: 0; margin-top: 2px; }
