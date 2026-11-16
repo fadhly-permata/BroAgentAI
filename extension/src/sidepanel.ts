@@ -1,4 +1,5 @@
-import { bridge } from './bridge-client';
+import { bridge } from './bridge-client.js';
+import { renderExplorer, ExplorerOptions } from './explorer.js';
 
 type FileNode={name:string;path:string;kind:'dir'|'file';git?:string;children?:FileNode[];content?:string};
 const $=(id:string)=>document.getElementById(id) as HTMLElement;
@@ -16,7 +17,6 @@ async function loadWorkspaces() {
     console.error('Failed to load workspaces', e);
   }
 }
-let treeData:FileNode[]=[{name:'src',path:'src',kind:'dir',children:[{name:'sidepanel.ts',path:'src/sidepanel.ts',kind:'file',git:'M',content:'// sidepanel.ts - UI shell BroAgentAI'},{name:'background.ts',path:'src/background.ts',kind:'file',git:'M',content:'// background.ts'},{name:'providers',path:'src/providers',kind:'dir',children:[{name:'deepseek.ts',path:'src/providers/deepseek.ts',kind:'file',content:'// provider DeepSeek (plugin)'}]}]},{name:'specs',path:'specs',kind:'dir',children:[{name:'03-FSD.md',path:'specs/03-FSD.md',kind:'file',content:'# FSD'}]},{name:'browseragent.jsonc',path:'browseragent.jsonc',kind:'file',content:'{ "approval": "Ask" }'},{name:'AGENTS.md',path:'AGENTS.md',kind:'file',content:'# AGENTS.md'},{name:'README.md',path:'README.md',kind:'file',git:'U',content:'# BroAgentAI'}];
 let scm=[{g:'Staged changes (2)',items:[{f:'src/sidepanel.ts',s:'M',staged:true},{f:'src/sidepanel.css',s:'M',staged:true}]},{g:'Changes (3)',items:[{f:'src/background.ts',s:'M',staged:false},{f:'specs/03-FSD.md',s:'M',staged:false}]},{g:'Untracked (2)',items:[{f:'notes.md',s:'U',staged:false},{f:'tmp.log',s:'U',staged:false}]},{g:'Merge changes (0)',items:[]}];
 let logs:{tool:string;risk:string;decision:string;status:string;dur:number}[]=[{tool:'fs.readFile src/sidepanel.ts',risk:'Read',decision:'auto',status:'ok',dur:42}];
 let expanded=new Set<string>(['src','specs']); let currentFile:FileNode|null=null; let dirty=false;
@@ -36,9 +36,38 @@ function updateHostStatus(status: 'offline' | 'ready' | 'error') {
     $('banner').classList.add('hidden');
   }
 }
-function renderTree(){ const walk=(nodes:FileNode[],depth:number):string=>nodes.map(n=>{const pad=depth*14; if(n.kind==='dir'){const open=expanded.has(n.path); return '<div class="tree-row" data-dir="'+n.path+'" style="padding-left:'+(6+pad)+'px"><span class="ic">'+(open?'&#9662;':'&#9656;')+'</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> '+n.name+'</div>'+(open?walk(n.children||[],depth+1):'')} return '<div class="tree-row '+(currentFile===n?'sel':'')+'" data-file="'+n.path+'" style="padding-left:'+(6+pad)+'px"><span class="ic">&#128196;</span> '+n.name+(n.git?' <span class="badge-git">'+n.git+'</span>':'')+'</div>'}).join(''); $('tree').innerHTML=walk(treeData,0); document.querySelectorAll('[data-dir]').forEach(el=>el.addEventListener('click',()=>{const p=(el as HTMLElement).dataset.dir!; expanded.has(p)?expanded.delete(p):expanded.add(p); renderTree()})); document.querySelectorAll('[data-file]').forEach(el=>el.addEventListener('click',()=>openFile((el as HTMLElement).dataset.file!))); document.querySelectorAll('[data-file]').forEach(el=>el.addEventListener('contextmenu',(e)=>{e.preventDefault(); const p=(el as HTMLElement).dataset.file!; openModal('File: '+p,'<p>New File, Rename, Duplicate, Copy Path, Copy Relative Path, Delete.</p><p><button class="mini" onclick="navigator.clipboard.writeText(\''+p+'\')">Copy Relative Path</button></p>',()=>toast('Context action (demo)'))})); }
-function findFile(path:string,nodes:FileNode[]=treeData):FileNode|null{for(const n of nodes){if(n.path===path)return n; if(n.children){const f=findFile(path,n.children); if(f)return f}} return null}
-function openFile(path:string){const f=findFile(path); if(!f)return; currentFile=f; dirty=false; $('editorPreview').classList.remove('hidden'); $('edName').textContent=f.path; ($('edArea') as HTMLTextAreaElement).value=f.content||''; $('edDirty').textContent=''; $('edMeta').textContent='Preview in-panel - '+(f.content||'').length+' karakter'; renderTree(); switchTab('explorer')}
+async function renderTree(){
+  if (!activeWs) {
+    $('tree').innerHTML = '<p class="muted">Pilih workspace untuk melihat file.</p>';
+    return;
+  }
+  
+  const options: ExplorerOptions = {
+    onFileClick: (path) => openFile(path),
+    onContextClick: (e, path) => {
+      openModal('File: ' + path, '<p>New File, Rename, Duplicate, Copy Path, Copy Relative Path, Delete.</p><p><button class="mini" onclick="navigator.clipboard.writeText(\'' + path + '\')">Copy Relative Path</button></p>', () => toast('Context action (demo)'));
+    }
+  };
+  
+  await renderExplorer($('tree'), activeWs.path, options);
+}
+async function openFile(path:string){
+  if (!activeWs) return;
+  
+  try {
+    const content = await bridge.call('fs.readFile', { path });
+    currentFile = { name: path.split('/').pop() || path, path, kind: 'file', content: content as string };
+    dirty = false;
+    $('editorPreview').classList.remove('hidden');
+    $('edName').textContent = path;
+    ($('edArea') as HTMLTextAreaElement).value = (content as string) || '';
+    $('edDirty').textContent = '';
+    $('edMeta').textContent = 'File dari workspace - ' + ((content as string) || '').length + ' karakter';
+    switchTab('explorer');
+  } catch (err: any) {
+    toast('Gagal membuka file: ' + (err.message || err));
+  }
+}
 function renderScm(){ $('scmGroups').innerHTML=scm.map((g,gi)=>'<div class="card"><strong>'+g.g+'</strong>'+g.items.map((it,ii)=>'<div class="tree-row"><span>'+it.s+'</span> '+it.f+' <button class="mini" data-stage="'+gi+':'+ii+'">'+(it.staged?'Unstage':'Stage')+'</button> <button class="mini" data-diff="'+it.f+'">Diff</button> <button class="mini danger" data-discard="'+gi+':'+ii+'">Discard</button></div>').join('')+'</div>').join(''); const staged=scm.flatMap(g=>g.items).filter(i=>i.staged).length; ($('commitBtn') as HTMLButtonElement).disabled=!(staged>0 && ($('commitMsg') as HTMLTextAreaElement).value.trim()); document.querySelectorAll('[data-stage]').forEach(el=>el.addEventListener('click',()=>{const [gi,ii]=(el as HTMLElement).dataset.stage!.split(':').map(Number); scm[gi].items[ii].staged=!scm[gi].items[ii].staged; renderScm(); toast('Stage/unstage (demo, belum ke host)') })); document.querySelectorAll('[data-diff]').forEach(el=>el.addEventListener('click',()=>openModal('Diff: '+(el as HTMLElement).dataset.diff,'<pre>- lama\n+ baru (diff preview)</pre>',()=>{}))); document.querySelectorAll('[data-discard]').forEach(el=>el.addEventListener('click',()=>openModal('Discard perubahan?','File akan dikembalikan ke HEAD. Aksi destruktif ini butuh konfirmasi.',()=>toast('Discard (demo)')))); }
 function renderLog(){const f=($('logFilter') as HTMLSelectElement).value; $('cmdLog').innerHTML=logs.filter(l=>f==='all'||l.status===f).map(l=>'<div class="log-row">'+l.tool+' - '+l.risk+' - '+l.decision+' - '+l.status+' - '+l.dur+'ms</div>').join('')||'<p class="muted">Belum ada tool call.</p>'}
 function renderMcp(){ $('mcpList').innerHTML='<div class="card"><strong>filesystem</strong> - stdio - ready - 12 tools<br><small>npx -y @modelcontextprotocol/server-filesystem (command ter-redaksi di log)</small><br><br><button class="mini" data-mcp="stop">Stop</button> <button class="mini" data-mcp="restart">Restart</button></div><div class="card"><strong>project-docs</strong> - http - untrusted - 0 tools<br><small>URL project, butuh Review &amp; trust</small><br><br><button class="mini primary" data-mcp="review">Review &amp; trust</button> <button class="mini" data-mcp="start">Start (butuh trust dulu)</button></div>'; $('mcpTools').innerHTML='<div class="log-row">mcp.filesystem.readFile - Read</div><div class="log-row">mcp.filesystem.search - Read</div><div class="log-row">mcp.project-docs.searchDocs - Read (locked sampai trust)</div>'; document.querySelectorAll('[data-mcp]').forEach(el=>el.addEventListener('click',()=>{const a=(el as HTMLElement).dataset.mcp; if(a==='review') openModal('Review MCP: project-docs','<p>Origin: <b>project</b> (untrusted)</p><p>URL: https://docs.example.local/mcp</p><p>Env var names (bukan value): <code>DOCS_TOKEN</code></p><p>Risk default: Read. Trust menyimpan realpath + config hash.</p>',()=>{toast('Trust disimpan (demo). Klik Start untuk menjalankan.'); ($('mcpTrustBanner') as HTMLElement).textContent='Trust tersimpan (demo). Klik Start untuk menjalankan server project-docs.'}); else if(a==='start') toast('Start diblokir sampai trust (demo)'); else toast('MCP '+a+' (demo)') })); }
@@ -49,7 +78,10 @@ function switchTab(t:string){ document.querySelectorAll('.rail-btn').forEach(b=>
 let modalCb:(()=>void)|null=null;
 function openModal(title:string,body:string,cb:()=>void){ $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
 function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null }
-function doSearch(){const q=($('searchInput') as HTMLInputElement).value; const isRegex=($('regexChk') as HTMLInputElement).checked; $('searchErr').classList.add('hidden'); if(!q){$('searchResults').innerHTML=''; $('searchInfo').textContent='Ketik untuk mencari.'; return} if(isRegex){try{new RegExp(q)}catch{ $('searchErr').textContent='Regex tidak valid - request tidak dikirim'; $('searchErr').classList.remove('hidden'); return}} const hits:{f:string;line:number;text:string}[]=[]; const walk=(n:FileNode)=>{if(n.content){n.content.split('\n').forEach((line,i)=>{const hay=($('caseChk') as HTMLInputElement).checked?line:line.toLowerCase(); const needle=($('caseChk') as HTMLInputElement).checked?q:q.toLowerCase(); if(isRegex?new RegExp(q).test(line):hay.includes(needle)) hits.push({f:n.path,line:i+1,text:line})})}; if(n.children)n.children.forEach(walk)}; treeData.forEach(walk); $('searchInfo').textContent=hits.length+' match (cap 500)'; $('searchResults').innerHTML=hits.length?hits.map(h=>'<div class="tree-row" data-hit="'+h.f+'">'+h.f+':'+h.line+' - '+h.text+'</div>').join(''):'<p class="muted">No results untuk "'+q+'"</p>'; document.querySelectorAll('[data-hit]').forEach(el=>el.addEventListener('click',()=>openFile((el as HTMLElement).dataset.hit!))) }
+function doSearch(){
+  toast('Fitur Search akan diimplementasikan di Fase 2 (M2)');
+  $('searchResults').innerHTML = '<p class="muted">Fitur Search akan diimplementasikan di Fase 2 (M2).</p>';
+}
 let searchTimer:any=null;
 function addChat(who:string,text:string){const d=document.createElement('div'); d.className='msg '+(who==='user'?'user':'assistant'); d.innerHTML='<div class="avatar">'+(who==='user'?'Kamu':'BA')+'</div><div class="bubble"></div>'; (d.querySelector('.bubble') as HTMLElement).textContent=text; $('chat').appendChild(d); $('chat').scrollTop=$('chat').scrollHeight}
 function showApproval(tool:string,summary:string,diff:string,params:string){ $('approvalCard').classList.remove('hidden'); $('apTool').textContent=tool; $('apSummary').textContent=summary; $('apDiff').textContent=diff; $('apParams').textContent=params; }
@@ -67,7 +99,7 @@ on('restartBtn','click',()=>toast('Restart companion (demo)')); on('restart2Btn'
 on('diagBtn','click',()=>{($('diagOut') as HTMLElement).classList.toggle('hidden')}); on('resetStateBtn','click',()=>{logs=[]; renderLog(); toast('State direset - file tidak dihapus')}); on('reloadConfigBtn','click',()=>toast('Config direload (demo)')); on('createConfigBtn','click',()=>openModal('Create project config','<p>Buat <code>browseragent.jsonc</code> di root workspace dengan default Ask + ff-only?</p>',()=>toast('browseragent.jsonc dibuat (demo)')));
 on('dismissCk','click',()=>$('checklist').classList.add('hidden'));
 document.querySelectorAll('[data-ck]').forEach(b=>b.addEventListener('click',()=>{const k=(b as HTMLElement).dataset.ck; if(k==='host')toast('Recheck: host offline (demo)'); if(k==='ws')($('wsBtn') as HTMLElement).click(); if(k==='ai')switchTab('agent')}));
-on('refreshTree','click',()=>{renderTree(); toast('Tree direfresh')}); on('newFileBtn','click',()=>openModal('New File','<input id="nfName" class="input" placeholder="nama-file.ts">',()=>{const v=(document.getElementById('nfName') as HTMLInputElement).value.trim(); if(!v||v.includes('/')||v.includes('\\')||v==='.'||v==='..')return toast('Nama tidak valid'); treeData.push({name:v,path:v,kind:'file',content:''}); renderTree(); toast('File dibuat (demo)')})); on('newFolderBtn','click',()=>openModal('New Folder','<input id="nfName" class="input" placeholder="nama-folder">',()=>{const v=(document.getElementById('nfName') as HTMLInputElement).value.trim(); if(!v)return; treeData.push({name:v,path:v,kind:'dir',children:[]}); renderTree()}));
+on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')}); on('newFileBtn','click',()=>toast('Fitur New File akan diimplementasikan di Fase 2')); on('newFolderBtn','click',()=>toast('Fitur New Folder akan diimplementasikan di Fase 2'));
 on('edSave','click',()=>{if(!currentFile)return; currentFile.content=($('edArea') as HTMLTextAreaElement).value; dirty=false; $('edDirty').textContent=''; toast('File saved - (demo) '+currentFile.path)}); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; $('editorPreview').classList.add('hidden'); currentFile=null}); on('edArea','input',()=>{dirty=true; $('edDirty').textContent='- dirty'}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('commitMsg','input',renderScm); on('commitBtn','click',()=>{const m=($('commitMsg') as HTMLTextAreaElement).value; if(!m.trim())return; ($('commitOut') as HTMLElement).textContent='Commit dibuat (demo): abc1234 - '+m.split('\n')[0]; ($('commitMsg') as HTMLTextAreaElement).value=''; scm.forEach(g=>g.items=g.items.filter(i=>!i.staged)); renderScm(); toast('Commit dibuat')});
@@ -94,4 +126,7 @@ bridge.onEvent((ev) => {
   console.log('Event from bridge:', ev);
 });
 
-renderWs(); renderTree(); renderScm(); renderLog(); renderMcp(); renderResources(); renderChatSite();
+renderWs(); renderScm(); renderLog(); renderMcp(); renderResources(); renderChatSite();
+
+// Render tree setelah workspace dimuat
+renderTree();

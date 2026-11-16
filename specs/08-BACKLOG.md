@@ -66,9 +66,9 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 1.2.4. Buat RPC `config.get`, `instructions.list`, `skills.list` di Bridge.
 
 ### 1.3. UI Explorer
-- [ ] 1.3.1. Buat komponen Tree View di Side Panel untuk menampilkan direktori.
-- [ ] 1.3.2. Implementasi lazy loading (expand/collapse folder memanggil `fs.listDir`).
-- [ ] 1.3.3. Tambahkan ikon file/folder dan indikator status (ignored, binary).
+- [x] 1.3.1. Buat komponen Tree View di Side Panel untuk menampilkan direktori.
+- [x] 1.3.2. Implementasi lazy loading (expand/collapse folder memanggil `fs.listDir`).
+- [x] 1.3.3. Tambahkan ikon file/folder dan indikator status (ignored, binary).
 
 ---
 
