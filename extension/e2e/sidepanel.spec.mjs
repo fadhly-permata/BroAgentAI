@@ -2,6 +2,7 @@
 // Run: npm run build && npm run e2e -w @broagentai/extension
 // Exit code 0 = every check passed and no page raised an error.
 import { chromium } from 'playwright';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -230,6 +231,89 @@ try {
   check('remove drops the workspace',
     await until(async () => (await page.locator('#manageList .card').count()) === 1), await text(page, '#manageList'));
   check('remove never deletes files on disk', fs.existsSync(path.join(wsB, 'beta-only.txt')));
+
+  // ---- 10b. source control against a real Git repository
+  const hasGit = (() => { try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
+  if (!hasGit) {
+    console.log('SKIP  source control checks (git not installed)');
+  } else {
+    const git = (...args) => execFileSync('git', args, { cwd: wsA, encoding: 'utf8' }).trim();
+    const scmRow = (group, file) => page.locator(`[data-scm-group="${group}"] [data-scm-file="${file}"]`);
+    const groupCount = (group) => page.locator(`[data-scm-group="${group}"] .scm-row`).count();
+    const readme = path.join(wsA, 'README.md');
+
+    await page.locator('.rail-btn[data-tab="scm"]').click();
+    check('scm: non-repo workspace shows a clear state',
+      await until(async () => /not a Git repository/.test(await text(page, '#scmState'))), await text(page, '#scmState'));
+    check('scm: no fake changes are shown for a non-repo', !(await visible(page, '#scmBody')));
+    await page.locator('#scmInit').click();
+    check('scm: Init repository creates a real repo',
+      await until(() => visible(page, '#scmBody')) && fs.existsSync(path.join(wsA, '.git')));
+    git('config', 'user.email', 'e2e@example.com');
+    git('config', 'user.name', 'E2E');
+    git('config', 'commit.gpgsign', 'false');
+    const firstBranch = git('branch', '--show-current');
+    check('scm: every file starts untracked (ignored dirs included, like git)',
+      await until(async () => (await groupCount('untracked')) === 5), 'untracked=' + await groupCount('untracked'));
+    check('scm: rail badge shows the change count', (await text(page, '#scmBadge')) === '5');
+    check('scm: commit is disabled with nothing staged', await page.locator('#commitBtn').isDisabled());
+
+    await scmRow('untracked', 'README.md').locator('[data-act="stage"]').click();
+    check('scm: Stage moves the file to Staged', await until(() => scmRow('staged', 'README.md').isVisible()));
+    check('scm: stage is real (git sees it)', /^A\s+README\.md$/m.test(git('status', '--porcelain')));
+    await scmRow('staged', 'README.md').locator('[data-act="diff-staged"]').click();
+    check('scm: staged diff shows the added lines',
+      await until(async () => /\+# Alpha/.test(await text(page, '#modalBody'))), await text(page, '#modalBody'));
+    await page.locator('#modalOk').click();
+    await scmRow('staged', 'README.md').locator('[data-act="unstage"]').click();
+    check('scm: Unstage moves the file back', await until(() => scmRow('untracked', 'README.md').isVisible()));
+
+    await page.locator('[data-scm-group="untracked"] [data-act="stage-all"]').click();
+    check('scm: Stage all stages everything', await until(async () => (await groupCount('staged')) === 5));
+    check('scm: commit stays disabled without a message', await page.locator('#commitBtn').isDisabled());
+    await page.locator('#commitMsg').fill('feat: first commit from e2e');
+    await page.locator('#commitBtn').click();
+    check('scm: commit reports the new hash',
+      await until(async () => /^Commit [0-9a-f]{7,} - feat: first commit from e2e/.test(await text(page, '#commitOut'))),
+      await text(page, '#commitOut'));
+    check('scm: commit is real (git log)', git('log', '-1', '--format=%s') === 'feat: first commit from e2e');
+    check('scm: tree is clean after commit', (await groupCount('staged')) === 0 && (await groupCount('changes')) === 0);
+    check('scm: badge hides when clean', !(await visible(page, '#scmBadge')));
+
+    const committed = fs.readFileSync(readme, 'utf8');
+    fs.writeFileSync(readme, committed + 'changed after commit\n');
+    await page.locator('#scmRefresh').click();
+    check('scm: an edit on disk appears under Changes', await until(() => scmRow('changes', 'README.md').isVisible()));
+    check('scm: status letter is M', (await scmRow('changes', 'README.md').locator('.scm-letter').innerText()) === 'M');
+    await scmRow('changes', 'README.md').locator('[data-act="diff"]').click();
+    check('scm: unstaged diff shows the new line',
+      await until(async () => /\+changed after commit/.test(await text(page, '#modalBody'))), await text(page, '#modalBody'));
+    await page.locator('#modalOk').click();
+
+    await page.locator('#newBranchBtn').click();
+    await page.locator('#brName').fill('feat/e2e');
+    await page.locator('#modalOk').click();
+    check('scm: create branch switches to it',
+      await until(async () => (await page.locator('#branchSel').inputValue()) === 'feat/e2e') && git('branch', '--show-current') === 'feat/e2e');
+    await page.locator('#branchSel').selectOption(firstBranch);
+    check('scm: switching with uncommitted changes is blocked with guidance',
+      await toastHas(page, /uncommitted changes/), await text(page, '#toast'));
+    check('scm: blocked switch leaves the branch alone',
+      git('branch', '--show-current') === 'feat/e2e'
+        && await until(async () => (await page.locator('#branchSel').inputValue()) === 'feat/e2e'));
+
+    await scmRow('changes', 'README.md').locator('[data-act="discard"]').click();
+    check('scm: discard asks for confirmation first',
+      await until(async () => /tidak bisa dibatalkan/.test(await text(page, '#modalBody')))
+        && fs.readFileSync(readme, 'utf8') !== committed);
+    await page.locator('#modalOk').click();
+    check('scm: discard restores the file on disk',
+      await until(() => fs.readFileSync(readme, 'utf8').replace(/\r\n/g, '\n') === committed.replace(/\r\n/g, '\n')));
+    check('scm: clean again after discard', await until(async () => (await groupCount('changes')) === 0));
+    await page.locator('#branchSel').selectOption(firstBranch);
+    check('scm: clean switch works', await until(() => git('branch', '--show-current') === firstBranch));
+    await page.screenshot({ path: path.join(shots, 'tab-scm.png'), fullPage: true });
+  }
 
   // ---- 11. agent approval flow
   await page.locator('.rail-btn[data-tab="agent"]').click();

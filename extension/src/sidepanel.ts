@@ -1,5 +1,6 @@
 import { bridge, BridgeErrorCode } from './bridge-client.js';
 import { renderExplorer, ExplorerOptions } from './explorer.js';
+import { initScm, refreshScm } from './git-panel.js';
 
 type FileNode={name:string;path:string;kind:'dir'|'file';git?:string;children?:FileNode[];content?:string};
 const $=(id:string)=>document.getElementById(id) as HTMLElement;
@@ -14,11 +15,11 @@ async function loadWorkspaces() {
     activeWs = workspaces.find((w: any) => w.id === res.activeWorkspaceId) || workspaces[0] || null;
     renderWs();
     await renderTree();
+    refreshScm();
   } catch (e) {
     console.error('Failed to load workspaces', e);
   }
 }
-let scm=[{g:'Staged changes (2)',items:[{f:'src/sidepanel.ts',s:'M',staged:true},{f:'src/sidepanel.css',s:'M',staged:true}]},{g:'Changes (3)',items:[{f:'src/background.ts',s:'M',staged:false},{f:'specs/03-FSD.md',s:'M',staged:false}]},{g:'Untracked (2)',items:[{f:'notes.md',s:'U',staged:false},{f:'tmp.log',s:'U',staged:false}]},{g:'Merge changes (0)',items:[]}];
 let logs:{tool:string;risk:string;decision:string;status:string;dur:number}[]=[{tool:'fs.readFile src/sidepanel.ts',risk:'Read',decision:'auto',status:'ok',dur:42}];
 let currentFile:FileNode|null=null; let currentMtime:number|null=null; let dirty=false;
 let detectedChat={name:'DeepSeek',url:'chat.deepseek.com',tab:'Tab aktif'};
@@ -83,7 +84,7 @@ async function saveCurrentFile(){
     currentMtime=typeof res?.mtime==='number'?res.mtime:null;
     currentFile.content=content; dirty=false; $('edDirty').textContent='';
     $('edMeta').textContent='File dari workspace - '+content.length+' karakter';
-    toast('File tersimpan: '+currentFile.path);
+    toast('File tersimpan: '+currentFile.path); refreshScm();
   }catch(err:any){
     if(err?.code===BridgeErrorCode.MTIME_CONFLICT) toast('Konflik: file berubah di disk sejak dibuka. Tutup lalu buka ulang file sebelum menyimpan.');
     else toast('Gagal menyimpan: '+(err?.message||err));
@@ -93,7 +94,7 @@ function closeEditorPreview(){ $('editorPreview').classList.add('hidden'); curre
 async function setActiveWorkspace(ws:any){
   try{
     await bridge.call('workspace.setActive', { id: ws.id });
-    activeWs=ws; closeEditorPreview(); renderWs(); await renderTree();
+    activeWs=ws; closeEditorPreview(); renderWs(); await renderTree(); refreshScm();
     $('searchResults').innerHTML=''; $('searchInfo').textContent='';
     toast('Workspace aktif: '+ws.name);
   }catch(err:any){ toast('Gagal set aktif: '+(err?.message||err)); }
@@ -133,13 +134,12 @@ async function connectBridge(){
     updateHostStatus('offline');
   }
 }
-function renderScm(){ $('scmGroups').innerHTML=scm.map((g,gi)=>'<div class="card"><strong>'+g.g+'</strong>'+g.items.map((it,ii)=>'<div class="tree-row"><span>'+it.s+'</span> '+it.f+' <button class="mini" data-stage="'+gi+':'+ii+'">'+(it.staged?'Unstage':'Stage')+'</button> <button class="mini" data-diff="'+it.f+'">Diff</button> <button class="mini danger" data-discard="'+gi+':'+ii+'">Discard</button></div>').join('')+'</div>').join(''); const staged=scm.flatMap(g=>g.items).filter(i=>i.staged).length; ($('commitBtn') as HTMLButtonElement).disabled=!(staged>0 && ($('commitMsg') as HTMLTextAreaElement).value.trim()); document.querySelectorAll('[data-stage]').forEach(el=>el.addEventListener('click',()=>{const [gi,ii]=(el as HTMLElement).dataset.stage!.split(':').map(Number); scm[gi].items[ii].staged=!scm[gi].items[ii].staged; renderScm(); toast('Stage/unstage (demo, belum ke host)') })); document.querySelectorAll('[data-diff]').forEach(el=>el.addEventListener('click',()=>openModal('Diff: '+(el as HTMLElement).dataset.diff,'<pre>- lama\n+ baru (diff preview)</pre>',()=>{}))); document.querySelectorAll('[data-discard]').forEach(el=>el.addEventListener('click',()=>openModal('Discard perubahan?','File akan dikembalikan ke HEAD. Aksi destruktif ini butuh konfirmasi.',()=>toast('Discard (demo)')))); }
 function renderLog(){const f=($('logFilter') as HTMLSelectElement).value; $('cmdLog').innerHTML=logs.filter(l=>f==='all'||l.status===f).map(l=>'<div class="log-row">'+l.tool+' - '+l.risk+' - '+l.decision+' - '+l.status+' - '+l.dur+'ms</div>').join('')||'<p class="muted">Belum ada tool call.</p>'}
 function renderMcp(){ if(!document.getElementById('mcpList')) return; $('mcpList').innerHTML='<div class="card"><strong>filesystem</strong> - stdio - ready - 12 tools<br><small>npx -y @modelcontextprotocol/server-filesystem (command ter-redaksi di log)</small><br><br><button class="mini" data-mcp="stop">Stop</button> <button class="mini" data-mcp="restart">Restart</button></div><div class="card"><strong>project-docs</strong> - http - untrusted - 0 tools<br><small>URL project, butuh Review &amp; trust</small><br><br><button class="mini primary" data-mcp="review">Review &amp; trust</button> <button class="mini" data-mcp="start">Start (butuh trust dulu)</button></div>'; $('mcpTools').innerHTML='<div class="log-row">mcp.filesystem.readFile - Read</div><div class="log-row">mcp.filesystem.search - Read</div><div class="log-row">mcp.project-docs.searchDocs - Read (locked sampai trust)</div>'; document.querySelectorAll('[data-mcp]').forEach(el=>el.addEventListener('click',()=>{const a=(el as HTMLElement).dataset.mcp; if(a==='review') openModal('Review MCP: project-docs','<p>Origin: <b>project</b> (untrusted)</p><p>URL: https://docs.example.local/mcp</p><p>Env var names (bukan value): <code>DOCS_TOKEN</code></p><p>Risk default: Read. Trust menyimpan realpath + config hash.</p>',()=>{toast('Trust disimpan (demo). Klik Start untuk menjalankan.'); ($('mcpTrustBanner') as HTMLElement).textContent='Trust tersimpan (demo). Klik Start untuk menjalankan server project-docs.'}); else if(a==='start') toast('Start diblokir sampai trust (demo)'); else toast('MCP '+a+' (demo)') })); }
 function renderProviders(){ $('providerList').innerHTML=[['DeepSeek','chat.deepseek.com'],['Qwen','chat.qwen.ai'],['Gemini','gemini.google.com'],['ChatGPT','chatgpt.com'],['Claude','claude.ai']].map(p=>'<div class="card"><strong>'+p[0]+'</strong> - <code>'+p[1]+'</code> - plugin aktif <label><input type="checkbox" checked> Enabled</label> <button class="mini" data-health="'+p[0]+'">Health check</button></div>').join(''); document.querySelectorAll('[data-health]').forEach(el=>el.addEventListener('click',()=>toast('Health check '+(el as HTMLElement).dataset.health+': OK (demo)'))) }
 function renderResources(){ $('resourcesList').innerHTML='<h4>Instructions</h4><div class="log-row">AGENTS.md - 0.4 KB</div><div class="log-row">.broagentai/rules/*.md - 3 files</div><h4>Skills (6, metadata saja)</h4><div class="log-row">review-code - Review patch <button class="mini" data-skill="review-code">Preview body</button></div><div class="log-row">write-tests - Buat test</div><h4>Agents</h4><div class="log-row">default / reviewer / planner</div><h4>Commands</h4><div class="log-row">/review - template prompt <button class="mini" data-cmd="/review">Salin template</button></div>'; document.querySelectorAll('[data-skill]').forEach(el=>el.addEventListener('click',()=>openModal('Skill: review-code','<p>Body dibaca on-demand via skills.read. Isi: cek diff, cari bug, sarankan test.</p>',()=>{}))); document.querySelectorAll('[data-cmd]').forEach(el=>el.addEventListener('click',()=>{navigator.clipboard.writeText('/review ').then(()=>toast('Template /review disalin - paste di halaman chat')) })); }
 function renderChatSite(){ ($('chatSiteName') as HTMLElement).textContent=detectedChat.name; ($('chatSiteUrl') as HTMLElement).textContent=detectedChat.url; ($('chatSiteTab') as HTMLElement).textContent=detectedChat.tab; ($('chatSiteName2') as HTMLElement).textContent=detectedChat.name; }
-function switchTab(t:string){ document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t)); document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t)); if(t==='settings') renderProviders(); }
+function switchTab(t:string){ document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t)); document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t)); if(t==='settings') renderProviders(); if(t==='scm') refreshScm(); }
 let modalCb:(()=>void)|null=null;
 function openModal(title:string,body:string,cb:()=>void){ $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
 function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null }
@@ -244,8 +244,6 @@ document.querySelectorAll('[data-ck]').forEach(b=>b.addEventListener('click',()=
 on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')}); on('newFileBtn','click',()=>toast('Fitur New File akan diimplementasikan di Fase 2')); on('newFolderBtn','click',()=>toast('Fitur New Folder akan diimplementasikan di Fase 2'));
 on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; closeEditorPreview()}); on('edArea','input',()=>{dirty=true; $('edDirty').textContent='- dirty'}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
-on('commitMsg','input',renderScm); on('commitBtn','click',()=>{const m=($('commitMsg') as HTMLTextAreaElement).value; if(!m.trim())return; ($('commitOut') as HTMLElement).textContent='Commit dibuat (demo): abc1234 - '+m.split('\n')[0]; ($('commitMsg') as HTMLTextAreaElement).value=''; scm.forEach(g=>g.items=g.items.filter(i=>!i.staged)); renderScm(); toast('Commit dibuat')});
-on('fetchBtn','click',()=>toast('Fetch (demo)')); on('pullBtn','click',()=>openModal('Pull - konfirmasi','<p>Remote: <b>origin</b> - Branch: <b>main</b> - up 2 down 1</p><label>Mode <select id="pullMode"><option>ff-only</option><option>merge</option><option>rebase</option></select></label>',()=>{const mode=(document.getElementById('pullMode') as HTMLSelectElement).value; if(mode!=='ff-only'){ $('conflictBanner').classList.remove('hidden'); toast('Pull '+mode+' - konflik (demo), pakai Abort')} else toast('Pull ff-only (demo)') })); on('pushBtn','click',()=>openModal('Push - konfirmasi','<p>Remote: <b>origin</b> - Branch: <b>main</b> - 2 commit akan di-push.</p><p class="muted">Force-push TIDAK tersedia.</p>',()=>toast('Push (demo)'))); on('abortBtn','click',()=>{$('conflictBanner').classList.add('hidden'); toast('Merge/rebase dibatalkan')}); on('newBranchBtn','click',()=>openModal('Create branch','<input id="brName" class="input" placeholder="feat/nama-branch">',()=>{const v=(document.getElementById('brName') as HTMLInputElement).value; if(v){const s=$('branchSel') as HTMLSelectElement; const o=document.createElement('option'); o.text=v; s.appendChild(o); s.value=v; toast('Branch dibuat: '+v)}})); on('branchSel','change',()=>{const v=($('branchSel') as HTMLSelectElement).value; toast('Switch branch ke '+v+' (demo)')});
 on('modeSel','change',()=>{const v=($('modeSel') as HTMLSelectElement).value; toast('Approval mode: '+v)}); on('agentSel','change',()=>toast('Agent profile: '+($('agentSel') as HTMLSelectElement).value+' - berlaku turn berikutnya'));
 on('simulateBtn','click',simulateToolFromChat);
 on('apAllow','click',()=>finishApproval('allow once')); on('apSession','click',()=>finishApproval('allow for session')); on('apDeny','click',()=>finishApproval('deny'));
@@ -255,6 +253,8 @@ on('mcpReload','click',()=>{renderMcp(); toast('MCP direload')});
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
 
+initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); } });
+
 // 0.5: Koneksi ke bridge dan load workspaces
 connectBridge();
 
@@ -262,7 +262,7 @@ bridge.onEvent((ev) => {
   console.log('Event from bridge:', ev);
 });
 
-renderWs(); renderScm(); renderLog(); renderMcp(); renderResources(); renderChatSite();
+renderWs(); renderLog(); renderMcp(); renderResources(); renderChatSite();
 
 // Render tree setelah workspace dimuat
 renderTree();

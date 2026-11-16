@@ -15,7 +15,7 @@
 <nav class="rail" aria-label="Navigasi utama">
   <button class="rail-btn" data-tab="explorer" title="Explorer"><i class="fa-regular fa-folder-closed"></i></button>
   <button class="rail-btn" data-tab="search" title="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
-  <button class="rail-btn" data-tab="scm" title="Source Control"><i class="fa-solid fa-code-branch"></i><b id="scmBadge" class="badge">7</b></button>
+  <button class="rail-btn" data-tab="scm" title="Source Control"><i class="fa-solid fa-code-branch"></i><b id="scmBadge" class="badge hidden">0</b></button>
   <button class="rail-btn" data-tab="agent" title="Agent"><i class="fa-solid fa-robot"></i></button>
   <button class="rail-btn" data-tab="settings" title="Settings"><i class="fa-solid fa-gear"></i></button>
 </nav>
@@ -38,14 +38,16 @@
   <p id="searchErr" class="err hidden"></p><p id="searchInfo" class="muted"></p><div id="searchResults"></div>
 </section>
 <section id="tab-scm" class="panel">
-  <div class="panel-head"><h2>Source Control</h2><div><button id="fetchBtn" class="mini">Fetch</button><button id="pullBtn" class="mini">Pull</button><button id="pushBtn" class="mini primary">Push</button></div></div>
-  <p class="demo-note" data-demo="scm"><b>Demo.</b> Data di tab ini contoh, belum terhubung ke Git workspace (menyusul di M3).</p>
-  <div class="branch-row"><label>Branch <select id="branchSel"><option>main</option><option>feat/agent-ui</option></select></label><span class="sync-pill">up <b id="ahead">2</b> &nbsp; down <b id="behind">1</b></span><button id="newBranchBtn" class="mini">+ Branch</button></div>
-  <div id="conflictBanner" class="banner hidden">Merge/rebase in progress - <button class="mini" id="abortBtn">Abort</button></div>
-  <div id="scmGroups"></div>
-  <label class="lbl">Commit message</label>
-  <textarea id="commitMsg" rows="3" placeholder="feat: ..."></textarea>
-  <button id="commitBtn" class="primary full" disabled>Commit</button><p id="commitOut" class="muted"></p>
+  <div class="panel-head"><h2>Source Control</h2><div><button id="scmRefresh" class="mini">Refresh</button><button class="mini" disabled title="Remote (fetch/pull/push) menyusul">Fetch</button><button class="mini" disabled title="Remote (fetch/pull/push) menyusul">Pull</button><button class="mini" disabled title="Remote (fetch/pull/push) menyusul">Push</button></div></div>
+  <div id="scmState" class="card"><p>Memuat status Git...</p></div>
+  <div id="scmBody" class="hidden">
+    <div class="branch-row"><label>Branch <select id="branchSel"></select></label><span class="sync-pill" title="ahead / behind upstream">up <b id="ahead">0</b> &nbsp; down <b id="behind">0</b> &nbsp; <span id="scmUpstream" class="muted"></span></span><button id="newBranchBtn" class="mini">+ Branch</button></div>
+    <div id="conflictBanner" class="banner hidden"></div>
+    <div id="scmGroups"></div>
+    <label class="lbl">Commit message</label>
+    <textarea id="commitMsg" rows="3" placeholder="feat: ..."></textarea>
+    <button id="commitBtn" class="primary full" disabled>Commit</button><p id="commitOut" class="muted"></p>
+  </div>
 </section>
 <section id="tab-agent" class="panel">
   <div class="panel-head"><h2>Agent</h2><span class="pill pill-ok"><span class="dot"></span><span id="agentSession">Siap</span><span id="sessionStatus" class="hidden"></span></span></div>

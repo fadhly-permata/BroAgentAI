@@ -16,6 +16,9 @@ import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
+import {
+  gitBranches, gitCheckout, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitInit, gitStage, gitStatus, gitUnstage,
+} from "./git.ts";
 
 /** Protocol version negotiated between extension and host. */
 export const PROTOCOL_VERSION = 1;
@@ -229,6 +232,22 @@ export class RpcServer {
       const { path, query, caseSensitive, regex } = readParams(params);
       return searchFiles(this.#store, path || ".", query, caseSensitive, regex);
     });
+
+    // Source control. All methods act on the active workspace; paths are
+    // workspace-relative. See git.ts for the safety rules.
+    this.register("git.status", () => gitStatus(this.#store));
+    this.register("git.diff", (params) => {
+      const { path, staged } = readParams(params);
+      return gitDiff(this.#store, path, staged);
+    });
+    this.register("git.stage", (params) => gitStage(this.#store, readParams(params).paths));
+    this.register("git.unstage", (params) => gitUnstage(this.#store, readParams(params).paths));
+    this.register("git.discard", (params) => gitDiscard(this.#store, readParams(params).paths));
+    this.register("git.commit", (params) => gitCommit(this.#store, readParams(params).message));
+    this.register("git.branches", () => gitBranches(this.#store));
+    this.register("git.createBranch", (params) => gitCreateBranch(this.#store, readParams(params).name));
+    this.register("git.checkout", (params) => gitCheckout(this.#store, readParams(params).branch));
+    this.register("git.init", () => gitInit(this.#store));
 
     this.register("config.get", () => {
       return loadMergedConfig(this.#store);
