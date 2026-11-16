@@ -78,9 +78,89 @@ function switchTab(t:string){ document.querySelectorAll('.rail-btn').forEach(b=>
 let modalCb:(()=>void)|null=null;
 function openModal(title:string,body:string,cb:()=>void){ $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
 function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null }
-function doSearch(){
-  toast('Fitur Search akan diimplementasikan di Fase 2 (M2)');
-  $('searchResults').innerHTML = '<p class="muted">Fitur Search akan diimplementasikan di Fase 2 (M2).</p>';
+async function doSearch(){
+  const query = ($('searchInput') as HTMLInputElement).value.trim();
+  if (!query) {
+    $('searchResults').innerHTML = '<p class="muted">Masukkan query pencarian.</p>';
+    $('searchErr').classList.add('hidden');
+    return;
+  }
+  
+  if (!activeWs) {
+    $('searchResults').innerHTML = '<p class="muted">Pilih workspace terlebih dahulu.</p>';
+    return;
+  }
+  
+  const caseSensitive = ($('caseChk') as HTMLInputElement).checked;
+  const useRegex = ($('regexChk') as HTMLInputElement).checked;
+  
+  $('searchResults').innerHTML = '<p class="muted">Mencari...</p>';
+  $('searchErr').classList.add('hidden');
+  
+  try {
+    const res: any = await bridge.call('search_files', { 
+      path: activeWs.path, 
+      query, 
+      case_sensitive: caseSensitive
+    });
+    
+    const results = res.results || [];
+    
+    if (results.length === 0) {
+      $('searchResults').innerHTML = '<p class="muted">Tidak ada hasil ditemukan.</p>';
+      return;
+    }
+    
+    // Group by file
+    const grouped: { [file: string]: { line: number; text: string }[] } = {};
+    results.forEach((r: any) => {
+      if (!grouped[r.file]) grouped[r.file] = [];
+      grouped[r.file].push({ line: r.line, text: r.text });
+    });
+    
+    let html = `<p class="muted">Ditemukan ${results.length} match di ${Object.keys(grouped).length} file:</p>`;
+    
+    Object.entries(grouped).forEach(([file, matches]) => {
+      html += `<div class="card search-group">`;
+      html += `<strong class="search-file">${file} <span class="muted">(${matches.length} match)</span></strong>`;
+      html += `<div class="search-matches">`;
+      matches.forEach((m: any) => {
+        html += `<div class="search-match" data-file="${file}" data-line="${m.line}">`;
+        html += `<span class="line-num">L${m.line}:</span> `;
+        html += `<span class="match-text">${escapeHtml(m.text)}</span>`;
+        html += `</div>`;
+      });
+      html += `</div></div>`;
+    });
+    
+    $('searchResults').innerHTML = html;
+    
+    // Add click handlers to open file at line
+    document.querySelectorAll('.search-match').forEach(el => {
+      el.addEventListener('click', () => {
+        const file = (el as HTMLElement).dataset.file!;
+        const line = Number((el as HTMLElement).dataset.line);
+        openFileAtLine(file, line);
+      });
+    });
+    
+  } catch (e: any) {
+    $('searchErr').textContent = `Error: ${e.message}`;
+    $('searchErr').classList.remove('hidden');
+    $('searchResults').innerHTML = '';
+  }
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function openFileAtLine(path: string, line: number) {
+  // Buka file di editor tab dengan parameter line
+  const editorUrl = chrome.runtime.getURL(`src/editor.html?path=${encodeURIComponent(path)}&line=${line}`);
+  chrome.tabs.create({ url: editorUrl });
 }
 let searchTimer:any=null;
 function addChat(who:string,text:string){const d=document.createElement('div'); d.className='msg '+(who==='user'?'user':'assistant'); d.innerHTML='<div class="avatar">'+(who==='user'?'Kamu':'BA')+'</div><div class="bubble"></div>'; (d.querySelector('.bubble') as HTMLElement).textContent=text; $('chat').appendChild(d); $('chat').scrollTop=$('chat').scrollHeight}

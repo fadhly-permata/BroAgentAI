@@ -72,11 +72,11 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 
 ---
 
-## Fase 2: Editor & Search (M2) - Draft Awal
-- [ ] 2.1.1. Setup halaman `editor.html` terpisah dengan CodeMirror 6.
-- [ ] 2.1.2. Implementasi `fs.readFileLines` dan tampilan isi file di editor.
-- [ ] 2.1.3. Implementasi `fs.writeFile` dengan deteksi konflik `MTIME_CONFLICT`.
-- [ ] 2.1.4. Buat UI Search: input query, toggle case/regex, dan tampilan hasil grouped.
+## Fase 2: Editor & Search (M2) - Selesai
+- [x] 2.1.1. Setup halaman `editor.html` terpisah dengan CodeMirror 6.
+- [x] 2.1.2. Implementasi `read_file_lines` dan tampilan isi file di editor.
+- [x] 2.1.3. Implementasi `write_file` dengan deteksi konflik `MTIME_CONFLICT`.
+- [x] 2.1.4. Buat UI Search: input query, toggle case/regex, dan tampilan hasil grouped.
 
 ---
 
