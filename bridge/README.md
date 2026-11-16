@@ -1,28 +1,38 @@
-# BroAgentAI Bridge (Go)
+# broagentai-bridge
 
-Aplikasi desktop kita sendiri. 1 file .exe, tanpa dependency lain.
+Native-messaging host for the BroAgentAI extension (host id `com.broagentai.host`).
+The browser launches it and talks to it over stdio; there is no network port.
 
-## Build (Windows)
+## Build
+
 ```
-cd bridge
-go mod tidy
-go build -o BroAgentAI-Bridge.exe .
+npm run build:host
 ```
 
-## Jalankan
-Double-click `BroAgentAI-Bridge.exe`. Cek tray + file `%APPDATA%/BroAgentAI/port.txt`.
+Output: `bridge/dist/index.js` (Node.js >= 22.6).
 
-## Pairing pertama
-1. Buka `%APPDATA%/BroAgentAI/token.txt`, salin token.
-2. Di Extension > Settings > Bridge, paste token + klik Connect.
-3. Tambahkan workspace di `%APPDATA%/BroAgentAI/workspaces.json`, contoh:
-```json
-["D:\\Projects\\toko-saya"]
+## Install (dev)
+
 ```
-4. Restart bridge.
+npm run build
+npm run host:install:dev
+```
 
-## Status
-- M1: ping + fs.list/read/write/mkdir/delete + auth + allowlist â€” DONE (skeleton)
-- M2: fs end-to-end â€” perlu extension Explorer (berikutnya)
-- M3: git.status/log/stage/commit â€” DONE (skeleton, diff detail menyusul)
-- M4: term.create/input/close via cmd.exe pipes â€” DONE (skeleton, ConPTY menyusul)
+This writes the launcher `bridge/broagentai-host.cmd`, the host manifest, and
+(on Windows) the HKCU registry key. The extension id is derived from
+`extension/dist`, so load the unpacked extension from exactly that folder.
+On Windows `install.bat` does the same for Chrome and Edge.
+
+## Test
+
+```
+npm run test -w @broagentai/bridge   # unit tests (git tests need Git on PATH)
+npm run e2e                          # extension + real bridge, incl. real native messaging
+```
+
+## Notes
+
+- stdout is reserved for Native Messaging frames; logs go to stderr.
+- Config and the workspace list live in `~/.broagentai/` (override with `BROAGENTAI_CONFIG_DIR`).
+- `git.*` methods call the system Git CLI. Without Git, `git.status` reports
+  `gitAvailable: false` and everything else keeps working.

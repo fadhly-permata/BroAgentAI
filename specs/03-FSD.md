@@ -1,11 +1,12 @@
-# FSD â€” BroAgentAI (Standalone + Own Bridge)
+# FSD — BroAgentAI (Standalone + Own Bridge)
 
 ## 1. Prinsip
 - Produk ini HANYA terdiri dari 2 komponen buatan sendiri:
   1. **BroAgentAI Extension** (Chrome/Edge, MV3)
-  2. **BroAgentAI Bridge** (aplikasi desktop Go, 1 file .exe)
-- TIDAK ada dependency ke: editor atau aplikasi eksternal apa pun, Git CLI sistem, Python, Node runtime, atau aplikasi pihak ketiga lainnya.
-- Jika sebuah fitur butuh sesuatu di luar 2 komponen di atas, fitur itu TIDAK boleh dibangun dengan cara itu.
+  2. **BroAgentAI Bridge** (`broagentai-bridge`: native-messaging host Node.js, id `com.broagentai.host`)
+- TIDAK ada dependency ke editor atau aplikasi eksternal apa pun.
+- Prasyarat di mesin user: Node.js (menjalankan bridge) dan, untuk fitur SCM, Git CLI. Jika Git tidak terpasang, SCM menampilkan status yang jelas; fitur lain tetap jalan.
+- Jika sebuah fitur butuh sesuatu di luar itu, fitur itu TIDAK boleh dibangun dengan cara itu.
 
 ## 2. Arsitektur
 
@@ -17,16 +18,15 @@ BroAgentAI Extension (MV3 Side Panel)
   - Explorer / Search / SCM / Terminal / Agent / Settings
   - Approval Card (Allow once / Allow session / Deny)
   - Deteksi perintah dari halaman chat (content script, read-only DOM)
-  | WebSocket ws://127.0.0.1:<port> + token (localhost only)
+  | Native Messaging (chrome.runtime.connectNative, stdio, frame 4-byte length + JSON)
   v
-BroAgentAI Bridge (Go, single .exe, tray icon)
-  - WebSocket server localhost
-  - PTY terminal Windows (ConPTY)
-  - Git via library Go (go-git) â€” TIDAK memanggil git.exe sistem
-  - File System â€” hanya workspace yang di-allowlist
-  - Auth: token random, disimpan di %APPDATA%/BroAgentAI/token.txt
+BroAgentAI Bridge (Node.js, dijalankan browser lewat launcher)
+  - RPC router (system.*, workspace.*, fs.*, git.*, config/instructions/skills)
+  - File System — hanya di dalam workspace aktif, symlink escape ditolak
+  - Git — memanggil Git CLI sistem dari bridge (bukan dari extension)
+  - Akses dibatasi `allowed_origins` di manifest host (hanya extension ini)
   v
-Folder Project User (filesystem Windows asli)
+Folder Project User (filesystem asli)
 ```
 
 ## 3. Komponen
@@ -37,55 +37,59 @@ Folder Project User (filesystem Windows asli)
   Chat terjadi di halaman chat asli. Panel hanya: monitor + approval + log + editor/SCM/terminal.
 - Tabs: Explorer, Search, SCM, Terminal, Agent, Settings.
 - Semua aksi Write/Execute/Delete HARUS lewat approval kecuali mode Auto + allowlist.
-- Jika Bridge offline: panel tampilkan banner "Bridge offline â€” jalankan BroAgentAI-Bridge.exe" + tombol Retry. Semua tombol aksi disabled, TIDAK ada mode demo yang pura-pura sukses.
+- Jika Bridge offline: panel tampilkan banner "Companion not running" + tombol Restart/Setup. TIDAK ada mode demo yang pura-pura sukses.
 
 ### 3.2 Bridge (`bridge/`)
-- Bahasa: Go. Output: 1 file `BroAgentAI-Bridge.exe`.
-- Tanpa installer, tanpa runtime tambahan. Double-click -> tray icon -> jalan.
-- Port: default 18741, fallback scan 18741-18760 jika bentrok. Port aktif ditulis ke `%APPDATA%/BroAgentAI/port.txt` agar extension bisa menemukan.
-- Hanya bind 127.0.0.1. Tolak koneksi non-localhost.
-- Setiap pesan WebSocket wajib sertakan `token`. Token salah -> close.
-- Workspace allowlist: disimpan di `%APPDATA%/BroAgentAI/workspaces.json`. Bridge menolak path di luar allowlist.
-- Log: `%APPDATA%/BroAgentAI/bridge.log` (rotasi sederhana).
+- Bahasa: TypeScript (Node.js >= 22.6). Output build: `bridge/dist/index.js`.
+- Dijalankan oleh browser sebagai native-messaging host; tidak ada port jaringan, tidak ada token.
+- Install dev: `npm run host:install:dev` (atau `install.bat`). Menulis launcher `bridge/broagentai-host.cmd` (di luar `dist`, karena build membersihkan `dist`), manifest host, dan registry key HKCU di Windows.
+- stdout hanya untuk frame Native Messaging; semua log ke stderr.
+- Config dan daftar workspace: `~/.broagentai/` (override: `BROAGENTAI_CONFIG_DIR`).
 
-### 3.3 Protocol WebSocket (JSON)
-Request: `{ id, token, type, payload }`
-Response: `{ id, ok, result?, error? }`
-Event (bridge -> extension): `{ event, payload }` untuk terminal output, file watcher, git status berubah.
+### 3.3 Protocol RPC (JSON di atas Native Messaging)
+Request: `{ id, method, params? }`
+Response: `{ id, result? }` atau `{ id, error: { code, message, data? } }`
+Event (bridge -> extension): `{ event, data? }`.
 
-Types v1:
-- `ping` -> `{ pong: true, version }`
-- `fs.list { path }`, `fs.read { path }`, `fs.write { path, content }`, `fs.mkdir`, `fs.rename`, `fs.delete`
-- `git.status { cwd }`, `git.diff { cwd, file? }`, `git.stage { cwd, files[] }`, `git.unstage`, `git.commit { cwd, message }`, `git.branch { cwd }`, `git.checkout { cwd, branch }`, `git.log { cwd, limit }`, `git.push { cwd, remote?, branch? }`, `git.pull`, `git.fetch`, `git.clone { url, dest }`
-- `term.create { cwd }` -> `{ sessionId }`, `term.input { sessionId, data }`, `term.resize`, `term.close`
-- `chat.command { text, source }` â€” dicatat di log + diteruskan ke approval (tidak dieksekusi langsung).
+Method v1:
+- `system.ping`, `system.info`
+- `workspace.list|add|remove|rename|setActive|validate|settings|openFolderDialog`
+- `fs.listDir|listTree|stat|readFile|readFileLines|writeFile|searchFiles`
+- `git.status`, `git.diff { path, staged? }`, `git.stage { paths[] }`, `git.unstage { paths[] }`, `git.discard { paths[] }`, `git.commit { message }`, `git.branches`, `git.createBranch { name }`, `git.checkout { branch }`, `git.init`
+- Menyusul: `git.fetch|pull|push`, `term.*`, `chat.command`.
+
+Semua method `fs.*` dan `git.*` bekerja pada workspace aktif; path selalu relatif terhadap root workspace.
 
 ## 4. Keamanan
-- Localhost only, token auth, workspace allowlist.
+- Hanya extension dengan origin terdaftar yang bisa menjalankan bridge.
+- Semua path dikurung di workspace aktif (realpath, anti symlink escape).
 - Approval: setiap `fs.write/delete`, `git.commit/push`, `term.input` yang dikirim dari chat HARUS approval. Aksi manual user di panel (klik tombol sendiri) tidak butuh approval kedua.
 - Mode Agent: `ask` (default) | `auto` (hanya allowlist tool + workspace, bisa dimatikan kapan saja).
-- Bridge TIDAK pernah mengirim file/token user ke internet. Push Git hanya ke remote yang user set di Settings, dengan credential yang user isi.
+- Bridge TIDAK pernah mengirim file/token user ke internet. Git dijalankan dengan `GIT_TERMINAL_PROMPT=0` sehingga tidak pernah menggantung menunggu kredensial.
 
 ## 5. SCM = Git Asli
-- Format `.git` standar (via go-git). Repo bisa dibuka di Git CLI manapun.
+- Bridge memanggil Git CLI sistem (`git status --porcelain=v2`, `git diff`, dst.), jadi hooks, config, dan credential helper user berlaku apa adanya.
+- Workspace dianggap repo hanya jika root workspace = root repo. Workspace di dalam repo induk ditampilkan sebagai "bukan repo" agar aksi tidak menyentuh file di luar workspace.
+- `git.discard` butuh konfirmasi di UI dan tidak boleh menarget root workspace.
+- `git.checkout` ditolak bila ada perubahan tracked yang belum di-commit.
 - SCM UI dan Terminal memakai sumber yang sama (repo di disk).
 - Tidak ada Git pura-pura, tidak ada snapshot lokal sebagai pengganti Git.
 
 ## 6. Terminal = PTY Asli
-- Terminal di panel adalah PTY Windows asli (ConPTY) via Bridge.
-- Mendukung perintah apapun yang bisa jalan di cmd/PowerShell user, termasuk `git`, `npm`, `dir`.
+- Terminal di panel adalah PTY asli via Bridge (menyusul di M4).
+- Mendukung perintah apapun yang bisa jalan di shell user, termasuk `git`, `npm`, `dir`.
 - Output streaming via event `term.output`.
 
 ## 7. Yang DILARANG
-- Dilarang memanggil editor lain, aplikasi pihak ketiga, atau aplikasi apa pun di luar 2 komponen ini.
-- Dilarang memanggil `git.exe`, `code`, atau binary sistem dari extension.
-- Dilarang mode demo yang menampilkan hasil palsu sebagai hasil nyata.
+- Dilarang memanggil editor lain atau aplikasi pihak ketiga.
+- Dilarang memanggil `git`, `code`, atau binary sistem apa pun dari extension. Hanya bridge yang boleh menjalankan Git CLI.
+- Dilarang mode demo yang menampilkan hasil palsu sebagai hasil nyata. Panel yang belum terhubung wajib diberi label "Demo".
 - Dilarang menyimpan token/credential di repo.
 
 ## 8. Milestone
-- M1: Bridge skeleton (WS + auth + ping + tray) + extension deteksi bridge (online/offline).
-- M2: fs.* + Explorer/Editor end-to-end lewat Bridge.
-- M3: git.* + SCM end-to-end.
+- M1: Bridge skeleton (native messaging + ping) + extension deteksi bridge (online/offline). — selesai
+- M2: fs.* + Explorer/Editor/Search end-to-end lewat Bridge. — selesai
+- M3: git.* + SCM end-to-end (loop lokal: status, diff, stage, commit, branch). Remote (fetch/pull/push) menyusul.
 - M4: term.* + Terminal tab end-to-end.
 - M5: chat.command + approval + log end-to-end.
-- M6: Playwright E2E (extension + bridge test fixture) â€” setiap perubahan UI wajib screenshot + cek console error.
+- M6: Playwright E2E (extension + bridge asli) — setiap perubahan UI wajib screenshot + cek console error. — berjalan (`npm run e2e`)
