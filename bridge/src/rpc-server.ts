@@ -11,6 +11,7 @@ import { ErrorCode } from "./rpc.ts";
 import type { RpcRequest, RpcResponse } from "./rpc.ts";
 import { WorkspaceError, WorkspaceStore, validateWorkspacePath } from "./workspace.ts";
 import type { WorkspaceInfo } from "./rpc.ts";
+import { listDir, listTree, statFile, readFile } from "./fs.ts";
 
 /** Protocol version negotiated between extension and host. */
 export const PROTOCOL_VERSION = 1;
@@ -160,6 +161,27 @@ export class RpcServer {
     });
 
     this.register("workspace.settings", () => this.#store.settings());
+
+    this.register("fs.listDir", (params) => {
+      const { path } = readParams(params);
+      return listDir(this.#store, path || ".");
+    });
+
+    this.register("fs.listTree", (params) => {
+      const { path, maxDepth } = readParams(params);
+      const depth = maxDepth ? parseInt(maxDepth, 10) : 3;
+      return listTree(this.#store, path || ".", depth);
+    });
+
+    this.register("fs.stat", (params) => {
+      const { path } = readParams(params);
+      return statFile(this.#store, path);
+    });
+
+    this.register("fs.readFile", (params) => {
+      const { path } = readParams(params);
+      return readFile(this.#store, path);
+    });
   }
 }
 
@@ -177,16 +199,12 @@ function extractId(value: unknown): number | undefined {
   return typeof id === "number" ? id : undefined;
 }
 
-/** Read a string field from a params object. */
-function readParams(params: unknown): Record<string, string> {
+/** Read fields from a params object. */
+function readParams(params: unknown): Record<string, any> {
   if (!params || typeof params !== "object") {
     throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "params must be an object");
   }
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return out;
+  return { ...(params as Record<string, any>) };
 }
 
 /** Convert any thrown value into a structured RPC error. */

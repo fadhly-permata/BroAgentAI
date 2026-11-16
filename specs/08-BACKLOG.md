@@ -54,10 +54,10 @@ Target: Panel terbuka, host terhubung, workspace list berfungsi, provider manife
 Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tree dapat dibaca dengan aman.
 
 ### 1.1. Filesystem Operations (Bridge)
-- [ ] 1.1.1. Implementasi `fs.listDir` dan `fs.listTree` dengan batasan depth.
-- [ ] 1.1.2. Implementasi `fs.stat` dan `fs.readFile` dengan batasan ukuran (cap).
-- [ ] 1.1.3. Tambahkan deteksi file biner dan pencegahan path escape (`../`, symlink).
-- [ ] 1.1.4. Tambahkan aturan ignore default (`.git`, `node_modules`, `dist`).
+- [x] 1.1.1. Implementasi `fs.listDir` dan `fs.listTree` dengan batasan depth.
+- [x] 1.1.2. Implementasi `fs.stat` dan `fs.readFile` dengan batasan ukuran (cap).
+- [x] 1.1.3. Tambahkan deteksi file biner dan pencegahan path escape (`../`, symlink).
+- [x] 1.1.4. Tambahkan aturan ignore default (`.git`, `node_modules`, `dist`).
 
 ### 1.2. Configuration & Resources
 - [ ] 1.2.1. Buat parser JSONC untuk `browseragent.jsonc`.
