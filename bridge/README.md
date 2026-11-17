@@ -33,6 +33,8 @@ npm run e2e                          # extension + real bridge, incl. real nativ
 ## Notes
 
 - stdout is reserved for Native Messaging frames; logs go to stderr.
-- Config and the workspace list live in `~/.broagentai/` (override with `BROAGENTAI_CONFIG_DIR`).
+- Host config, the workspace list and `trust.json` live in `%APPDATA%\BroAgentAI` on Windows,
+  `~/Library/Application Support/BroAgentAI` on macOS and `$XDG_CONFIG_HOME/broagentai` on Linux
+  (override with `BROAGENTAI_CONFIG_DIR`).
 - `git.*` methods call the system Git CLI. Without Git, `git.status` reports
   `gitAvailable: false` and everything else keeps working.

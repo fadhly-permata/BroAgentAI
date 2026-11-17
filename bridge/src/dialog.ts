@@ -15,18 +15,24 @@ import { WorkspaceError } from "./workspace.ts";
 export const DISABLE_DIALOG_ENV = "BROAGENTAI_DISABLE_DIALOG";
 
 /**
- * PowerShell script that shows a top-most FolderBrowserDialog and prints the
+ * PowerShell script that shows a FolderBrowserDialog above other windows and prints the
  * selected path as UTF-8. Prints nothing when the user cancels.
  */
 export const WINDOWS_FOLDER_DIALOG_SCRIPT = [
   "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
   "Add-Type -AssemblyName System.Windows.Forms",
-  "$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }",
+  "[System.Windows.Forms.Application]::EnableVisualStyles()",
+  // The host has no window of its own, so Windows would open the dialog BEHIND
+  // the browser. An invisible, shown, top-most owner keeps the dialog (an owned
+  // window always sits above its owner) in front of every normal window.
+  "$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false; FormBorderStyle = 'None'; Opacity = 0; Width = 1; Height = 1; StartPosition = 'CenterScreen' }",
+  "$owner.Show()",
+  "$owner.Activate()",
   "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
   "$dialog.Description = 'Pilih folder workspace BroAgentAI'",
   "$dialog.ShowNewFolderButton = $false",
   "if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }",
-  "$owner.Dispose()",
+  "$owner.Close()",
 ].join("; ");
 
 /** Show the native folder picker and resolve with the chosen absolute path. */

@@ -44,7 +44,7 @@ Folder Project User (filesystem asli)
 - Dijalankan oleh browser sebagai native-messaging host; tidak ada port jaringan, tidak ada token.
 - Install dev: `npm run host:install:dev` (atau `install.bat`). Menulis launcher `bridge/broagentai-host.cmd` (di luar `dist`, karena build membersihkan `dist`), manifest host, dan registry key HKCU di Windows.
 - stdout hanya untuk frame Native Messaging; semua log ke stderr.
-- Config dan daftar workspace: `~/.broagentai/` (override: `BROAGENTAI_CONFIG_DIR`).
+- Config host, daftar workspace, dan `trust.json`: `%APPDATA%\BroAgentAI` (Windows), `~/Library/Application Support/BroAgentAI` (macOS), `$XDG_CONFIG_HOME/broagentai` (Linux). Override: `BROAGENTAI_CONFIG_DIR`.
 
 ### 3.3 Protocol RPC (JSON di atas Native Messaging)
 Request: `{ id, method, params? }`

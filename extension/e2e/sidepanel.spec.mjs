@@ -100,10 +100,17 @@ try {
   await page.locator('.rail-btn[data-tab="explorer"]').click();
 
   // ---- 3. add workspace through the UI (native dialog disabled -> manual path)
+  let browseChecked = false;
   async function addWorkspaceViaUi(dir) {
     await page.locator('#wsBtn').click();
     await page.locator('#wsMenu [data-act="open-folder"]').click();
     await page.locator('#wsPath').waitFor({ state: 'visible', timeout: 6000 });
+    if (!browseChecked) {
+      browseChecked = true;
+      await page.locator('#wsBrowse').click();
+      check('open folder: path box is usable at once and Browse reports an unavailable native dialog',
+        await until(async () => /Ketik path secara manual/.test(await text(page, '#wsBrowseHint'))), await text(page, '#wsBrowseHint'));
+    }
     await page.locator('#wsPath').fill(dir);
     await page.locator('#modalOk').click();
   }

@@ -214,23 +214,31 @@ async function addWorkspace(path:string){
   await loadWorkspaces();
   toast('Workspace ditambahkan: '+(addRes.workspace?.name||path));
 }
-function askWorkspacePath(){
-  openModal('Open folder','<label>Absolute path<br><input id="wsPath" class="input" placeholder="D:/Projects/my-repo"></label><p class="muted">Host validasi: exists, directory, realpath.</p>',async()=>{
+// Open folder: the path box is always shown first, so the user is never stuck
+// waiting on an OS dialog. "Browse..." asks the bridge for the native picker and
+// only fills the box; nothing is added until OK.
+function openFolder(){
+  openModal('Open folder','<label>Absolute path<br><input id="wsPath" class="input" placeholder="D:/Projects/my-repo"></label><p><button id="wsBrowse" class="mini" type="button">Browse...</button> <span id="wsBrowseHint" class="muted"></span></p><p class="muted">Host validasi: exists, directory, realpath.</p>',async()=>{
     const v=(document.getElementById('wsPath') as HTMLInputElement)?.value.trim();
     if(!v) return toast('Path kosong');
     try{ await addWorkspace(v); }catch(e:any){ toast('Gagal menambahkan workspace: '+(e?.message||e)); }
   });
-}
-async function openFolder(){
-  let picked:any=null;
-  try{
-    picked=await bridge.call('workspace.openFolderDialog', {}, 5*60*1000);
-  }catch(e:any){
-    if(e?.code===BridgeErrorCode.OPERATION_CANCELLED) return;
-    return askWorkspacePath();
-  }
-  if(!picked?.path) return;
-  try{ await addWorkspace(picked.path); }catch(e:any){ toast('Gagal menambahkan workspace: '+(e?.message||e)); }
+  const input=document.getElementById('wsPath') as HTMLInputElement;
+  const browse=document.getElementById('wsBrowse') as HTMLButtonElement;
+  const hint=document.getElementById('wsBrowseHint') as HTMLElement;
+  input.focus();
+  browse.addEventListener('click',async()=>{
+    browse.disabled=true;
+    hint.textContent='Dialog folder terbuka. Kalau tidak terlihat, cek taskbar atau Alt+Tab.';
+    try{
+      // The user may take a while to pick, so the timeout is long.
+      const picked:any=await bridge.call('workspace.openFolderDialog', {}, 5*60*1000);
+      if(picked?.path && document.body.contains(input)) input.value=picked.path;
+      hint.textContent='';
+    }catch(e:any){
+      hint.textContent=e?.code===BridgeErrorCode.OPERATION_CANCELLED?'':'Dialog folder tidak tersedia di host ini. Ketik path secara manual.';
+    }finally{ browse.disabled=false; }
+  });
 }
 async function connectBridge(){
   try{
