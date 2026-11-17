@@ -2,20 +2,32 @@
 // format corrections) so they no longer look like the user's own messages.
 //
 // Detection is by text only: every agent message starts with a fixed marker
-// (agentMessageKind). Nothing is stored, so the marks come back after a page
-// reload and on virtualized lists that re-create message nodes. Styling only
-// sets attributes and pseudo-elements on the page's own nodes - it never adds
-// or removes children, which would upset the page's framework, and it never
-// changes layout size, which virtualized lists measure.
+// (agentMessageKind), so the marks come back after a page reload and on
+// virtualized lists that re-create message nodes. Styling only sets attributes
+// and pseudo-elements on the page's own nodes - it never adds or removes
+// children, which would upset the page's framework.
+//
+// Agent messages start collapsed (a short preview under the label) so they
+// stay out of the way of the user's own chat; a click on a collapsed message
+// expands it, a click on the label strip of an expanded one collapses it again.
+// The only layout change is that height, which virtualized lists re-measure.
 import { agentMessageKind, PROMPT_HEADING, NOTE_TAG, type AgentMessage } from '../agent-parser.js';
 import type { ProviderInfo } from '../providers/types.js';
 
 const ATTR = 'data-ba-agent';
 const LABEL_ATTR = 'data-ba-agent-label';
+const COLLAPSED_ATTR = 'data-ba-collapsed';
 const STYLE_ID = 'ba-agent-style';
 /** How far up from the marker text a message bubble may sit. */
 const MAX_CLIMB = 8;
 const SCAN_DELAY_MS = 300;
+/** Collapsed height, and the top strip of an expanded message that collapses it. */
+const COLLAPSED_PX = 44;
+const HEADER_PX = 28;
+const TITLE_COLLAPSED = 'Sent automatically by BroAgentAI, not typed by you. Click to expand.';
+const TITLE_EXPANDED = 'Sent automatically by BroAgentAI, not typed by you. Click the top bar to collapse.';
+
+const MONO = `'Cascadia Code', 'JetBrains Mono', Consolas, 'SFMono-Regular', Menlo, monospace`;
 
 const CSS = `
 [${ATTR}] {
@@ -24,8 +36,22 @@ const CSS = `
   box-shadow: inset 3px 0 0 #007acc !important;
   border-radius: 8px;
 }
+/* Machine-written text: monospace and a size smaller than the user's own messages. */
+[${ATTR}], [${ATTR}] * {
+  font-family: ${MONO} !important;
+  font-size: 12px !important;
+  line-height: 1.55 !important;
+}
+[${ATTR}][${COLLAPSED_ATTR}] {
+  max-height: ${COLLAPSED_PX}px !important;
+  overflow: hidden !important;
+  cursor: pointer;
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent);
+}
+[${ATTR}][${COLLAPSED_ATTR}]:hover { background-color: rgba(0, 122, 204, 0.2) !important; }
 [${ATTR}]::after {
-  content: attr(${LABEL_ATTR});
+  content: '\\25BE  ' attr(${LABEL_ATTR});
   /* Inside the top-right corner: bubbles often clip overflow, and every agent
      message starts with a short first line, so this corner is free. */
   position: absolute; top: 6px; right: 8px; z-index: 1;
@@ -37,6 +63,7 @@ const CSS = `
   white-space: nowrap;
   pointer-events: none;
 }
+[${ATTR}][${COLLAPSED_ATTR}]::after { content: '\\25B8  ' attr(${LABEL_ATTR}); }
 [${ATTR}="error"] { background-color: rgba(241, 76, 76, 0.1) !important; box-shadow: inset 3px 0 0 #f14c4c !important; }
 [${ATTR}="error"]::after { background: #c72e2e; }
 [${ATTR}="note"] { background-color: rgba(204, 167, 0, 0.1) !important; box-shadow: inset 3px 0 0 #cca700 !important; }
@@ -118,8 +145,46 @@ function scan(provider: ProviderInfo): void {
     const { kind, text } = label(msg);
     bubble.setAttribute(ATTR, kind);
     bubble.setAttribute(LABEL_ATTR, text);
-    bubble.title = 'Sent automatically by BroAgentAI, not typed by you';
+    setCollapsed(bubble, !expanded.has(signature(bubble)));
   }
+}
+
+/**
+ * Messages the user expanded, by text, so a virtualized list that re-creates
+ * the node (scrolling away and back) shows it expanded again. Page lifetime only.
+ */
+const expanded = new Set<string>();
+
+function signature(bubble: HTMLElement): string {
+  const text = visibleText(bubble);
+  return `${bubble.getAttribute(ATTR)}|${text.length}|${text.slice(0, 160)}`;
+}
+
+function setCollapsed(bubble: HTMLElement, collapsed: boolean): void {
+  bubble.toggleAttribute(COLLAPSED_ATTR, collapsed);
+  bubble.title = collapsed ? TITLE_COLLAPSED : TITLE_EXPANDED;
+}
+
+/**
+ * Toggle on click: anywhere on a collapsed message expands it; on an expanded
+ * one only the label strip collapses it, so selecting or clicking its text
+ * still works. Handled in the capture phase and swallowed, so the page does not
+ * also act on the click (e.g. open its edit mode).
+ */
+function onClick(e: MouseEvent): void {
+  if (e.button !== 0) return;
+  const bubble = (e.target as Element | null)?.closest?.(`[${ATTR}]`) as HTMLElement | null;
+  if (!bubble) return;
+  const collapsed = bubble.hasAttribute(COLLAPSED_ATTR);
+  if (!collapsed) {
+    if (e.clientY - bubble.getBoundingClientRect().top > HEADER_PX) return;
+    if (String(window.getSelection() ?? '') !== '') return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  const sig = signature(bubble);
+  if (collapsed) expanded.add(sig); else expanded.delete(sig);
+  setCollapsed(bubble, !collapsed);
 }
 
 /** Start marking agent messages on this chat page; runs for the page's lifetime. */
@@ -129,6 +194,7 @@ export function startAgentMarks(provider: ProviderInfo): void {
     style.id = STYLE_ID;
     style.textContent = CSS;
     (document.head ?? document.documentElement).appendChild(style);
+    document.addEventListener('click', onClick, true);
   }
   let timer: number | undefined;
   const schedule = () => {
