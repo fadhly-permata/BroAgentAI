@@ -74,6 +74,7 @@ function renderSession(): void {
   $('agentStart').classList.toggle('hidden', !!session);
   $('agentStop').classList.toggle('hidden', !session);
   $('ckAi').textContent = session ? 'x' : 'o';
+  $('ckAi').classList.toggle('done', !!session);
 }
 
 function renderProviders(): void {

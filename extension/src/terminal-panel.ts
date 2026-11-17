@@ -27,8 +27,15 @@ function ensureXterm(): Terminal {
   term = new Terminal({
     cursorBlink: true,
     fontSize: 12,
-    fontFamily: 'Consolas, "Cascadia Mono", Menlo, monospace',
-    theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
+    lineHeight: 1.15,
+    fontFamily: "Consolas, 'Courier New', monospace",
+    // VS Code Dark Modern terminal palette.
+    theme: {
+      background: '#1e1e1e', foreground: '#cccccc', cursor: '#aeafad', cursorAccent: '#1e1e1e',
+      selectionBackground: '#264f78',
+      black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510', blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
+      brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b', brightYellow: '#f5f543', brightBlue: '#3b8eea', brightMagenta: '#d670d6', brightCyan: '#29b8db', brightWhite: '#e5e5e5',
+    },
     scrollback: 5000,
   });
   fit = new FitAddon();

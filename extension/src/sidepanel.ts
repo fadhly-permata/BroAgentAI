@@ -5,6 +5,9 @@ import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
 import { initAgent, showAgent } from './agent-panel.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
+import { hydrateIcons, icon, fileIcon } from './icons.js';
+
+hydrateIcons();
 
 type FileNode={name:string;path:string;kind:'dir'|'file';git?:string;children?:FileNode[];content?:string};
 const $=(id:string)=>document.getElementById(id) as HTMLElement;
@@ -27,12 +30,16 @@ async function loadWorkspaces() {
 let currentFile:FileNode|null=null; let currentMtime:number|null=null; let dirty=false;
 let toastTimer:any=null;
 function toast(m:string){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.add('hidden'),4000)}
-function renderWs(){ 
-  $('headerWs').textContent=activeWs?activeWs.name+' - '+activeWs.path:t('noWorkspace'); 
-  $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'">'+(w===activeWs?'&#10003; ':'')+'<b>'+w.name+'</b><small>'+w.path+'</small></button>').join(''); 
-  $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card"><b>'+w.name+'</b><br><small>'+w.path+' - '+w.last+'</small><br><br><button class="mini" data-open="'+i+'">Open</button> <button class="mini" data-rename="'+i+'">Rename</button> <button class="mini danger" data-remove="'+i+'">Remove</button></div>').join('')||'<p class="muted">Belum ada workspace.</p>'; 
-  $('ckWs').textContent=activeWs?'x':'o'; 
+function renderWs(){
+  const head=$('headerWs');
+  head.textContent=activeWs?activeWs.name:t('noWorkspace');
+  head.title=activeWs?activeWs.path:'';
+  $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'" role="menuitem"><span class="ws-check">'+(w===activeWs?icon('check'):'')+'</span><span class="ws-text"><b>'+escapeHtml(w.name)+'</b><small>'+escapeHtml(w.path)+'</small></span></button>').join('');
+  $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card'+(w===activeWs?' active-ws':'')+'"><div class="ws-item-main"><b>'+escapeHtml(w.name)+'</b><small title="'+escapeHtml(w.path)+'">'+escapeHtml(w.path)+' - '+escapeHtml(w.last)+'</small></div><div class="ws-item-actions"><button class="mini" data-open="'+i+'">Open</button><button class="mini" data-rename="'+i+'">Rename</button><button class="mini danger" data-remove="'+i+'">Remove</button></div></div>').join('')||'<p class="muted">Belum ada workspace.</p>';
+  setCheck('ckWs', !!activeWs);
 }
+/** First-run checklist mark: text stays x/o for scripts, the class draws it. */
+function setCheck(id:string, done:boolean){ const el=$(id); el.textContent=done?'x':'o'; el.classList.toggle('done',done); }
 
 function updateHostStatus(status: 'offline' | 'ready' | 'error') {
   const pill = $('hostPill');
@@ -41,7 +48,7 @@ function updateHostStatus(status: 'offline' | 'ready' | 'error') {
   pill.innerHTML = '<span class="dot"></span><span data-i18n="' + tKey + '"></span>';
   (pill.lastElementChild as HTMLElement).textContent = t(tKey);
   pill.className = 'pill ' + (status === 'offline' ? 'pill-warn' : status === 'ready' ? 'pill-ok' : 'pill-error');
-  $('ckHost').textContent = status === 'ready' ? 'x' : 'o';
+  setCheck('ckHost', status === 'ready');
   if (status === 'offline' || status === 'error') {
     $('banner').classList.remove('hidden');
   } else {
@@ -176,6 +183,7 @@ async function openFile(path:string){
     dirty = false;
     $('editorPreview').classList.remove('hidden');
     $('edName').textContent = path;
+    $('edIcon').innerHTML = fileIcon(currentFile.name);
     ($('edArea') as HTMLTextAreaElement).value = content;
     $('edDirty').textContent = '';
     $('edMeta').textContent = 'File dari workspace - ' + content.length + ' karakter';
@@ -300,16 +308,20 @@ async function doSearch(){
       grouped[r.file].push({ line: r.line, text: r.text });
     });
     
+    const hit = matcher(query, caseSensitive, useRegex);
     let html = '';
-    
     Object.entries(grouped).forEach(([file, matches]) => {
+      const cut = file.lastIndexOf('/');
+      const base = cut < 0 ? file : file.slice(cut + 1);
+      const dir = cut < 0 ? '' : file.slice(0, cut);
       html += `<div class="search-group">`;
-      html += `<strong class="search-file">${escapeHtml(file)} <span class="muted">(${matches.length} match)</span></strong>`;
+      html += `<div class="search-file" role="button" aria-expanded="true" title="${escapeHtml(file)}"><span class="twist">${icon('chevron-right')}</span><span class="ba-tree-icon">${fileIcon(base)}</span><span class="sf-name">${escapeHtml(base)}</span><span class="sf-dir">${escapeHtml(dir)}</span><span class="count-badge">${matches.length}</span></div>`;
       html += `<div class="search-matches">`;
       matches.forEach((m: any) => {
-        html += `<div class="search-match" data-file="${escapeHtml(file)}" data-line="${m.line}">`;
-        html += `<span class="line-num">L${m.line}:</span> `;
-        html += `<span class="match-text">${escapeHtml(m.text)}</span>`;
+        const text = String(m.text ?? '').replace(/^\s+/, '');
+        html += `<div class="search-match" data-file="${escapeHtml(file)}" data-line="${m.line}" title="L${m.line}: ${escapeHtml(text.slice(0, 300))}">`;
+        html += `<span class="line-num">${m.line}</span>`;
+        html += `<span class="match-text">${highlight(text, hit)}</span>`;
         html += `</div>`;
       });
       html += `</div></div>`;
@@ -321,6 +333,12 @@ async function doSearch(){
       .replace('{files}', String(Object.keys(grouped).length));
     $('searchInfo').textContent = matchMsg;
     
+    document.querySelectorAll('#searchResults .search-file').forEach(el => {
+      el.addEventListener('click', () => {
+        const group = el.parentElement!;
+        el.setAttribute('aria-expanded', String(!group.classList.toggle('collapsed')));
+      });
+    });
     document.querySelectorAll('.search-match').forEach(el => {
       el.addEventListener('click', () => {
         const file = (el as HTMLElement).dataset.file!;
@@ -334,6 +352,28 @@ async function doSearch(){
     $('searchErr').classList.remove('hidden');
     $('searchResults').innerHTML = ''; $('searchInfo').textContent = '';
   }
+}
+
+/** A global regex for the query with the same flags the search used, or null when it does not compile. */
+function matcher(query: string, caseSensitive: boolean, regex: boolean): RegExp | null {
+  try {
+    const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(source, caseSensitive ? 'g' : 'gi');
+  } catch { return null; }
+}
+
+/** Escape a result line and wrap each match in <mark>. */
+function highlight(text: string, re: RegExp | null): string {
+  if (!re) return escapeHtml(text);
+  let out = '';
+  let last = 0;
+  re.lastIndex = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (m[0] === '') { re.lastIndex++; continue; }
+    out += escapeHtml(text.slice(last, m.index)) + '<mark>' + escapeHtml(m[0]) + '</mark>';
+    last = m.index + m[0].length;
+  }
+  return out + escapeHtml(text.slice(last));
 }
 
 function escapeHtml(text: string): string {
@@ -432,7 +472,7 @@ function applyUISettings() {
   }
   if (s.wrap !== undefined) {
     ($('wrapChk') as HTMLInputElement).checked = s.wrap;
-    document.documentElement.style.setProperty('--editor-wrap', s.wrap ? 'wrap' : 'nowrap');
+    document.documentElement.style.setProperty('--editor-wrap', s.wrap ? 'pre-wrap' : 'pre');
   }
 }
 
@@ -450,17 +490,20 @@ on('themeSel','change',(e)=>{
 });
 on('fontSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({fontSize:v}); document.documentElement.style.setProperty('--font-size',v+'px');}});
 on('tabSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({tabSize:v}); document.documentElement.style.setProperty('--tab-size',String(v));}});
-on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; saveUISettings({wrap:v}); document.documentElement.style.setProperty('--editor-wrap',v?'wrap':'nowrap');});
+on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; saveUISettings({wrap:v}); document.documentElement.style.setProperty('--editor-wrap',v?'pre-wrap':'pre');});
 
 applyUISettings();
 
 on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')});
 on('newFileBtn','click',()=>newFile());
+on('collapseTree','click',()=>{renderTree()});
+on('searchCollapse','click',()=>{const groups=document.querySelectorAll('#searchResults .search-group'); const fold=[...groups].some(g=>!g.classList.contains('collapsed')); groups.forEach(g=>{g.classList.toggle('collapsed',fold); g.querySelector('.search-file')?.setAttribute('aria-expanded',String(!fold));})});
+on('searchClear','click',()=>{($('searchInput') as HTMLInputElement).value=''; $('searchResults').innerHTML=''; $('searchInfo').textContent=''; $('searchErr').classList.add('hidden'); ($('searchInput') as HTMLInputElement).focus()});
 on('newFolderBtn','click',()=>newFolder());
 on('showIgnored','change',async()=>{await renderTree()});
 on('ignoreInput','change',()=>applyIgnore());
 on('ignoreInput','blur',()=>applyIgnore());
-on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; closeEditorPreview()}); on('edArea','input',()=>{dirty=true; $('edDirty').textContent='- dirty'}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
+on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; closeEditorPreview()}); on('edArea','input',()=>{dirty=true; $('edDirty').innerHTML='●<span class="sr-only"> dirty</span>'; $('edDirty').title='Unsaved changes'}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }

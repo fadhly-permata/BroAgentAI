@@ -81,7 +81,14 @@ async function loadFile(path: string, targetLine = 0) {
       extensions: [
         basicSetup,
         oneDark,
-        EditorView.theme({ '&': { height: '100%' }, '.cm-scroller': { overflow: 'auto' } }),
+        // Dark Modern editor surface over the One Dark syntax colors.
+        EditorView.theme({
+          '&': { height: '100%', backgroundColor: '#1e1e1e' },
+          '.cm-scroller': { overflow: 'auto', fontFamily: "Consolas, 'Courier New', monospace", fontSize: '13px' },
+          '.cm-gutters': { backgroundColor: '#1e1e1e', color: '#6e7681', border: 'none' },
+          '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#cccccc' },
+          '.cm-activeLine': { backgroundColor: 'rgba(42, 45, 46, 0.6)' },
+        }, { dark: true }),
         getLanguageExtension(path),
         keymap.of([
           ...defaultKeymap,

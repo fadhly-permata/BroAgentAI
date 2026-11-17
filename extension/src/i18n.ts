@@ -100,7 +100,19 @@ export const translations = {
     diagnostics: 'Diagnostics',
     restartCompanion: 'Restart Companion',
     openFolder: '+ Open folder...',
-    manageWorkspacesBtn: 'Manage workspaces...'
+    manageWorkspacesBtn: 'Manage workspaces...',
+    collapseAll: 'Collapse All',
+    newFileTip: 'New File...',
+    newFolderTip: 'New Folder...',
+    workspace: 'Workspace',
+    langDesc: 'Language of the panel interface.',
+    themeDesc: 'Color theme. System follows the operating system setting.',
+    fontSizeDesc: 'Font size in pixels for the panel and the file preview.',
+    tabSizeDesc: 'Number of spaces a tab is equal to in the file preview.',
+    wordWrapDesc: 'Wrap long lines in the file preview.',
+    ignoreDesc: 'Comma-separated names hidden from the explorer and search.',
+    versionLabel: 'Version',
+    extIdLabel: 'Extension ID'
   },
   id: {
     brandName: 'BroAgentAI',
@@ -200,7 +212,19 @@ export const translations = {
     diagnostics: 'Diagnostik',
     restartCompanion: 'Restart Pendamping',
     openFolder: '+ Buka folder...',
-    manageWorkspacesBtn: 'Kelola ruang kerja...'
+    manageWorkspacesBtn: 'Kelola ruang kerja...',
+    collapseAll: 'Ciutkan Semua',
+    newFileTip: 'File Baru...',
+    newFolderTip: 'Folder Baru...',
+    workspace: 'Workspace',
+    langDesc: 'Bahasa antarmuka panel.',
+    themeDesc: 'Tema warna. Sistem mengikuti pengaturan sistem operasi.',
+    fontSizeDesc: 'Ukuran font (px) untuk panel dan pratinjau file.',
+    tabSizeDesc: 'Jumlah spasi untuk satu tab di pratinjau file.',
+    wordWrapDesc: 'Bungkus baris panjang di pratinjau file.',
+    ignoreDesc: 'Nama dipisah koma yang disembunyikan dari explorer dan pencarian.',
+    versionLabel: 'Versi',
+    extIdLabel: 'ID Extension'
   }
 };
 

@@ -2,6 +2,12 @@
  * File Explorer Tree View for the BroAgentAI Side Panel.
  */
 import { bridge } from "./bridge-client.js";
+import { fileIcon, icon } from "./icons.js";
+
+/** Horizontal step per tree level, px (matches --tree-indent). */
+const INDENT = 10;
+/** Left padding of a row at the given depth: room for the indent plus a 4px gutter. */
+const pad = (depth: number) => depth * INDENT + 4;
 
 export interface FileNode {
   name: string;
@@ -54,6 +60,8 @@ export async function renderExplorer(
 
     const node = tree as FileNode;
     node.isExpanded = true;
+    // The root comes back as "."; show the workspace folder name like VS Code.
+    if (!node.name || node.name === ".") node.name = workspacePath.split(/[\\/]/).filter(Boolean).pop() || node.name;
 
     rootEl.innerHTML = "";
     const treeContainer = document.createElement("div");
@@ -92,27 +100,43 @@ function renderNode(
 
   const row = document.createElement("div");
   row.className = "ba-tree-node";
-  row.style.paddingLeft = `${depth * 14 + 4}px`;
+  row.style.paddingLeft = `${pad(depth)}px`;
   row.dataset.path = node.path;
+  row.tabIndex = -1;
+  row.title = node.path;
+
+  // Twistie (chevron for folders, blank spacer for files) keeps names aligned.
+  const toggle = document.createElement("span");
+  toggle.className = "ba-tree-toggle";
+  const iconEl = document.createElement("span");
+  iconEl.className = "ba-tree-icon";
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "ba-tree-name";
   if (node.isIgnored) {
     nameSpan.classList.add("ba-ignored");
-    nameSpan.title = "Diabaikan oleh konfigurasi";
+    row.title = `${node.path} (diabaikan oleh konfigurasi)`;
   }
 
-  const childrenEl = document.createElement("div");
-  childrenEl.className = "ba-tree-children";
+  const select = () => {
+    row.closest(".ba-tree")?.querySelectorAll(".ba-tree-node.selected").forEach((el) => el.classList.remove("selected"));
+    row.classList.add("selected");
+    row.focus({ preventScroll: true });
+  };
 
   if (node.isDirectory) {
     row.classList.add("ba-tree-dir");
-    const toggle = document.createElement("span");
-    toggle.className = "ba-tree-toggle";
+    if (depth === 0) row.classList.add("ba-tree-root");
+    toggle.innerHTML = icon("chevron-right");
+    const childrenEl = document.createElement("div");
+    childrenEl.className = "ba-tree-children";
+    // Indent guide sits under this folder's chevron; the root level has none.
+    if (depth === 0) childrenEl.classList.add("no-guide");
+    else childrenEl.style.setProperty("--guide-x", `${pad(depth) + 8}px`);
 
     const paint = (suffix = "") => {
-      toggle.textContent = node.isExpanded ? "v" : ">";
-      nameSpan.textContent = `${node.name}/${suffix}`;
+      iconEl.innerHTML = fileIcon(node.name, node.isExpanded ? "dir-open" : "dir");
+      nameSpan.textContent = node.name + suffix;
       row.setAttribute("aria-expanded", String(!!node.isExpanded));
     };
 
@@ -127,6 +151,7 @@ function renderNode(
     };
 
     row.addEventListener("click", async () => {
+      select();
       node.isExpanded = !node.isExpanded;
       if (node.isExpanded && !node.children) {
         paint(" (memuat...)");
@@ -147,7 +172,7 @@ function renderNode(
     });
 
     paint();
-    row.append(toggle, nameSpan);
+    row.append(toggle, iconEl, nameSpan);
     const dirBadge = gitBadge(node, options.gitStatus);
     if (dirBadge) row.appendChild(dirBadge);
     item.append(row, childrenEl);
@@ -157,12 +182,10 @@ function renderNode(
   }
 
   row.classList.add("ba-tree-file");
-  row.style.paddingLeft = `${depth * 14 + 20}px`;
   row.dataset.file = node.path;
+  iconEl.innerHTML = fileIcon(node.name);
   nameSpan.textContent = node.name;
-  row.appendChild(nameSpan);
-  const fileBadge = gitBadge(node, options.gitStatus);
-  if (fileBadge) row.appendChild(fileBadge);
+  row.append(toggle, iconEl, nameSpan);
 
   if (node.size !== undefined) {
     const sizeSpan = document.createElement("span");
@@ -170,11 +193,14 @@ function renderNode(
     sizeSpan.textContent = node.isBinary ? "bin" : formatSize(node.size);
     row.appendChild(sizeSpan);
   }
+  const fileBadge = gitBadge(node, options.gitStatus);
+  if (fileBadge) row.appendChild(fileBadge);
 
-  row.addEventListener("click", () => options.onFileClick?.(node.path));
+  row.addEventListener("click", () => { select(); options.onFileClick?.(node.path); });
   if (options.onContextClick) {
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      select();
       options.onContextClick!(e, node.path);
     });
   }

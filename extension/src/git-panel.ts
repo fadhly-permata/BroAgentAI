@@ -1,6 +1,7 @@
 // SCM panel: real Git state of the active workspace through the bridge's git.* RPCs.
 // Nothing here is demo data; when Git or a repository is missing the panel says so.
 import { bridge } from './bridge-client.js';
+import { fileIcon, icon } from './icons.js';
 
 interface GitFile {
   path: string;
@@ -48,6 +49,8 @@ const escapeHtml = (text: string) => { const d = document.createElement('div'); 
 let deps: ScmDeps;
 let status: GitStatus | null = null;
 let refreshSeq = 0;
+/** Groups the user folded; kept across refreshes. */
+const collapsed = new Set<GroupKind>();
 
 type GroupKind = 'conflict' | 'staged' | 'changes' | 'untracked';
 const GROUPS: { kind: GroupKind; title: string; pick: (f: GitFile) => boolean }[] = [
@@ -63,30 +66,46 @@ function letter(kind: GroupKind, f: GitFile): string {
   return kind === 'staged' ? f.index : f.worktree;
 }
 
-function button(label: string, act: string, path: string, extra = ''): string {
-  return `<button class="mini ${extra}" data-act="${act}" data-path="${escapeHtml(path)}">${label}</button>`;
+function button(label: string, act: string, path: string, glyph: string, extra = ''): string {
+  return `<button class="action ${extra}" data-act="${act}" data-path="${escapeHtml(path)}" title="${label}" aria-label="${label}">${icon(glyph)}</button>`;
+}
+
+/** File name first, folder after it in muted text - the way VS Code lists changes. */
+function pathHtml(f: GitFile): string {
+  const split = (p: string) => { const i = p.lastIndexOf('/'); return i < 0 ? ['', p] : [p.slice(0, i), p.slice(i + 1)]; };
+  const [dir, base] = split(f.path);
+  const from = f.origPath ? `${escapeHtml(split(f.origPath)[1])} &rarr; ` : '';
+  return `<span class="scm-name">${from}${escapeHtml(base)}</span>${dir ? `<span class="scm-dir">${escapeHtml(dir)}</span>` : ''}`;
 }
 
 function renderGroups(): void {
   const files = status?.files ?? [];
   const html = GROUPS.map((group) => {
     const items = files.filter(group.pick);
-    if (items.length === 0 && group.kind === 'conflict') return '';
-    const bulk = items.length === 0 ? ''
-      : group.kind === 'staged' ? `<button class="mini" data-act="unstage-all">Unstage all</button>`
-      : group.kind === 'conflict' ? ''
-      : `<button class="mini" data-act="stage-all" data-group="${group.kind}">Stage all</button>`;
+    // Like VS Code: empty groups are hidden, except Changes which says "none".
+    if (items.length === 0 && group.kind !== 'changes') return '';
+    const bulk = items.length === 0 || group.kind === 'conflict' ? ''
+      : group.kind === 'staged' ? `<button class="action" data-act="unstage-all" title="Unstage all" aria-label="Unstage all">${icon('remove')}</button>`
+      : `<button class="action" data-act="stage-all" data-group="${group.kind}" title="Stage all" aria-label="Stage all">${icon('add')}</button>`;
     const rows = items.map((f) => {
-      const name = f.origPath ? `${escapeHtml(f.origPath)} &rarr; ${escapeHtml(f.path)}` : escapeHtml(f.path);
+      const mark = letter(group.kind, f);
       const actions =
-        group.kind === 'staged' ? button('Unstage', 'unstage', f.path) + button('Diff', 'diff-staged', f.path)
-        : group.kind === 'conflict' ? button('Diff', 'diff', f.path)
-        : button('Stage', 'stage', f.path) + button('Diff', 'diff', f.path) + button('Discard', 'discard', f.path, 'danger');
-      return `<div class="scm-row" data-scm-file="${escapeHtml(f.path)}"><span class="scm-letter">${escapeHtml(letter(group.kind, f))}</span><span class="scm-path" title="${escapeHtml(f.path)}">${name}</span><span class="scm-actions">${actions}</span></div>`;
+        group.kind === 'staged' ? button('Diff', 'diff-staged', f.path, 'diff') + button('Unstage', 'unstage', f.path, 'remove')
+        : group.kind === 'conflict' ? button('Diff', 'diff', f.path, 'diff')
+        : button('Diff', 'diff', f.path, 'diff') + button('Discard', 'discard', f.path, 'discard', 'danger') + button('Stage', 'stage', f.path, 'add');
+      const name = f.path.split('/').pop() || f.path;
+      return `<div class="scm-row" data-scm-file="${escapeHtml(f.path)}" data-letter="${escapeHtml(mark)}" title="${escapeHtml(f.origPath ? f.origPath + ' -> ' + f.path : f.path)}">`
+        + `<span class="ba-tree-icon">${fileIcon(name)}</span><span class="scm-path">${pathHtml(f)}</span>`
+        + `<span class="scm-actions">${actions}</span><span class="scm-letter" data-letter="${escapeHtml(mark)}">${escapeHtml(mark)}</span></div>`;
     }).join('');
-    return `<div class="card scm-group" data-scm-group="${group.kind}"><div class="card-head"><strong>${group.title} (${items.length})</strong>${bulk}</div>${rows || '<p class="muted">Tidak ada.</p>'}</div>`;
+    const fold = collapsed.has(group.kind) ? ' collapsed' : '';
+    return `<div class="scm-group${fold}" data-scm-group="${group.kind}">`
+      + `<div class="scm-group-head" data-act="toggle-group" data-group="${group.kind}" role="button" aria-expanded="${!fold}">`
+      + `<span class="twist">${icon('chevron-right')}</span><span class="scm-group-title">${group.title}</span>`
+      + `<span class="scm-actions">${bulk}</span><span class="count-badge">${items.length}</span></div>`
+      + `<div class="scm-rows">${rows || '<p class="scm-empty">Tidak ada perubahan.</p>'}</div></div>`;
   }).join('');
-  $('scmGroups').innerHTML = html + (status?.truncated ? '<p class="muted">Daftar dipotong (terlalu banyak perubahan).</p>' : '');
+  $('scmGroups').innerHTML = html + (status?.truncated ? '<p class="muted scm-note">Daftar dipotong (terlalu banyak perubahan).</p>' : '');
 }
 
 function renderCommitButton(): void {
@@ -105,7 +124,7 @@ function showState(message: string, canInit: boolean): void {
   $('scmBody').classList.add('hidden');
   const state = $('scmState');
   state.classList.remove('hidden');
-  state.innerHTML = `<p>${escapeHtml(message)}</p>` + (canInit ? '<div><button id="scmInit" class="mini primary">Init repository</button></div>' : '');
+  state.innerHTML = `<p>${escapeHtml(message)}</p>` + (canInit ? '<button id="scmInit" class="primary">Init repository</button>' : '');
   document.getElementById('scmInit')?.addEventListener('click', () => run(async () => {
     await bridge.call('git.init');
     deps.toast('Repository dibuat');
@@ -191,6 +210,15 @@ async function onGroupClick(e: Event): Promise<void> {
   if (!target || !status) return;
   const act = target.dataset.act!;
   const path = target.dataset.path || '';
+
+  if (act === 'toggle-group') {
+    const kind = target.dataset.group as GroupKind;
+    if (collapsed.has(kind)) collapsed.delete(kind); else collapsed.add(kind);
+    const box = target.closest('.scm-group') as HTMLElement;
+    box.classList.toggle('collapsed', collapsed.has(kind));
+    target.setAttribute('aria-expanded', String(!collapsed.has(kind)));
+    return;
+  }
 
   if (act === 'stage') return run(async () => paint(await bridge.call('git.stage', { paths: [path] })));
   if (act === 'unstage') return run(async () => paint(await bridge.call('git.unstage', { paths: [path] })));
