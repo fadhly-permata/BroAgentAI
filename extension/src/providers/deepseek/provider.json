@@ -4,11 +4,12 @@
   "description": "DeepSeek web chat",
   "homepage": "https://chat.deepseek.com/",
   "matchPatterns": ["https://chat.deepseek.com/*"],
-  "status": "experimental",
+  "status": "ready",
+  "verified": "2026-11-17: composer, Enter-to-send, reply element, code block and idle/generating button state checked on the live site",
   "selectors": {
     "composer": "textarea#chat-input, textarea",
     "submit": "",
-    "assistantMessage": ".ds-markdown",
-    "generating": ""
+    "assistantMessage": ".ds-assistant-message-main-content",
+    "generating": "div[role='button'].ds-button--filled.ds-button--circle:not(.ds-button--disabled)"
   }
 }

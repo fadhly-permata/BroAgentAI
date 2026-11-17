@@ -98,6 +98,6 @@ Semua method `fs.*` dan `git.*` bekerja pada workspace aktif; path selalu relati
 - M2: fs.* + Explorer/Editor/Search end-to-end lewat Bridge. — selesai
 - M3: git.* + SCM end-to-end, termasuk remote (fetch/pull/push/abort). — selesai
 - M4: term.* + Terminal tab end-to-end. — selesai
-- M5: relay chat + approval + log end-to-end. — selesai di halaman chat tiruan; selector DeepSeek/Gemini/Qwen berstatus experimental sampai diverifikasi di situs asli.
+- M5: relay chat + approval + log end-to-end. — selesai di halaman chat tiruan; selector DeepSeek sudah diverifikasi di situs asli; Gemini/Qwen masih experimental.
 - M7/M8: MCP stdio + Streamable HTTP/SSE, trust, katalog tool. — selesai
 - M6: Playwright E2E (extension + bridge asli) — setiap perubahan UI wajib screenshot + cek console error. — berjalan (`npm run e2e`)

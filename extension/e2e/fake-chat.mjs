@@ -6,8 +6,12 @@
 // the "AI" is fake: it answers from the fixed rules below, streaming its
 // reply in two steps like a real chat does.
 //
-// This proves the agent pipeline. It does NOT prove the selectors match the
-// live DeepSeek site; provider.json marks them "experimental" for that reason.
+// The DOM shape mirrors the live site as inspected on 2026-11-17: an id-less
+// <textarea>, replies in .ds-markdown.ds-assistant-message-main-content, code in
+// a bare <pre> (no <code>) inside .md-code-block next to a language label and
+// Copy/Download buttons, and a round send button that is disabled when idle and
+// becomes an enabled Stop button while the reply streams. The live site can
+// still change; re-check provider.json when the health check fails.
 export const FAKE_CHAT_URL = 'https://chat.deepseek.com/';
 
 const html = String.raw`<!doctype html>
@@ -16,10 +20,12 @@ const html = String.raw`<!doctype html>
 .ds-markdown{border-left:3px solid #06c;padding-left:8px;margin:8px 0}pre{background:#eee;padding:6px}textarea{width:100%;height:60px}</style></head>
 <body>
 <div id="messages"></div>
-<textarea id="chat-input" placeholder="Message"></textarea>
+<textarea placeholder="Message DeepSeek"></textarea>
+<div role="button" id="sendBtn" class="ds-button ds-button--primary ds-button--filled ds-button--circle ds-button--disabled" style="width:32px;height:32px;border-radius:50%;background:#06c"></div>
 <script>
 const box = document.getElementById('messages');
-const input = document.getElementById('chat-input');
+const input = document.querySelector('textarea');
+const sendBtn = document.getElementById('sendBtn');
 const cmd = (command, params) => JSON.stringify({ command, params });
 
 // Each rule: [test(userText), prose, ...codeBlocks]
@@ -43,7 +49,8 @@ const rules = [
 
 function addAssistant(prose, blocks) {
   const el = document.createElement('div');
-  el.className = 'ds-markdown';
+  el.className = 'ds-markdown ds-assistant-message-main-content';
+  sendBtn.classList.remove('ds-button--disabled'); // Stop button while generating
   const p = document.createElement('p');
   p.textContent = prose.slice(0, Math.ceil(prose.length / 2)); // first half "streams" in
   el.appendChild(p);
@@ -51,15 +58,17 @@ function addAssistant(prose, blocks) {
   setTimeout(() => {
     p.textContent = prose;
     for (const block of blocks) {
+      const wrap = document.createElement('div');
+      wrap.className = 'md-code-block';
+      wrap.innerHTML = '<div class="md-code-block-banner"><span>json</span><div role="button">Copy</div><div role="button">Download</div></div>';
       const pre = document.createElement('pre');
-      const code = document.createElement('code');
-      code.className = 'language-json';
-      code.textContent = block;
-      pre.appendChild(code);
-      el.appendChild(pre);
+      pre.textContent = block;
+      wrap.appendChild(pre);
+      el.appendChild(wrap);
     }
     window.scrollTo(0, document.body.scrollHeight);
-  }, 500);
+    sendBtn.classList.add('ds-button--disabled');
+  }, 2500); // > relay stability window: only the generating selector prevents a premature report
 }
 
 function submit() {
@@ -88,9 +97,9 @@ export async function routeFakeChat(ctx) {
 
 /** Type a message into the fake chat as the user would. */
 export async function say(chatPage, text) {
-  await chatPage.locator('#chat-input').fill(text);
-  await chatPage.locator('#chat-input').press('Enter');
+  await chatPage.locator('textarea').fill(text);
+  await chatPage.locator('textarea').press('Enter');
 }
 
-export const lastAssistant = (chatPage) => chatPage.locator('.ds-markdown').last().innerText();
+export const lastAssistant = (chatPage) => chatPage.locator('.ds-assistant-message-main-content').last().innerText();
 export const lastUser = (chatPage) => chatPage.locator('.user').last().innerText();

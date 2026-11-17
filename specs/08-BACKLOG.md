@@ -102,7 +102,9 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 6.1. Katalog tool, tabel approval, `agent.check` / `agent.callTool` / `agent.prompt` di bridge.
 - [x] 6.2. Provider sebagai data + manifest digenerate dari `provider.json`; content script relay.
 - [x] 6.3. Parser balasan, kartu approval, log aktivitas; e2e di halaman chat tiruan.
-- [ ] 6.4. Verifikasi selector DeepSeek, Gemini, Qwen di situs asli (butuh akun login), lalu ubah status ke `ready`.
+- [x] 6.4a. Selector DeepSeek diverifikasi di situs asli (2026-11-17): composer, kirim via Enter, elemen balasan, code block, status tombol idle/generating. Status `ready`.
+- [ ] 6.4b. Verifikasi selector Gemini dan Qwen di situs asli (butuh akun login).
+- [ ] 6.4c. Jalankan loop penuh (panel + content script) di DeepSeek asli lewat Chrome.
 
 ## Fase 7: E2E
 - [x] 7.1. `npm run e2e`: panel + bridge asli, dan lewat native messaging Chromium asli.
