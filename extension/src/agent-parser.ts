@@ -39,8 +39,34 @@ function candidates(reply: ReplyInput): string[] {
   }
   const whole = reply.text.trim();
   if (out.length === 0 && whole.startsWith('{') && whole.endsWith('}')) out.push(whole);
+  if (out.length === 0) out.push(...bareObjects(reply.text));
   return out;
 }
+
+/**
+ * JSON objects that fill whole lines of the text, outside any code block. Some
+ * pages drop the fence: Gemini sometimes shows its own placeholder line
+ * ("[KONTAINER_KODE]json") where the ``` should be and renders no code block.
+ */
+function bareObjects(text: string): string[] {
+  const lines = text.split(/\r?\n/);
+  const found: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trimStart().startsWith('{')) continue;
+    for (let j = i; j < lines.length && j < i + MAX_BARE_LINES; j++) {
+      if (!lines[j].trimEnd().endsWith('}')) continue;
+      const snippet = lines.slice(i, j + 1).join('\n').trim();
+      const parsed = tryJson(snippet);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        found.push(snippet);
+        i = j;
+        break;
+      }
+    }
+  }
+  return found;
+}
+const MAX_BARE_LINES = 400;
 
 export function parseReply(reply: ReplyInput): ParsedReply {
   const commands: { command: string; params: Record<string, unknown> }[] = [];

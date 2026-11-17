@@ -1,6 +1,6 @@
 // Shared DOM adapter: drives a chat page using only the selectors from provider.json.
 import type { ProviderHealth, ProviderInfo, ProviderReply } from './types.js';
-import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, fencedBlocks, joinLines, spliceCode } from './reply-text.js';
+import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, cutText, fencedBlocks, joinLines, spliceCode } from './reply-text.js';
 
 function visible(el: Element | null): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
@@ -56,6 +56,8 @@ export class DomAdapter {
     const blocks = pres.length > 0 ? pres : [...last.querySelectorAll<HTMLElement>('code')].filter((code) => (code.textContent ?? '').includes('\n'));
     const codeBlocks = blocks.map((block) => this.#codeOf(block));
     let text = last.innerText ?? last.textContent ?? '';
+    const exclude = this.provider.selectors.exclude;
+    if (exclude) text = cutText(text, [...last.querySelectorAll<HTMLElement>(exclude)].map((el) => el.innerText ?? ''));
     // Editor-rendered blocks: swap their label/gutter text for the real code, fenced.
     if (this.provider.selectors.codeLine) {
       text = spliceCode(text, blocks.map((block, i) => ({ rendered: block.innerText ?? '', code: codeBlocks[i] })));

@@ -33,6 +33,35 @@ export function fencedBlocks(markdown: string): string[] {
   return blocks;
 }
 
+/** Index of needle in text at or after `from`, only where it fills whole lines. */
+function indexOfLines(text: string, needle: string, from: number): number {
+  for (let at = text.indexOf(needle, from); at >= 0; at = text.indexOf(needle, at + 1)) {
+    const end = at + needle.length;
+    if ((at === 0 || text[at - 1] === '\n') && (end === text.length || text[end] === '\n')) return at;
+  }
+  return -1;
+}
+
+/**
+ * Cut the rendered text of page chrome inside a reply (suggestion chips, code
+ * block headers) out of the reply text, in order. Chrome elements are blocks,
+ * so a part only matches whole lines: a "Bash" label never eats the word in
+ * "a Bash script". A part not found is skipped.
+ */
+export function cutText(text: string, parts: string[]): string {
+  let out = '';
+  let cursor = 0;
+  for (const part of parts) {
+    const needle = part.trim();
+    if (needle === '') continue;
+    const at = indexOfLines(text, needle, cursor);
+    if (at < 0) continue;
+    out += text.slice(cursor, at);
+    cursor = at + needle.length;
+  }
+  return (out + text.slice(cursor)).replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export interface RenderedLine {
   /** Inline `top` style of the line ("40px"); editors position lines absolutely. */
   top: string;

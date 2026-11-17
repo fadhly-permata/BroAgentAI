@@ -68,3 +68,20 @@ test("the user's own messages are not taken for agent messages", () => {
   assert.equal(agentMessageKind('[BroAgentAI tool result] tanpa status'), null);
   assert.equal(agentMessageKind('[BroAgentAI]'), null);
 });
+
+test('a command on its own lines without a fence is read (Gemini placeholder instead of ```)', () => {
+  // innerText of a live Gemini reply: no code block rendered, a placeholder line where the fence was.
+  const text = 'Bash is a shell.\n\n[KONTAINER_KODE]json\n{"command":"fs.readFile","params":{"path":"README.md"}}\n[KONTAINER_KODE]';
+  assert.deepEqual(parseReply({ text, codeBlocks: [] }), { kind: 'command', command: 'fs.readFile', params: { path: 'README.md' } });
+});
+
+test('a multi-line bare command is read; inline braces in prose are not', () => {
+  const text = 'Writing it now.\n{\n  "command": "fs.writeFile",\n  "params": {"path": "a.txt", "content": "x {y} z"}\n}';
+  assert.deepEqual(parseReply({ text, codeBlocks: [] }), { kind: 'command', command: 'fs.writeFile', params: { path: 'a.txt', content: 'x {y} z' } });
+  assert.equal(parseReply({ text: 'Use an object like {"a": 1} inline.', codeBlocks: [] }).kind, 'final');
+});
+
+test('two bare commands are refused like two fenced ones', () => {
+  const text = '{"command":"fs.readFile","params":{"path":"a"}}\n{"command":"fs.readFile","params":{"path":"b"}}';
+  assert.equal(parseReply({ text, codeBlocks: [] }).kind, 'error');
+});

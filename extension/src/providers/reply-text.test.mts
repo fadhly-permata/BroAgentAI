@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fencedBlocks, joinLines, spliceCode } from './reply-text.ts';
+import { cutText, fencedBlocks, joinLines, spliceCode } from './reply-text.ts';
 import { parseReply } from '../agent-parser.ts';
 
 test('fenced blocks are read from markdown, language tag dropped', () => {
@@ -57,4 +57,17 @@ test('blocks are spliced in order and a missing one is skipped', () => {
     spliceCode(text, [{ rendered: 'x1', code: 'x' }, { rendered: 'zz', code: 'z' }, { rendered: 'y1', code: 'y' }]),
     'A\n```\nx\n```\nB\n```\ny\n```\nC',
   );
+});
+
+test('page chrome is cut from a Gemini reply, whole lines only', () => {
+  // innerText of a Gemini reply as seen on gemini.google.com: code block label, then suggestion chips.
+  const text = 'Here is a Bash script.\n\nBash\necho hello\n\nTo explore further:\nRun a Python script instead';
+  assert.equal(
+    cutText(text, ['Bash', 'To explore further:\nRun a Python script instead']),
+    'Here is a Bash script.\n\necho hello',
+  );
+});
+
+test('a chrome part that is not on its own lines is left alone', () => {
+  assert.equal(cutText('use Bash here', ['Bash']), 'use Bash here');
 });

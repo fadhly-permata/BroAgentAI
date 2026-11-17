@@ -36,6 +36,12 @@ export interface ProviderSelectors {
    * ones an editor widget has not drawn.
    */
   markdownSource?: string;
+  /**
+   * Elements inside a reply that are page chrome, not what the model wrote
+   * (suggestion chips, code block headers). Their text is cut from the reply
+   * text; code blocks are still read from <pre>.
+   */
+  exclude?: string;
 }
 
 export interface ProviderInfo {

@@ -56,6 +56,20 @@ function maybeMarker(text: string): boolean {
   return head.startsWith(NOTE_TAG.slice(0, -1)) || head.replace(/^#+\s*/, '').startsWith(PROMPT_HEADING);
 }
 
+/**
+ * Screen-reader-only labels that pages put before a message ("You said" on
+ * Gemini, inside .cdk-visually-hidden): not shown, so not part of its text.
+ */
+const HIDDEN_LABELS = '.cdk-visually-hidden, .sr-only, .visually-hidden';
+
+/** textContent without screen-reader-only labels. */
+function visibleText(el: Element): string {
+  if (!el.querySelector(HIDDEN_LABELS)) return el.textContent ?? '';
+  const copy = el.cloneNode(true) as Element;
+  for (const hidden of copy.querySelectorAll(HIDDEN_LABELS)) hidden.remove();
+  return copy.textContent ?? '';
+}
+
 const hasBackground = (el: Element) => {
   const bg = getComputedStyle(el).backgroundColor;
   return bg !== '' && bg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(bg);
@@ -78,7 +92,7 @@ function bubbleFor(textNode: Text, provider: ProviderInfo): HTMLElement | null {
   const chain: HTMLElement[] = [];
   let el: HTMLElement | null = start;
   for (let depth = 0; el && el !== document.body && depth < MAX_CLIMB; depth++, el = el.parentElement) {
-    const text = (el.textContent ?? '').trimStart();
+    const text = visibleText(el).trimStart();
     if (!text.replace(/^#+\s*/, '').startsWith(marker.replace(/^#+\s*/, ''))) break;
     if (el.querySelector(assistantMessage) || el.querySelector(composer)) break;
     chain.push(el);
@@ -96,7 +110,7 @@ function scan(provider: ProviderInfo): void {
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
     const bubble = bubbleFor(node, provider);
     if (!bubble || bubble.hasAttribute(ATTR)) continue;
-    const msg = agentMessageKind(bubble.textContent ?? '');
+    const msg = agentMessageKind(visibleText(bubble));
     if (!msg) continue;
     const { kind, text } = label(msg);
     bubble.setAttribute(ATTR, kind);
