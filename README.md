@@ -2,6 +2,8 @@
 
 **Turn the AI chat you already use into a coding agent for your local projects. No API key needed.**
 
+> **BroAgentAI** stands for **Bro**wser **Agent** **AI**: an AI agent that lives in your browser.
+
 BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to your browser. You keep chatting with DeepSeek, Gemini or Qwen in their normal web tab (logged in, free tier, whatever you've got), and BroAgentAI lets that AI actually *do stuff* on your machine: read files, search, edit code, run Git, run shell commands, call MCP tools. You stay in control, and you approve anything risky before it happens.
 
 ![BroAgentAI side panel next to a DeepSeek chat, asking for approval before writing README.md](docs/screenshots/hero-approval.png)
