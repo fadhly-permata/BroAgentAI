@@ -103,7 +103,9 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 6.2. Provider sebagai data + manifest digenerate dari `provider.json`; content script relay.
 - [x] 6.3. Parser balasan, kartu approval, log aktivitas; e2e di halaman chat tiruan.
 - [x] 6.4a. Selector DeepSeek diverifikasi di situs asli (2026-11-17): composer, kirim via Enter, elemen balasan, code block, status tombol idle/generating. Status `ready`.
-- [ ] 6.4b. Verifikasi selector Gemini dan Qwen di situs asli (butuh akun login).
+- [x] 6.4b-qwen. Selector Qwen diverifikasi di situs asli (2026-11-17, login): composer `textarea.message-input-textarea`, kirim via Enter, jawaban `.phase-answer` (kartu thinking tidak ikut), `button.stop-button` saat generating, bubble user. Code block Qwen = Monaco yang hanya menggambar baris di layar, jadi balasan dibaca dari markdown di React props lewat helper MAIN-world (`content/page-source.iife.ts`); fallback baris Monaco.
+- [ ] 6.4b. Verifikasi selector Gemini di situs asli (butuh akun login).
+- [x] 6.4d. Loop penuh di Qwen asli lewat Chrome (2026-11-17, mode Auto Approve): fs.readFile (ENOENT dikembalikan ke AI), fs.listDir, jawaban final; lalu fs.readFile LICENSE + fs.writeFile qwen-check.txt, hasilnya identik byte-per-byte. Balasan dibaca dari markdown saat DOM hanya berisi label "json". Status `ready`.
 - [x] 6.4c. Loop penuh di DeepSeek asli lewat Chrome stable (2026-11-17): prompt pembuka, fs.readFile otomatis, fs.createFile + fs.writeFile dengan approval, jawaban akhir; file tertulis di disk.
 - [x] 6.5. Relay tahan terhadap daftar pesan ter-virtualisasi (pakai kunci urutan pesan, bukan jumlah elemen di DOM).
 - [x] 6.7. Empat mode approval (read-only, always-ask, ask-once, auto-approve) dan tool `shell.run` yang memilih shell per OS.

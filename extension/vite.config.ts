@@ -17,7 +17,11 @@ const matchPatterns = readdirSync(providersDir, { withFileTypes: true })
 const manifest = {
   ...baseManifest,
   host_permissions: matchPatterns,
-  content_scripts: [{ matches: matchPatterns, js: ["src/content/relay.ts"], run_at: "document_idle" }],
+  content_scripts: [
+    { matches: matchPatterns, js: ["src/content/relay.ts"], run_at: "document_idle" },
+    // Reads a reply's markdown from the page's own objects for the relay; see the file header.
+    { matches: matchPatterns, js: ["src/content/page-source.iife.ts"], run_at: "document_idle", world: "MAIN" as const },
+  ],
 };
 
 export default defineConfig({

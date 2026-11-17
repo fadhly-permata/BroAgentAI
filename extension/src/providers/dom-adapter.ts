@@ -1,5 +1,6 @@
 // Shared DOM adapter: drives a chat page using only the selectors from provider.json.
 import type { ProviderHealth, ProviderInfo, ProviderReply } from './types.js';
+import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, fencedBlocks, joinLines, spliceCode } from './reply-text.js';
 
 function visible(el: Element | null): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
@@ -47,14 +48,48 @@ export class DomAdapter {
     const messages = this.#messages();
     const last = messages[messages.length - 1];
     if (!last) return { count: 0, key: null, text: '', codeBlocks: [] };
+    const key = this.#keyOf(last);
+    const source = this.#markdownOf(last);
+    if (source !== null) return { count: messages.length, key, text: source, codeBlocks: fencedBlocks(source) };
+
     const pres = [...last.querySelectorAll<HTMLElement>('pre')];
     const blocks = pres.length > 0 ? pres : [...last.querySelectorAll<HTMLElement>('code')].filter((code) => (code.textContent ?? '').includes('\n'));
-    return {
-      count: messages.length,
-      key: this.#keyOf(last),
-      text: last.innerText ?? last.textContent ?? '',
-      codeBlocks: blocks.map((block) => (block.querySelector('code') ?? block).textContent ?? ''),
-    };
+    const codeBlocks = blocks.map((block) => this.#codeOf(block));
+    let text = last.innerText ?? last.textContent ?? '';
+    // Editor-rendered blocks: swap their label/gutter text for the real code, fenced.
+    if (this.provider.selectors.codeLine) {
+      text = spliceCode(text, blocks.map((block, i) => ({ rendered: block.innerText ?? '', code: codeBlocks[i] })));
+    }
+    return { count: messages.length, key, text, codeBlocks };
+  }
+
+  /**
+   * The reply's markdown as the page holds it, through the MAIN-world helper
+   * (content/page-source.iife.ts). Null when the provider does not use it or
+   * any part could not be read; the caller then reads the rendered DOM.
+   */
+  #markdownOf(message: HTMLElement): string | null {
+    const selector = this.provider.selectors.markdownSource;
+    if (!selector) return null;
+    const parts = [...message.querySelectorAll<HTMLElement>(selector)];
+    if (parts.length === 0) return null;
+    const sources: string[] = [];
+    for (const part of parts) {
+      part.removeAttribute(PAGE_SOURCE_ATTR);
+      part.dispatchEvent(new CustomEvent(PAGE_SOURCE_EVENT, { bubbles: true }));
+      const source = part.getAttribute(PAGE_SOURCE_ATTR);
+      part.removeAttribute(PAGE_SOURCE_ATTR);
+      if (source === null) return null;
+      sources.push(source);
+    }
+    return sources.join('\n\n');
+  }
+
+  #codeOf(block: HTMLElement): string {
+    const lineSelector = this.provider.selectors.codeLine;
+    const lines = lineSelector ? [...block.querySelectorAll<HTMLElement>(lineSelector)] : [];
+    if (lines.length > 0) return joinLines(lines.map((line) => ({ top: line.style.top, text: line.textContent ?? '' })));
+    return (block.querySelector('code') ?? block).textContent ?? '';
   }
 
   /** Put text into the composer and submit it. */

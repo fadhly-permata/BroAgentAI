@@ -4,11 +4,15 @@
   "description": "Qwen web chat",
   "homepage": "https://chat.qwen.ai/",
   "matchPatterns": ["https://chat.qwen.ai/*"],
-  "status": "experimental",
+  "status": "ready",
+  "verified": "2026-11-17 (logged in): composer, Enter-to-send, answer element without the thinking card, Stop button while generating, user bubble, and the reply markdown in React props (full code even where Monaco draws only the on-screen lines) checked on the live site; a full loop (fs.readFile, fs.listDir, fs.writeFile of a 1 KB file written byte-identical) ran from the side panel in Chrome",
   "selectors": {
-    "composer": "textarea#chat-input, textarea",
+    "composer": "textarea.message-input-textarea",
     "submit": "",
-    "assistantMessage": ".response-content-container, .markdown-content-container",
-    "generating": ""
+    "assistantMessage": ".qwen-chat-message-assistant .response-message-content.phase-answer",
+    "userMessage": ".qwen-chat-message-user .chat-user-message",
+    "generating": "button.stop-button",
+    "markdownSource": ".custom-qwen-markdown",
+    "codeLine": ".view-lines .view-line"
   }
 }

@@ -23,6 +23,19 @@ export interface ProviderSelectors {
    * assistant element" is not always the newest reply.
    */
   messageKeyAttr?: string;
+  /**
+   * One element per code line, inside a reply's <pre>. For pages that render
+   * code in an editor widget (language label, toolbar, line-number gutter):
+   * the code is rebuilt from these lines instead of the block's whole text.
+   */
+  codeLine?: string;
+  /**
+   * Element(s) inside a reply whose React props hold the reply's markdown
+   * (read by the MAIN-world helper content/page-source.iife.ts). Preferred
+   * over the rendered DOM when set and readable: it has every code line, even
+   * ones an editor widget has not drawn.
+   */
+  markdownSource?: string;
 }
 
 export interface ProviderInfo {
