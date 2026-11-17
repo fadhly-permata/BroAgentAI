@@ -442,12 +442,18 @@ button.pill:hover { filter: brightness(1.15); }
 }
 .rail-btn:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .rail-bottom { margin-top: auto; }
+/* Count pill on a rail icon. Text is pre-shortened (badge-format.ts, max 4 chars);
+   max-width + ellipsis is the last guard so it never spills past the icon. */
 .badge {
-  position: absolute; top: 24px; right: 7px;
-  min-width: 16px; height: 16px; padding: 0 4px;
+  position: absolute; top: 24px; right: 6px;
+  box-sizing: border-box;
+  min-width: 16px; max-width: calc(var(--activity-w) - 12px); height: 16px; padding: 0 4px;
   border-radius: 8px;
   background: var(--accent); color: #ffffff;
+  box-shadow: 0 0 0 2px var(--bg-activity);
   font-size: 9px; font-weight: 600; line-height: 16px; text-align: center;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ===== 5. Views ========================================================= */
@@ -643,18 +649,8 @@ button.pill:hover { filter: brightness(1.15); }
 #edName { font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); }
 .ed-dirty { color: var(--text); font-size: 16px; line-height: 1; flex: none; }
 .ed-actions { margin-left: auto; display: flex; align-items: center; gap: var(--sp-1); flex: none; }
-.editor-preview textarea {
-  flex: 1; min-height: 0;
-  border: none; border-radius: 0;
-  background: var(--bg-editor);
-  padding: var(--sp-2) var(--sp-3);
-  resize: none;
-  font-family: var(--font-mono); font-size: var(--font-size); line-height: 1.5;
-  tab-size: var(--tab-size);
-  white-space: var(--editor-wrap);
-  overflow: auto;
-}
-.editor-preview textarea:focus { border: none; }
+/* CodeMirror host (see code-view.ts); the editor scrolls inside, never the panel. */
+.editor-preview .ed-code { flex: 1; min-height: 0; height: auto; background: var(--bg-editor); }
 .statusline { flex: none; height: 22px; line-height: 22px; padding: 0 var(--sp-3); font-size: var(--fs-xs); color: var(--text-muted); border-top: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ----- Search ---------------------------------------------------------- */

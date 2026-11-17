@@ -57,6 +57,15 @@ function watch(page, label) {
 }
 const text = (page, sel) => page.locator(sel).innerText();
 const visible = (page, sel) => page.locator(sel).first().isVisible();
+// Preview editor is CodeMirror: read its rendered lines (small files are not virtualized), type with the keyboard.
+const edValue = (page) => page.evaluate(() => [...document.querySelectorAll('#edArea .cm-line')].map((l) => l.textContent).join(String.fromCharCode(10)));
+async function edFill(page, value) {
+  await page.locator('#edArea .cm-content').click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.insertText(value);
+}
+// textContent: gutter, marker and code cells joined without layout newlines ("1+# Alpha").
+const diffText = (page) => page.locator('.dv-overlay .dv-body').textContent();
 const toastHas = (page, re) => until(async () => re.test(await text(page, '#toast')) && await visible(page, '#toast'));
 
 const bridge = startRealBridge({ configDir });
@@ -92,7 +101,8 @@ try {
     await until(async () => /Pilih workspace/.test(await text(page, '#tree'))), await text(page, '#tree'));
 
   // ---- 2. rail tabs
-  for (const tab of ['explorer', 'search', 'scm', 'terminal', 'agent', 'settings']) {
+  check('home is the default view', (await page.locator('#tab-home.active').count()) === 1);
+  for (const tab of ['home', 'explorer', 'search', 'scm', 'terminal', 'agent', 'settings']) {
     await page.locator(`.rail-btn[data-tab="${tab}"]`).click();
     check(`tab ${tab} activates`, (await page.locator(`#tab-${tab}.active`).count()) === 1);
     await page.screenshot({ path: path.join(shots, `tab-${tab}.png`), fullPage: true });
@@ -140,10 +150,11 @@ try {
   await fileRow('src/sidepanel.ts').click();
   check('file opens in the preview editor', await until(() => visible(page, '#editorPreview')));
   check('editor shows the real file content',
-    await until(async () => (await page.locator('#edArea').inputValue()) === SIDEPANEL_SRC),
-    JSON.stringify(await page.locator('#edArea').inputValue()));
+    await until(async () => (await edValue(page)) === SIDEPANEL_SRC),
+    JSON.stringify(await edValue(page)));
+  check('editor highlights syntax tokens', await until(async () => (await page.locator('#edArea .cm-line span').count()) > 0));
   const edited = SIDEPANEL_SRC + '// edited by e2e\n';
-  await page.locator('#edArea').fill(edited);
+  await edFill(page, edited);
   check('editing marks the file dirty', /dirty/.test(await text(page, '#edDirty')));
   await page.locator('#edSave').click();
   check('save reports success', await toastHas(page, /File tersimpan/), await text(page, '#toast'));
@@ -155,7 +166,7 @@ try {
   const external = '// changed outside the panel\n';
   fs.writeFileSync(path.join(wsA, 'src/sidepanel.ts'), external);
   fs.utimesSync(path.join(wsA, 'src/sidepanel.ts'), new Date(), new Date(Date.now() + 5000));
-  await page.locator('#edArea').fill('// would clobber\n');
+  await edFill(page, '// would clobber\n');
   await page.locator('#edSave').click();
   check('conflicting save is refused', await toastHas(page, /Konflik/), await text(page, '#toast'));
   check('conflicting save leaves disk content alone', fs.readFileSync(path.join(wsA, 'src/sidepanel.ts'), 'utf8') === external);
@@ -182,16 +193,17 @@ try {
     await page.locator('#newFileBtn').click();
     check('explorer: creating over an existing file is refused', await toastHas(page, /already exists/), await text(page, '#toast'));
 
-    dialogAnswer = 'made-dir/renamed-by-e2e.txt';
     await fileRow('made-by-e2e.txt').click({ button: 'right' });
-    await page.locator('#ctxMenu .ctx-item', { hasText: 'Rename' }).click();
+    await page.locator('.ba-ctx .ba-ctx-item', { hasText: 'Rename' }).click();
+    await page.locator('.ba-dlg input').fill('made-dir/renamed-by-e2e.txt');
+    await page.locator('.ba-dlg button.primary').click();
     check('explorer: context menu Rename moves the file on disk',
       await until(() => fs.existsSync(path.join(wsA, 'made-dir', 'renamed-by-e2e.txt')) && !fs.existsSync(path.join(wsA, 'made-by-e2e.txt'))));
     await dirRow('made-dir').click();
     await until(() => fileRow('made-dir/renamed-by-e2e.txt').isVisible());
-    dialogAnswer = undefined; // confirm() -> OK
     await fileRow('made-dir/renamed-by-e2e.txt').click({ button: 'right' });
-    await page.locator('#ctxMenu .ctx-item', { hasText: 'Delete' }).click();
+    await page.locator('.ba-ctx .ba-ctx-item', { hasText: 'Delete' }).click();
+    await page.locator('.ba-dlg button.danger').click();
     check('explorer: context menu Delete removes the file on disk',
       await until(() => !fs.existsSync(path.join(wsA, 'made-dir', 'renamed-by-e2e.txt'))));
     fs.rmdirSync(path.join(wsA, 'made-dir'));
@@ -333,8 +345,8 @@ try {
     check('scm: stage is real (git sees it)', /^A\s+README\.md$/m.test(git('status', '--porcelain')));
     await scmRow('staged', 'README.md').locator('[data-act="diff-staged"]').click();
     check('scm: staged diff shows the added lines',
-      await until(async () => /\+# Alpha/.test(await text(page, '#modalBody'))), await text(page, '#modalBody'));
-    await page.locator('#modalOk').click();
+      await until(async () => /\+# Alpha/.test(await diffText(page))), await diffText(page).catch(() => '(no diff view)'));
+    await page.locator('.dv-overlay [data-a="close"]').click();
     await scmRow('staged', 'README.md').locator('[data-act="unstage"]').click();
     check('scm: Unstage moves the file back', await until(() => scmRow('untracked', 'README.md').isVisible()));
 
@@ -357,8 +369,9 @@ try {
     check('scm: status letter is M', (await scmRow('changes', 'README.md').locator('.scm-letter').innerText()) === 'M');
     await scmRow('changes', 'README.md').locator('[data-act="diff"]').click();
     check('scm: unstaged diff shows the new line',
-      await until(async () => /\+changed after commit/.test(await text(page, '#modalBody'))), await text(page, '#modalBody'));
-    await page.locator('#modalOk').click();
+      await until(async () => /\+changed after commit/.test(await diffText(page))), await diffText(page).catch(() => '(no diff view)'));
+    await page.keyboard.press('Escape');
+    check('scm: Escape closes the diff view', await until(async () => (await page.locator('.dv-overlay').count()) === 0));
 
     await page.locator('#newBranchBtn').click();
     await page.locator('#brName').fill('feat/e2e');
@@ -738,6 +751,8 @@ try {
   await page.reload();
   check('workspace is restored after reload',
     await until(async () => /alpha-project/.test(await text(page, '#headerWs'))), await text(page, '#headerWs'));
+  check('home is the view again after reload', (await page.locator('#tab-home.active').count()) === 1);
+  await page.locator('.rail-btn[data-tab="explorer"]').click();
   check('tree is restored after reload', await until(() => fileRow('README.md').isVisible()));
   check('agent delay setting is restored after reload', await until(async () => (await page.locator('#agentDelay').inputValue()) === '1'));
 

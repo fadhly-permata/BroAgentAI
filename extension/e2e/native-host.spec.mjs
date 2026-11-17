@@ -81,6 +81,8 @@ try {
     await until(async () => /Host (ready|siap)/.test(await text('#hostPill'))), await text('#hostPill'));
   check('offline banner hidden', !(await page.locator('#banner').isVisible()));
 
+  // Home is the default view; the file tree lives in Explorer.
+  await page.locator('.rail-btn[data-tab="explorer"]').click();
   await page.locator('#wsBtn').click();
   await page.locator('#wsMenu [data-act="open-folder"]').click();
   await page.locator('#wsPath').waitFor({ state: 'visible', timeout: 10000 });
@@ -93,8 +95,10 @@ try {
 
   await page.locator('.ba-tree-file[data-path="hello.txt"]').click();
   check('fs.readFileLines works through the native host',
-    await until(async () => (await page.locator('#edArea').inputValue()) === 'hello native host\n'));
-  await page.locator('#edArea').fill('saved through native host\n');
+    await until(async () => (await page.evaluate(() => [...document.querySelectorAll('#edArea .cm-line')].map((l) => l.textContent).join(String.fromCharCode(10)))) === 'hello native host\n'));
+  await page.locator('#edArea .cm-content').click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.insertText('saved through native host\n');
   await page.locator('#edSave').click();
   check('fs.writeFile works through the native host',
     await until(() => fs.readFileSync(path.join(workspace, 'hello.txt'), 'utf8') === 'saved through native host\n'));

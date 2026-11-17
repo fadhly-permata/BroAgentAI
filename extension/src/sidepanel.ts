@@ -3,9 +3,12 @@ import { renderExplorer, ExplorerOptions } from './explorer.js';
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
-import { initAgent, showAgent } from './agent-panel.js';
+import { initAgent, showAgent, startAgentSession, hasAgentSession } from './agent-panel.js';
+import { initHome, renderHome } from './home-panel.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
+import { createCodeView, type CodeView } from './code-view.js';
+import { showExplorerMenu } from './context-menu.js';
 
 hydrateIcons();
 
@@ -28,6 +31,7 @@ async function loadWorkspaces() {
   }
 }
 let currentFile:FileNode|null=null; let currentMtime:number|null=null; let dirty=false;
+let codeView:CodeView|null=null;
 let toastTimer:any=null;
 function toast(m:string){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.add('hidden'),4000)}
 function renderWs(){
@@ -37,6 +41,7 @@ function renderWs(){
   $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'" role="menuitem"><span class="ws-check">'+(w===activeWs?icon('check'):'')+'</span><span class="ws-text"><b>'+escapeHtml(w.name)+'</b><small>'+escapeHtml(w.path)+'</small></span></button>').join('');
   $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card'+(w===activeWs?' active-ws':'')+'"><div class="ws-item-main"><b>'+escapeHtml(w.name)+'</b><small title="'+escapeHtml(w.path)+'">'+escapeHtml(w.path)+' - '+escapeHtml(w.last)+'</small></div><div class="ws-item-actions"><button class="mini" data-open="'+i+'">Open</button><button class="mini" data-rename="'+i+'">Rename</button><button class="mini danger" data-remove="'+i+'">Remove</button></div></div>').join('')||'<p class="muted">Belum ada workspace.</p>';
   setCheck('ckWs', !!activeWs);
+  renderHome();
 }
 /** First-run checklist mark: text stays x/o for scripts, the class draws it. */
 function setCheck(id:string, done:boolean){ const el=$(id); el.textContent=done?'x':'o'; el.classList.toggle('done',done); }
@@ -74,67 +79,22 @@ async function renderTree(){
   const showIgnored = ($('showIgnored') as HTMLInputElement).checked;
   const options: ExplorerOptions = {
     onFileClick: (path) => openFile(path),
-    onContextClick: (e, path) => showContextMenu(e, path),
+    onContextClick: (e, path, isDirectory) => showExplorerMenu(e, { path, isDirectory }, {
+      toast,
+      workspaceRoot: () => activeWs?.path ?? null,
+      refresh: async () => { await renderTree(); refreshScm(); },
+      // A deleted or renamed file (or folder holding it) must not stay open in the preview.
+      onDeleted: (p) => closePreviewUnder(p),
+      onRenamed: (from) => closePreviewUnder(from),
+    }),
     showIgnored,
     gitStatus: await loadGitBadges(),
   };
   await renderExplorer($('tree'), activeWs.path, options);
 }
 
-function showContextMenu(e: MouseEvent, path: string) {
-  e.preventDefault();
-  const existing = document.getElementById('ctxMenu');
-  if (existing) existing.remove();
-  const menu = document.createElement('div');
-  menu.id = 'ctxMenu';
-  menu.className = 'menu';
-  menu.style.position = 'fixed';
-  menu.style.left = e.clientX + 'px';
-  menu.style.top = e.clientY + 'px';
-  menu.style.zIndex = '9999';
-  const items = [
-    { label: 'Rename...', act: () => renamePath(path) },
-    { label: 'Delete...', act: () => deletePath(path) },
-    { label: 'Copy Relative Path', act: () => { navigator.clipboard.writeText(path); toast('Path disalin: ' + path); } },
-  ];
-  menu.innerHTML = items.map((it, i) => `<button class="ctx-item" data-i="${i}">${it.label}</button>`).join('');
-  document.body.appendChild(menu);
-  menu.querySelectorAll('.ctx-item').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const i = Number((btn as HTMLElement).dataset.i);
-      menu.remove();
-      items[i].act();
-    });
-  });
-  const close = (ev: MouseEvent) => {
-    if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener('mousedown', close); }
-  };
-  setTimeout(() => document.addEventListener('mousedown', close), 0);
-}
-
-async function renamePath(path: string) {
-  const newName = prompt('Rename to (relative path):', path);
-  if (!newName || newName === path) return;
-  try {
-    await bridge.call('fs.rename', { from: path, to: newName.trim() });
-    toast('Renamed: ' + path + ' -> ' + newName.trim());
-    await renderTree();
-    refreshScm();
-  } catch (err: any) {
-    toast('Gagal rename: ' + (err?.message || err));
-  }
-}
-
-async function deletePath(path: string) {
-  if (!confirm('Delete ' + path + '? (directory must be empty)')) return;
-  try {
-    await bridge.call('fs.delete', { path });
-    toast('Deleted: ' + path);
-    await renderTree();
-    refreshScm();
-  } catch (err: any) {
-    toast('Gagal delete: ' + (err?.message || err));
-  }
+function closePreviewUnder(path: string) {
+  if (currentFile && (currentFile.path === path || currentFile.path.startsWith(path + '/'))) closeEditorPreview();
 }
 
 async function newFile() {
@@ -184,7 +144,17 @@ async function openFile(path:string){
     $('editorPreview').classList.remove('hidden');
     $('edName').textContent = path;
     $('edIcon').innerHTML = fileIcon(currentFile.name);
-    ($('edArea') as HTMLTextAreaElement).value = content;
+    codeView?.destroy();
+    $('edArea').innerHTML = '';
+    const ui = loadUISettings();
+    codeView = createCodeView($('edArea'), {
+      path, content,
+      tabSize: Number(ui.tabSize) || 2,
+      wrap: !!ui.wrap,
+      fontSize: Number(ui.fontSize) || 13,
+      onChange: markDirty,
+      onSave: () => { saveCurrentFile(); },
+    });
     $('edDirty').textContent = '';
     $('edMeta').textContent = 'File dari workspace - ' + content.length + ' karakter';
     switchTab('explorer');
@@ -194,7 +164,7 @@ async function openFile(path:string){
 }
 async function saveCurrentFile(){
   if(!currentFile) return;
-  const content=($('edArea') as HTMLTextAreaElement).value;
+  const content=codeView?.getValue() ?? '';
   const params:any={ path: currentFile.path, content };
   if(currentMtime!==null) params.expectedMtime=currentMtime;
   try{
@@ -208,7 +178,8 @@ async function saveCurrentFile(){
     else toast('Gagal menyimpan: '+(err?.message||err));
   }
 }
-function closeEditorPreview(){ $('editorPreview').classList.add('hidden'); currentFile=null; currentMtime=null; dirty=false; }
+function closeEditorPreview(){ $('editorPreview').classList.add('hidden'); codeView?.destroy(); codeView=null; currentFile=null; currentMtime=null; dirty=false; }
+function markDirty(){ dirty=true; $('edDirty').innerHTML='●<span class="sr-only"> dirty</span>'; $('edDirty').title='Unsaved changes'; }
 async function setActiveWorkspace(ws:any){
   try{
     await bridge.call('workspace.setActive', { id: ws.id });
@@ -503,15 +474,16 @@ on('newFolderBtn','click',()=>newFolder());
 on('showIgnored','change',async()=>{await renderTree()});
 on('ignoreInput','change',()=>applyIgnore());
 on('ignoreInput','blur',()=>applyIgnore());
-on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; closeEditorPreview()}); on('edArea','input',()=>{dirty=true; $('edDirty').innerHTML='●<span class="sr-only"> dirty</span>'; $('edDirty').title='Unsaved changes'}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
+on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; closeEditorPreview()}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
 
+initHome({ getWorkspaces: ()=>workspaces, getActive: ()=>activeWs, setActive: setActiveWorkspace, openFolder, switchTab, toast, hasSession: hasAgentSession, startSession: startAgentSession });
 initAgent({ toast, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ renderTree(); refreshScm(); } });
 initMcp({ toast, openModal, hasWorkspace: ()=>!!activeWs });
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });
-initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); } });
+initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); }, openFile: (path)=>{ openFile(path); } });
 
 connectBridge();
 

@@ -2,6 +2,8 @@
 // Nothing here is demo data; when Git or a repository is missing the panel says so.
 import { bridge } from './bridge-client.js';
 import { fileIcon, icon } from './icons.js';
+import { formatBadgeCount } from './badge-format.js';
+import { openDiffView } from './diff-view.js';
 
 interface GitFile {
   path: string;
@@ -41,6 +43,8 @@ export interface ScmDeps {
   hasWorkspace(): boolean;
   /** Called after an action changed files on disk (discard, branch switch). */
   onFilesChanged(): void;
+  /** Open a workspace file in the editor (from the diff view's "Open" button). */
+  openFile?(path: string): void;
 }
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -116,7 +120,9 @@ function renderCommitButton(): void {
 
 function renderBadge(): void {
   const count = status?.isRepo ? status.files.length : 0;
-  $('scmBadge').textContent = String(count);
+  const capped = !!status?.truncated;
+  $('scmBadge').textContent = formatBadgeCount(count, capped);
+  $('scmBadge').title = `${count}${capped ? '+' : ''} changes`;
   $('scmBadge').classList.toggle('hidden', count === 0);
 }
 
@@ -194,19 +200,21 @@ function paint(next: GitStatus): void {
   renderCommitButton();
 }
 
-function diffHtml(diff: string, truncated: boolean): string {
-  if (diff === '') return '<p class="muted">Tidak ada perbedaan.</p>';
-  const lines = diff.split('\n').map((line) => {
-    const cls = line.startsWith('+') && !line.startsWith('+++') ? 'diff-add'
-      : line.startsWith('-') && !line.startsWith('---') ? 'diff-del'
-      : line.startsWith('@@') ? 'diff-hunk' : '';
-    return `<span class="${cls}">${escapeHtml(line)}</span>`;
-  }).join('\n');
-  return `<pre class="diff">${lines}</pre>` + (truncated ? '<p class="muted">Diff dipotong (terlalu besar).</p>' : '');
+async function showDiff(path: string, staged: boolean): Promise<void> {
+  const res: any = await bridge.call('git.diff', { path, staged });
+  openDiffView({ path, staged, diff: res.diff || '', truncated: !!res.truncated, onOpenFile: deps.openFile });
 }
 
 async function onGroupClick(e: Event): Promise<void> {
-  const target = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
+  const raw = e.target as HTMLElement;
+  const target = raw.closest('[data-act]') as HTMLElement | null;
+  if (!target && status) {
+    const row = raw.closest('.scm-row') as HTMLElement | null;
+    if (row && !raw.closest('.scm-actions')) {
+      const staged = !!row.closest('[data-scm-group="staged"]');
+      return run(() => showDiff(row.dataset.scmFile || '', staged));
+    }
+  }
   if (!target || !status) return;
   const act = target.dataset.act!;
   const path = target.dataset.path || '';
@@ -232,10 +240,7 @@ async function onGroupClick(e: Event): Promise<void> {
     return run(async () => paint(await bridge.call('git.unstage', { paths })));
   }
   if (act === 'diff' || act === 'diff-staged') {
-    return run(async () => {
-      const res: any = await bridge.call('git.diff', { path, staged: act === 'diff-staged' });
-      deps.openModal(`Diff${act === 'diff-staged' ? ' (staged)' : ''}: ${path}`, diffHtml(res.diff, res.truncated), () => {});
-    });
+    return run(() => showDiff(path, act === 'diff-staged'));
   }
   if (act === 'discard') {
     const file = status.files.find((f) => f.path === path);

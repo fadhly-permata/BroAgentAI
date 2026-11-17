@@ -1,0 +1,152 @@
+/* Home view: workspace list, provider grid, Start Session.
+   Tokens are scoped here so the view can be retuned without touching sidepanel.css.
+   Dark values follow VS Code Dark Modern; light values mirror Light Modern. */
+:root,
+[data-theme="dark"] {
+  --home-gap: 20px;
+  --home-list-gap: 6px;
+  --home-row-h: 42px;
+  --home-radius: 6px;
+  --home-surface: #252526;
+  --home-surface-hover: #2a2d2e;
+  --home-border: #333333;
+  --home-border-hover: #454545;
+  --home-active-bg: rgba(0, 122, 204, 0.10);
+  --home-accent: #007acc;
+  --home-accent-hi: #1a8ad4;
+  --home-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --home-mark-bg: #3c3c3c;
+  --home-mark-fg: #cccccc;
+  --home-drop-border: #454545;
+}
+[data-theme="light"] {
+  --home-surface: #ffffff;
+  --home-surface-hover: #f2f2f2;
+  --home-border: #e5e5e5;
+  --home-border-hover: #c8c8c8;
+  --home-active-bg: rgba(0, 122, 204, 0.08);
+  --home-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+  --home-mark-bg: #e4e4e4;
+  --home-mark-fg: #3b3b3b;
+  --home-drop-border: #c8c8c8;
+}
+
+.home { display: flex; flex-direction: column; gap: var(--home-gap); min-width: 0; overflow-x: hidden; }
+.home-sec { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+/* Section header: caps title left, compact action right. */
+.home-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.home-sec-head h3 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.home-head-btn {
+  height: 22px; padding: 0 6px; gap: 4px;
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  color: var(--link); font-size: 12px;
+}
+.home-head-btn:hover { background: var(--toolbar-hover); color: var(--text-strong); }
+.home-head-btn .ico { width: 14px; height: 14px; }
+
+/* Workspace list: compact rows, 2px accent bar marks the active one. */
+.home-ws-list { display: flex; flex-direction: column; gap: var(--home-list-gap); max-height: calc(5 * var(--home-row-h) + 4 * var(--home-list-gap)); overflow-y: auto; }
+.home-ws {
+  position: relative; flex: none;
+  height: var(--home-row-h); width: 100%; min-width: 0;
+  padding: 0 8px 0 12px; gap: 10px; justify-content: flex-start;
+  background: transparent; border: none; border-radius: 4px;
+  color: var(--text); text-align: left;
+}
+.home-ws:hover { background: var(--home-surface-hover); }
+.home-ws.active { background: var(--home-active-bg); }
+.home-ws.active::before {
+  content: ''; position: absolute; left: 0; top: 7px; bottom: 7px;
+  width: 2px; border-radius: 2px; background: var(--home-accent);
+}
+.home-ws-ico { display: inline-flex; flex: none; color: var(--icon); }
+.home-ws.active .home-ws-ico { color: var(--home-accent); }
+.home-ws-text { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; flex: 1; overflow: hidden; }
+.home-ws-text b, .home-ws-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-ws-text b { font-size: 13px; font-weight: 600; color: var(--text-strong); line-height: 17px; }
+.home-ws-text small { font-size: 11px; color: var(--text-muted); line-height: 15px; }
+.home-ws-tag {
+  flex: none; height: 16px; padding: 0 6px; border-radius: 8px;
+  font-size: 10px; line-height: 16px; font-weight: 600;
+  color: var(--home-accent); background: var(--home-active-bg);
+}
+
+/* Empty state: dashed action row instead of a stretched button. */
+.home-drop {
+  height: 52px; width: 100%; gap: 8px; white-space: normal;
+  background: transparent; border: 1px dashed var(--home-drop-border); border-radius: var(--home-radius);
+  color: var(--text-muted); font-size: 12px;
+}
+.home-drop:hover { border-color: var(--home-accent); color: var(--text-strong); background: var(--home-surface-hover); }
+
+/* Provider grid. */
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.prov-card {
+  position: relative; height: auto; min-width: 0;
+  flex-direction: column; gap: 6px; padding: 12px;
+  background: var(--home-surface); border: 1px solid var(--home-border); border-radius: var(--home-radius);
+  color: var(--text); white-space: normal;
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease, background-color .12s ease;
+}
+.prov-card:hover { background: var(--home-surface-hover); border-color: var(--home-border-hover); transform: translateY(-1px); box-shadow: var(--home-shadow); }
+.prov-card:active { transform: none; box-shadow: none; }
+.prov-card.selected { border-color: var(--home-accent); box-shadow: 0 0 0 1px var(--home-accent) inset; }
+.prov-card.selected:hover { box-shadow: 0 0 0 1px var(--home-accent) inset, var(--home-shadow); }
+.prov-mark { width: 28px; height: 28px; flex: none; }
+.prov-card b { max-width: 100%; font-size: 12.5px; font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prov-card small { max-width: 100%; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prov-check {
+  position: absolute; top: 6px; right: 6px;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: none; align-items: center; justify-content: center;
+  background: var(--home-accent); color: #ffffff;
+}
+.prov-check .ico { width: 10px; height: 10px; stroke-width: 2.2; }
+.prov-card.selected .prov-check { display: inline-flex; }
+
+/* Primary CTA. */
+.home-cta-sec { gap: 6px; }
+.home-cta {
+  position: relative; overflow: hidden;
+  height: 36px; width: 100%; gap: 8px; padding: 0 14px;
+  border: 1px solid var(--home-accent); border-radius: 5px;
+  background: linear-gradient(180deg, var(--home-accent-hi), var(--home-accent));
+  color: #ffffff; font-size: 13px; font-weight: 600; letter-spacing: .01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: box-shadow .15s ease, filter .15s ease;
+}
+.home-cta:hover { filter: brightness(1.08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 0 3px rgba(0, 122, 204, 0.25), 0 2px 6px rgba(0, 0, 0, 0.35); }
+.home-cta:active { filter: brightness(.95); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3); }
+.home-cta:focus-visible { outline: 1px solid #ffffff; outline-offset: -3px; }
+.home-cta:disabled, .home-cta:disabled:hover { opacity: 1; cursor: progress; filter: none; background: linear-gradient(180deg, var(--home-accent-hi), var(--home-accent)); }
+.home-cta-ico { display: inline-flex; flex: none; }
+.home-cta-ico .ico { width: 14px; height: 14px; fill: currentColor; }
+.home-cta-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-cta-bar { position: absolute; left: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, 0.75); transition: width .5s linear; }
+.home-spin {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #ffffff;
+  animation: home-spin .8s linear infinite;
+}
+@keyframes home-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .home-spin { animation: none; }
+  .prov-card, .home-cta, .home-cta-bar { transition: none; }
+  .prov-card:hover { transform: none; }
+}
+
+.home-hint { margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; font-size: 11px; color: var(--text-muted); }
+.home-hint span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-hint .sep { flex: none; }
+.home-hint .ico { width: 12px; height: 12px; }
+.home-hint.warn { color: var(--warning); }
+
+/* Agent tab notice close button (lives with the Home feature). */
+.notice { position: relative; padding-right: 30px; }
+.notice-x { position: absolute; top: 4px; right: 4px; }
+
+/* Narrow grid (side panel near its minimum): drop the provider subtitle rather than
+   show "DeepSeek ..."; the full description stays in the card's tooltip. */
+.home-grid { container-type: inline-size; }
+@container (max-width: 330px) { .prov-card small { display: none; } }

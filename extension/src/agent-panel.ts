@@ -50,6 +50,7 @@ interface Phase { kind: PhaseKind; label: string; since: number; until?: number 
 const MAX_TOOL_CALLS = 40;
 const REMINDER_EVERY = 8;
 const MODE_KEY = 'broagentai.agentMode';
+const NOTICE_KEY = 'broagentai.agentNoticeDismissed';
 const DELAY_KEY = 'broagentai.agentDelaySeconds';
 /** The panel nudges the chat tab this often; see relay.ts poll(). */
 const TICK_MS = 1000;
@@ -130,12 +131,12 @@ async function tabMessage(tabId: number, message: unknown): Promise<any> {
 }
 
 /** Find an open tab of a bundled provider; the active tab wins. */
-async function findChatTab(): Promise<{ tab: chrome.tabs.Tab; provider: ProviderInfo } | null> {
+async function findChatTab(preferredTabId?: number): Promise<{ tab: chrome.tabs.Tab; provider: ProviderInfo } | null> {
   const tabs = await chrome.tabs.query({});
   const matches = tabs
     .map((tab) => ({ tab, provider: tab.url ? providerForUrl(tab.url) : null }))
     .filter((m): m is { tab: chrome.tabs.Tab; provider: ProviderInfo } => m.provider !== null && m.tab.id !== undefined);
-  matches.sort((a, b) => Number(b.tab.active) - Number(a.tab.active));
+  matches.sort((a, b) => Number(b.tab.id === preferredTabId) - Number(a.tab.id === preferredTabId) || Number(b.tab.active) - Number(a.tab.active));
   return matches[0] ?? null;
 }
 
@@ -236,10 +237,11 @@ async function tick(): Promise<void> {
   }
 }
 
-async function startSession(): Promise<void> {
+/** Start the agent session; preferredTabId (e.g. a tab just opened from Home) wins over other chat tabs. */
+export async function startAgentSession(preferredTabId?: number): Promise<void> {
   if (session) return;
   if (!deps.hasWorkspace()) return deps.toast('Pilih workspace dulu');
-  const found = await findChatTab();
+  const found = await findChatTab(preferredTabId);
   if (!found) {
     const provider = providers[0];
     if (provider) await chrome.tabs.create({ url: provider.homepage });
@@ -417,7 +419,20 @@ export function initAgent(dependencies: AgentDeps): void {
   });
   chrome.tabs.onRemoved.addListener((tabId) => { if (session?.tabId === tabId) stopSession('tab chat ditutup'); });
 
-  $('agentStart').addEventListener('click', () => { startSession(); });
+  // Closable "Monitoring & Approval Agent" banner; dismissal persists across reloads.
+  const setNoticeDismissed = (dismissed: boolean, persist: boolean) => {
+    $('agentNotice').classList.toggle('hidden', dismissed);
+    $('agentNoticeShow').classList.toggle('hidden', !dismissed);
+    if (!persist) return;
+    try { chrome.storage.local.set({ [NOTICE_KEY]: dismissed }).catch(() => {}); } catch { /* storage unavailable */ }
+  };
+  try {
+    chrome.storage.local.get(NOTICE_KEY).then((stored) => setNoticeDismissed(stored[NOTICE_KEY] === true, false)).catch(() => {});
+  } catch { /* storage unavailable: banner stays visible */ }
+  $('agentNoticeClose').addEventListener('click', () => setNoticeDismissed(true, true));
+  $('agentNoticeShow').addEventListener('click', () => setNoticeDismissed(false, true));
+
+  $('agentStart').addEventListener('click', () => { startAgentSession(); });
   $('agentStop').addEventListener('click', () => { stopSession(); });
   $('agentResend').addEventListener('click', () => {
     const text = session?.lastSent;
@@ -481,6 +496,8 @@ export function initAgent(dependencies: AgentDeps): void {
 }
 
 /** Called when the Agent tab becomes visible. */
+export function hasAgentSession(): boolean { return !!session; }
+
 export function showAgent(): void {
   refreshDetected();
 }

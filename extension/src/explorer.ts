@@ -22,7 +22,7 @@ export interface FileNode {
 
 export interface ExplorerOptions {
   onFileClick?: (path: string) => void;
-  onContextClick?: (e: MouseEvent, path: string) => void;
+  onContextClick?: (e: MouseEvent, path: string, isDirectory: boolean) => void;
   showIgnored?: boolean;
   /** Git status letter per workspace-relative file path (M, A, D, R, U, !). */
   gitStatus?: Map<string, string>;
@@ -69,6 +69,14 @@ export async function renderExplorer(
     rootEl.appendChild(treeContainer);
 
     renderNode(treeContainer, node, 0, options);
+    if (options.onContextClick) {
+      // Right-click on empty tree area targets the workspace root.
+      rootEl.addEventListener("contextmenu", (e) => {
+        if ((e.target as HTMLElement).closest(".ba-tree-node")) return;
+        e.preventDefault();
+        options.onContextClick!(e, ".", true);
+      });
+    }
   } catch (e: any) {
     rootEl.innerHTML = "";
     const errEl = document.createElement("div");
@@ -150,6 +158,14 @@ function renderNode(
       for (const child of sorted) renderNode(childrenEl, child, depth + 1, options);
     };
 
+    if (options.onContextClick) {
+      row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        select();
+        options.onContextClick!(e, node.path, true);
+      });
+    }
+
     row.addEventListener("click", async () => {
       select();
       node.isExpanded = !node.isExpanded;
@@ -201,7 +217,7 @@ function renderNode(
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       select();
-      options.onContextClick!(e, node.path);
+      options.onContextClick!(e, node.path, false);
     });
   }
 

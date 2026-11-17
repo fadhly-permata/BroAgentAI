@@ -1,6 +1,6 @@
 // Editor: CodeMirror 6 dengan dukungan read_file_lines dan write_file + MTIME_CONFLICT detection
 import { EditorView, basicSetup } from 'codemirror';
-import { oneDark } from '@codemirror/theme-one-dark';
+import { darkModernTheme, languageFor } from './code-theme.js';
 import { EditorState } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { javascript } from '@codemirror/lang-javascript';
@@ -18,32 +18,6 @@ let currentPath = '';
 let currentMtime: number | null = null;
 let view: EditorView | null = null;
 let dirty = false;
-
-function getLanguageExtension(path: string) {
-  const ext = path.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'js':
-    case 'jsx':
-    case 'ts':
-    case 'tsx':
-      return javascript({ typescript: ext === 'ts' || ext === 'tsx', jsx: ext === 'jsx' || ext === 'tsx' });
-    case 'html':
-    case 'htm':
-      return html();
-    case 'css':
-    case 'scss':
-    case 'less':
-      return css();
-    case 'json':
-    case 'jsonc':
-      return json();
-    case 'md':
-    case 'markdown':
-      return markdown();
-    default:
-      return [];
-  }
-}
 
 function updateStatus(msg: string) {
   $('statusMsg').textContent = msg;
@@ -80,16 +54,8 @@ async function loadFile(path: string, targetLine = 0) {
       doc: content,
       extensions: [
         basicSetup,
-        oneDark,
-        // Dark Modern editor surface over the One Dark syntax colors.
-        EditorView.theme({
-          '&': { height: '100%', backgroundColor: '#1e1e1e' },
-          '.cm-scroller': { overflow: 'auto', fontFamily: "Consolas, 'Courier New', monospace", fontSize: '13px' },
-          '.cm-gutters': { backgroundColor: '#1e1e1e', color: '#6e7681', border: 'none' },
-          '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#cccccc' },
-          '.cm-activeLine': { backgroundColor: 'rgba(42, 45, 46, 0.6)' },
-        }, { dark: true }),
-        getLanguageExtension(path),
+        darkModernTheme,
+        languageFor(path),
         keymap.of([
           ...defaultKeymap,
           ...searchKeymap,

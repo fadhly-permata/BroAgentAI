@@ -4,6 +4,8 @@
 
 const PATHS: Record<string, string> = {
   // Activity bar
+  home: '<path d="M2 7.5 8 2l6 5.5"/><path d="M3.5 6.5v7h9v-7"/><path d="M6.5 13.5v-4h3v4"/>',
+  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.2v4"/><circle cx="8" cy="4.9" r=".4"/>',
   files: '<path d="M9.5 1.5h-5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7z"/><path d="M9.5 1.5v3h3"/><path d="M3.5 4.5h-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1"/>',
   search: '<circle cx="9.5" cy="6.5" r="4"/><path d="M6.6 9.4 1.5 14.5"/>',
   'source-control': '<circle cx="4.5" cy="3" r="1.5"/><circle cx="4.5" cy="13" r="1.5"/><circle cx="11.5" cy="5" r="1.5"/><path d="M4.5 4.5v7"/><path d="M11.5 6.5c0 3-7 2.5-7 5"/>',
@@ -34,11 +36,11 @@ const PATHS: Record<string, string> = {
   ellipsis: '<circle cx="3" cy="8" r=".9"/><circle cx="8" cy="8" r=".9"/><circle cx="13" cy="8" r=".9"/>',
   play: '<path d="M4.5 2.5v11l9-5.5z"/>',
   'debug-stop': '<rect x="3.5" y="3.5" width="9" height="9" rx="1"/>',
-  info: '<circle cx="8" cy="8" r="6.5"/><path d="M8 7v4.5"/><circle cx="8" cy="4.75" r=".5"/>',
   warning: '<path d="M8 1.8 15 14H1z"/><path d="M8 6v4"/><circle cx="8" cy="12" r=".4"/>',
   pulse: '<path d="M1 8h3l2-5 3 10 2-5h4"/>',
   'git-branch': '<circle cx="4.5" cy="3" r="1.5"/><circle cx="4.5" cy="13" r="1.5"/><circle cx="11.5" cy="5" r="1.5"/><path d="M4.5 4.5v7"/><path d="M11.5 6.5c0 3-7 2.5-7 5"/>',
-  'folder-opened': '<path d="M1.5 12.5v-9a1 1 0 0 1 1-1h3.5l1.5 1.5h5a1 1 0 0 1 1 1V6"/><path d="M1.5 12.5 3.3 7h11.2l-1.8 5.5z"/>',
+  folder: '<path d="M1.5 12.5v-9a1 1 0 0 1 1-1h3.5l1.5 1.5h6a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/>',
+  'folder-opened':'<path d="M1.5 12.5v-9a1 1 0 0 1 1-1h3.5l1.5 1.5h5a1 1 0 0 1 1 1V6"/><path d="M1.5 12.5 3.3 7h11.2l-1.8 5.5z"/>',
   stethoscope: '<path d="M3.5 1.5v4a3 3 0 0 0 6 0v-4"/><path d="M6.5 8.5v2a3 3 0 0 0 6 0V9"/><circle cx="12.5" cy="7.5" r="1.5"/>',
   'debug-restart': '<path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M3.5 1.5v3h3"/>',
   window: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M1.5 5.5h13"/>',

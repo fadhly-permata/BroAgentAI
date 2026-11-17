@@ -1,0 +1,8 @@
+.cm-editor.bro-code-view { height: 100%; max-width: 100%; min-width: 0; }
+.bro-code-host { height: 100%; min-width: 0; overflow: hidden; }
+.bro-code-host .cm-scroller { overflow: auto; }
+/* highlightToHtml classes (Dark+) */
+.tok-kw { color: #569cd6 } .tok-ctl { color: #c586c0 } .tok-str { color: #ce9178 }
+.tok-com { color: #6a9955; font-style: italic } .tok-fn { color: #dcdcaa } .tok-type { color: #4ec9b0 }
+.tok-num { color: #b5cea8 } .tok-var { color: #9cdcfe } .tok-re { color: #d16969 } .tok-op { color: #d4d4d4 }
+.tok-tag { color: #569cd6 } .tok-head { color: #569cd6; font-weight: bold } .tok-link { color: #3794ff }
