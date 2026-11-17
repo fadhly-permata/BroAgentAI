@@ -216,12 +216,13 @@ Handy scripts:
 | `npm run e2e` | Playwright end-to-end run: the real extension against the real bridge and a scripted fake chat page |
 | `npm run check` | typecheck + test + build |
 | `npm run host:uninstall:dev` | Remove the native host registration |
+| `npm run release` | Build the release zips (bundle + source + checksums) into `release/` |
 
 Before you commit, make sure `npm run typecheck` and `npm run test` pass. Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat(scope):`, `fix(scope):`, ...). See [`AGENTS.md`](AGENTS.md) for the house rules and [`bridge/README.md`](bridge/README.md) for bridge-specific notes.
 
 ## Status
 
-Early days (v0.1). It works and has decent test coverage, but expect rough edges: provider DOMs change, some UI strings are still only in Bahasa Indonesia, and the specs in `specs/` are a bit ahead of (and sometimes behind) the code. Issues and PRs are welcome!
+Early days (v0.1). See [CHANGELOG.md](CHANGELOG.md) for what's in each version and [docs/releases](docs/releases) for release notes and install-from-zip steps. It works and has decent test coverage, but expect rough edges: provider DOMs change, some UI strings are still only in Bahasa Indonesia, and the specs in `specs/` are a bit ahead of (and sometimes behind) the code. Issues and PRs are welcome!
 
 Also keep in mind that automating a chat site's UI may not be something every provider loves. Check their terms and use it responsibly.
 
