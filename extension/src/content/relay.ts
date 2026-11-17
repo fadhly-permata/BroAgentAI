@@ -4,6 +4,7 @@
 // no access to files, Git or MCP; those live behind the panel and the bridge.
 import { DomAdapter } from '../providers/dom-adapter.js';
 import { providerForUrl } from '../providers/registry.js';
+import { startAgentMarks } from './agent-marks.js';
 
 const POLL_MS = 400;
 /** A reply counts as finished after its text stayed unchanged for this many polls. */
@@ -12,6 +13,8 @@ const STABLE_POLLS = 3;
 const provider = providerForUrl(location.href);
 
 if (provider) {
+  // Agent-typed messages get their own look, session or not (they persist in the chat history).
+  startAgentMarks(provider);
   const adapter = new DomAdapter(provider);
   let active = false;
   let reported: { count: number; key: number | null; text: string } = { count: 0, key: null, text: '' };

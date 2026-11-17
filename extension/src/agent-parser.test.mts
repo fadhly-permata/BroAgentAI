@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatCorrection, formatToolResult, parseReply } from './agent-parser.ts';
+import { agentMessageKind, formatCorrection, formatToolResult, parseReply } from './agent-parser.ts';
 
 const reply = (text: string, codeBlocks: string[] = []) => ({ text, codeBlocks });
 
@@ -51,4 +51,20 @@ test('feedback messages carry the marker the prompt promises', () => {
   assert.match(formatToolResult('fs.readFile', true, 'content'), /^\[BroAgentAI tool result\] fs\.readFile OK\n\ncontent$/);
   assert.match(formatToolResult('fs.writeFile', false, 'NOT_ALLOWED', true), /ERROR[\s\S]*\[result truncated\]$/);
   assert.match(formatCorrection('bad'), /"command":"fs\.readFile"/);
+});
+
+test('agent-typed messages are recognized from the text the agent sends', () => {
+  assert.deepEqual(agentMessageKind(formatToolResult('fs.readFile', true, 'x')), { kind: 'result', command: 'fs.readFile', ok: true });
+  assert.deepEqual(agentMessageKind(formatToolResult('git.push', false, 'NOT_ALLOWED')), { kind: 'result', command: 'git.push', ok: false });
+  assert.deepEqual(agentMessageKind(formatCorrection('bad')), { kind: 'note' });
+  assert.deepEqual(agentMessageKind('# BroAgentAI operating instructions\n\nYou are...'), { kind: 'prompt' });
+  // A chat page may render the prompt's markdown heading without the "#".
+  assert.deepEqual(agentMessageKind('  BroAgentAI operating instructions'), { kind: 'prompt' });
+});
+
+test("the user's own messages are not taken for agent messages", () => {
+  assert.equal(agentMessageKind('tolong baca README'), null);
+  assert.equal(agentMessageKind('what does [BroAgentAI tool result] mean?'), null);
+  assert.equal(agentMessageKind('[BroAgentAI tool result] tanpa status'), null);
+  assert.equal(agentMessageKind('[BroAgentAI]'), null);
 });

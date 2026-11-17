@@ -559,6 +559,14 @@ try {
     check('agent: write is logged as allowed', await logRow('fs.writeFile', 'ok').first().isVisible() && /- allowed -/.test(await text(page, '#cmdLog')), await text(page, '#cmdLog'));
     await page.screenshot({ path: path.join(shots, 'tab-agent.png'), fullPage: true });
 
+    // Chat page: messages the agent typed look different from the user's own.
+    const userMark = (hasText) => chat.locator('.user', { hasText }).first().getAttribute('data-ba-agent');
+    check('chat: operating prompt is marked as an agent message', await until(async () => (await userMark('BroAgentAI operating instructions')) === 'prompt'));
+    check('chat: tool result is marked with its command', await until(async () => (await userMark('[BroAgentAI tool result] fs.readFile OK')) === 'result')
+      && /fs\.readFile/.test(await chat.locator('.user', { hasText: '[BroAgentAI tool result] fs.readFile OK' }).first().getAttribute('data-ba-agent-label')));
+    check("chat: the user's own message is not marked", (await userMark('tolong baca readme')) === null);
+    await chat.screenshot({ path: path.join(shots, 'chat-agent-marks.png'), fullPage: true });
+
     // Virtualized list: when the newest reply scrolls out of the DOM, the older
     // command that becomes "last" must NOT be executed again.
     // The final answer must be fully handled first, otherwise there is nothing "newer" to scroll away.

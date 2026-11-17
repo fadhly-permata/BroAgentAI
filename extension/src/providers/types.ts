@@ -9,6 +9,11 @@ export interface ProviderSelectors {
   submit?: string;
   /** One element per assistant reply, in document order. */
   assistantMessage: string;
+  /**
+   * One element per user message (the bubble). Optional: without it the
+   * agent-message highlighter finds the bubble from the text itself.
+   */
+  userMessage?: string;
   /** Present while the AI is still generating (e.g. a Stop button). Empty = detect by text stability. */
   generating?: string;
   /**

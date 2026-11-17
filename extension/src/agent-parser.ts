@@ -71,12 +71,41 @@ export function parseReply(reply: ReplyInput): ParsedReply {
   return { kind: 'final', text: reply.text.trim() };
 }
 
+/** First line of every tool result the agent types into the chat. */
+export const TOOL_RESULT_TAG = '[BroAgentAI tool result]';
+/** First token of every other note the agent types into the chat (format corrections). */
+export const NOTE_TAG = '[BroAgentAI]';
+/** Heading of the operating prompt (built by the bridge, agent.ts buildPrompt). */
+export const PROMPT_HEADING = 'BroAgentAI operating instructions';
+
 /** Message sent back to the chat after a tool ran or was refused. */
 export function formatToolResult(command: string, ok: boolean, body: string, truncated = false): string {
-  return `[BroAgentAI tool result] ${command} ${ok ? 'OK' : 'ERROR'}\n\n${body}${truncated ? '\n\n[result truncated]' : ''}`;
+  return `${TOOL_RESULT_TAG} ${command} ${ok ? 'OK' : 'ERROR'}\n\n${body}${truncated ? '\n\n[result truncated]' : ''}`;
 }
 
 /** Message sent when a reply could not be parsed. */
 export function formatCorrection(reason: string): string {
-  return `[BroAgentAI] ${reason}\nExpected format (one block per reply):\n${COMMAND_FORMAT}\nWhen you are done, answer in plain prose without a JSON block.`;
+  return `${NOTE_TAG} ${reason}\nExpected format (one block per reply):\n${COMMAND_FORMAT}\nWhen you are done, answer in plain prose without a JSON block.`;
+}
+
+export type AgentMessage =
+  | { kind: 'prompt' }
+  | { kind: 'result'; command: string; ok: boolean }
+  | { kind: 'note' };
+
+/**
+ * Was this chat text typed by the agent rather than the user? Recognizes the
+ * operating prompt (raw "# ..." or rendered as a heading), tool results and
+ * format corrections by their fixed first line. Used to restyle those messages
+ * on the chat page so they do not look like the user's own.
+ */
+export function agentMessageKind(text: string): AgentMessage | null {
+  const head = text.trimStart();
+  if (head.replace(/^#+\s*/, '').startsWith(PROMPT_HEADING)) return { kind: 'prompt' };
+  if (head.startsWith(TOOL_RESULT_TAG)) {
+    const m = /^(\S+)\s+(OK|ERROR)\b/.exec(head.slice(TOOL_RESULT_TAG.length).trimStart());
+    return m ? { kind: 'result', command: m[1], ok: m[2] === 'OK' } : null;
+  }
+  if (head.startsWith(NOTE_TAG + ' ')) return { kind: 'note' };
+  return null;
 }
