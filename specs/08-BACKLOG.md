@@ -104,11 +104,13 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 6.3. Parser balasan, kartu approval, log aktivitas; e2e di halaman chat tiruan.
 - [x] 6.4a. Selector DeepSeek diverifikasi di situs asli (2026-11-17): composer, kirim via Enter, elemen balasan, code block, status tombol idle/generating. Status `ready`.
 - [ ] 6.4b. Verifikasi selector Gemini dan Qwen di situs asli (butuh akun login).
-- [ ] 6.4c. Jalankan loop penuh (panel + content script) di DeepSeek asli lewat Chrome.
+- [x] 6.4c. Loop penuh di DeepSeek asli lewat Chrome stable (2026-11-17): prompt pembuka, fs.readFile otomatis, fs.createFile + fs.writeFile dengan approval, jawaban akhir; file tertulis di disk.
+- [x] 6.5. Relay tahan terhadap daftar pesan ter-virtualisasi (pakai kunci urutan pesan, bukan jumlah elemen di DOM).
+- [ ] 6.6. Gemini/Qwen: cari kunci urutan pesan yang setara sebelum status dinaikkan dari experimental.
 
 ## Fase 7: E2E
 - [x] 7.1. `npm run e2e`: panel + bridge asli, dan lewat native messaging Chromium asli.
-- [ ] 7.2. Verifikasi manual di Chrome stable setelah Reload extension.
+- [x] 7.2. Native messaging di Chrome stable terverifikasi (host dijalankan Chrome, sesi agent berjalan).
 
 ---
 

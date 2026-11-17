@@ -11,6 +11,13 @@ export interface ProviderSelectors {
   assistantMessage: string;
   /** Present while the AI is still generating (e.g. a Stop button). Empty = detect by text stability. */
   generating?: string;
+  /**
+   * Attribute (on the message element or an ancestor) holding a number that
+   * grows with each new message. Needed on pages that virtualize the message
+   * list: old messages leave and re-enter the DOM while scrolling, so "the last
+   * assistant element" is not always the newest reply.
+   */
+  messageKeyAttr?: string;
 }
 
 export interface ProviderInfo {
@@ -29,8 +36,10 @@ export interface ProviderInfo {
 }
 
 export interface ProviderReply {
-  /** Number of assistant messages currently on the page. */
+  /** Number of assistant messages currently in the DOM (not the conversation length on virtualized pages). */
   count: number;
+  /** Ordering key of the latest message when the provider exposes one, else null. */
+  key: number | null;
   /** Visible text of the latest assistant message. */
   text: string;
   /** Contents of code blocks inside the latest message, in order. */

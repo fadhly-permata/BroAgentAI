@@ -14,22 +14,36 @@ const provider = providerForUrl(location.href);
 if (provider) {
   const adapter = new DomAdapter(provider);
   let active = false;
-  let reported = { count: 0, text: '' };
-  let candidate = { count: 0, text: '', polls: 0 };
+  let reported: { count: number; key: number | null; text: string } = { count: 0, key: null, text: '' };
+  let candidate = { count: 0, key: null as number | null, text: '', polls: 0 };
   let timer: number | undefined;
+
+  /**
+   * Is this reply one we have not handled yet?
+   * With an ordering key the answer does not depend on what is currently in
+   * the DOM: an older message that scrolled back into view has a lower key and
+   * is never treated as new. Without a key, fall back to count + text.
+   */
+  const isNew = (reply: { count: number; key: number | null; text: string }): boolean => {
+    if (reply.key !== null && reported.key !== null) {
+      if (reply.key < reported.key) return false;
+      return reply.key > reported.key || reply.text !== reported.text;
+    }
+    return reply.count !== reported.count || reply.text !== reported.text;
+  };
 
   const poll = () => {
     if (!active) return;
     let reply;
     try { reply = adapter.readLatestReply(); } catch { return; }
     if (reply.count === 0 || adapter.isGenerating()) { candidate.polls = 0; return; }
-    if (reply.count === reported.count && reply.text === reported.text) return;
+    if (!isNew(reply)) return;
 
-    if (reply.count === candidate.count && reply.text === candidate.text) candidate.polls++;
-    else candidate = { count: reply.count, text: reply.text, polls: 1 };
+    if (reply.key === candidate.key && reply.count === candidate.count && reply.text === candidate.text) candidate.polls++;
+    else candidate = { count: reply.count, key: reply.key, text: reply.text, polls: 1 };
     if (candidate.polls < STABLE_POLLS || reply.text.trim() === '') return;
 
-    reported = { count: reply.count, text: reply.text };
+    reported = { count: reply.count, key: reply.key, text: reply.text };
     chrome.runtime.sendMessage({ type: 'ba.reply', provider: provider.id, reply }).catch(() => {
       // The side panel is closed: nobody is listening, so pause until reactivated.
       active = false;
@@ -47,8 +61,8 @@ if (provider) {
     if (message.type === 'ba.activate') {
       // Replies already on the page belong to the past; only new ones are reported.
       const current = adapter.readLatestReply();
-      reported = { count: current.count, text: current.text };
-      candidate = { count: 0, text: '', polls: 0 };
+      reported = { count: current.count, key: current.key, text: current.text };
+      candidate = { count: 0, key: null, text: '', polls: 0 };
       active = true;
       window.clearInterval(timer);
       timer = window.setInterval(poll, POLL_MS);

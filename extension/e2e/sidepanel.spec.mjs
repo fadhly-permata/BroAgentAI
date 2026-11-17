@@ -558,6 +558,18 @@ try {
     check('agent: write is logged as allowed once', await logRow('fs.writeFile', 'ok').first().isVisible() && /allow once/.test(await text(page, '#cmdLog')));
     await page.screenshot({ path: path.join(shots, 'tab-agent.png'), fullPage: true });
 
+    // Virtualized list: when the newest reply scrolls out of the DOM, the older
+    // command that becomes "last" must NOT be executed again.
+    // The final answer must be fully handled first, otherwise there is nothing "newer" to scroll away.
+    await until(async () => (await logRow('assistant', 'info').count()) >= 2, 15000);
+    const writesBefore = await logRow('fs.writeFile', 'ok').count();
+    const stillInDom = await chat.evaluate(() => window.__scrollAwayNewest());
+    await new Promise((r) => setTimeout(r, 7000)); // background tabs poll about once a second
+    check('agent: an old command that scrolls back into view is not re-executed',
+      stillInDom > 0 && (await logRow('fs.writeFile', 'ok').count()) === writesBefore && !(await visible(page, '#approvalCard')),
+      await text(page, '#cmdLog'));
+    await chat.evaluate(() => window.__scrollBack());
+
     // Read-only: writes are refused without a card.
     await setMode('read-only');
     await say(chat, 'tulis langsung');

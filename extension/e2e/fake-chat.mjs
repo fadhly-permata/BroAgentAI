@@ -47,14 +47,35 @@ const rules = [
   [() => true, 'Saya tidak punya jawaban untuk itu.'],
 ];
 
-function addAssistant(prose, blocks) {
+// Like the live page, each message sits in a wrapper with an ordering key
+// (assistant positive, user negative) and old messages can leave the DOM.
+let turn = 0;
+const wrapMessage = (el, key) => {
+  const wrap = document.createElement('div');
+  wrap.setAttribute('data-virtual-list-item-key', String(key));
+  wrap.appendChild(el);
+  box.appendChild(wrap);
+  return wrap;
+};
+// Simulates scrolling up in a virtualized list: the newest assistant message
+// leaves the DOM, so an OLDER one becomes the last assistant element.
+window.__scrollAwayNewest = () => {
+  const wraps = [...box.children].filter((w) => w.querySelector('.ds-assistant-message-main-content'));
+  const newest = wraps[wraps.length - 1];
+  window.__detached = newest;
+  newest.remove();
+  return wraps.length - 1;
+};
+window.__scrollBack = () => { if (window.__detached) box.appendChild(window.__detached); };
+
+function addAssistant(prose, blocks, key) {
   const el = document.createElement('div');
   el.className = 'ds-markdown ds-assistant-message-main-content';
   sendBtn.classList.remove('ds-button--disabled'); // Stop button while generating
   const p = document.createElement('p');
   p.textContent = prose.slice(0, Math.ceil(prose.length / 2)); // first half "streams" in
   el.appendChild(p);
-  box.appendChild(el);
+  wrapMessage(el, key);
   setTimeout(() => {
     p.textContent = prose;
     for (const block of blocks) {
@@ -78,10 +99,12 @@ function submit() {
   const user = document.createElement('div');
   user.className = 'user';
   user.textContent = text;
-  box.appendChild(user);
+  turn += 2;
+  const key = turn; // the reply belongs to this turn even if the user types again meanwhile
+  wrapMessage(user, -key);
   const rule = rules.find((r) => r[0](text));
   const resolve = (part) => (typeof part === 'function' ? part(text) : part);
-  setTimeout(() => addAssistant(resolve(rule[1]), rule.slice(2).map(resolve)), 250);
+  setTimeout(() => addAssistant(resolve(rule[1]), rule.slice(2).map(resolve), key), 250);
 }
 
 input.addEventListener('keydown', (e) => {

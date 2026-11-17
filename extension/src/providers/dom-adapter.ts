@@ -26,6 +26,14 @@ export class DomAdapter {
     return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
   }
 
+  #keyOf(el: HTMLElement): number | null {
+    const attr = this.provider.selectors.messageKeyAttr;
+    if (!attr) return null;
+    const raw = el.closest(`[${attr}]`)?.getAttribute(attr);
+    const key = raw === null || raw === undefined ? NaN : Number(raw);
+    return Number.isFinite(key) ? Math.abs(key) : null;
+  }
+
   health(): ProviderHealth {
     const composer = first(this.provider.selectors.composer) !== null;
     return { ok: composer, provider: this.provider.id, composer, messages: this.#messages().length };
@@ -38,11 +46,12 @@ export class DomAdapter {
   readLatestReply(): ProviderReply {
     const messages = this.#messages();
     const last = messages[messages.length - 1];
-    if (!last) return { count: 0, text: '', codeBlocks: [] };
+    if (!last) return { count: 0, key: null, text: '', codeBlocks: [] };
     const pres = [...last.querySelectorAll<HTMLElement>('pre')];
     const blocks = pres.length > 0 ? pres : [...last.querySelectorAll<HTMLElement>('code')].filter((code) => (code.textContent ?? '').includes('\n'));
     return {
       count: messages.length,
+      key: this.#keyOf(last),
       text: last.innerText ?? last.textContent ?? '',
       codeBlocks: blocks.map((block) => (block.querySelector('code') ?? block).textContent ?? ''),
     };
