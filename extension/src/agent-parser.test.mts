@@ -69,8 +69,8 @@ test("the user's own messages are not taken for agent messages", () => {
   assert.equal(agentMessageKind('[BroAgentAI]'), null);
 });
 
-test('a command on its own lines without a fence is read (Gemini placeholder instead of ```)', () => {
-  // innerText of a live Gemini reply: no code block rendered, a placeholder line where the fence was.
+test('a command on its own lines without a fence is read (a persona marker instead of ```)', () => {
+  // innerText of a live Gemini reply under a custom persona that replaces fences with its own marker.
   const text = 'Bash is a shell.\n\n[KONTAINER_KODE]json\n{"command":"fs.readFile","params":{"path":"README.md"}}\n[KONTAINER_KODE]';
   assert.deepEqual(parseReply({ text, codeBlocks: [] }), { kind: 'command', command: 'fs.readFile', params: { path: 'README.md' } });
 });

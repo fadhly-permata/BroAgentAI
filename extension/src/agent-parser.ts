@@ -45,8 +45,9 @@ function candidates(reply: ReplyInput): string[] {
 
 /**
  * JSON objects that fill whole lines of the text, outside any code block. Some
- * pages drop the fence: Gemini sometimes shows its own placeholder line
- * ("[KONTAINER_KODE]json") where the ``` should be and renders no code block.
+ * replies come without a fence: a custom persona or instruction on the chat
+ * account can make the model replace ``` with its own marker line (seen on
+ * Gemini as "[KONTAINER_KODE]json"), and then the page renders no code block.
  */
 function bareObjects(text: string): string[] {
   const lines = text.split(/\r?\n/);
