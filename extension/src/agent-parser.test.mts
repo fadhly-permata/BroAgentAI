@@ -41,6 +41,41 @@ test('malformed command JSON and wrong shapes produce a correction, not a final 
   assert.equal(parseReply(reply('', ['{"command":"fs.readFile","params":"README.md"}'])).kind, 'error');
 });
 
+test('DeepSeek DSML tool call (as rendered on the page) is read as one command', () => {
+  // Full-width bars as the model emits them.
+  const dsml = [
+    '<｜DSML｜function_calls>',
+    '<｜DSML｜invoke name="fs.listTree">',
+    '<｜DSML｜parameter name="path" string="true">.</｜DSML｜parameter>',
+    '<｜DSML｜parameter name="maxDepth" string="false">3</｜DSML｜parameter>',
+    '</｜DSML｜invoke>',
+    '</｜DSML｜function_calls>',
+  ].join('\n');
+  assert.deepEqual(parseReply(reply(dsml)), { kind: 'command', command: 'fs.listTree', params: { path: '.', maxDepth: 3 }, native: true });
+  // What innerText gave on the live page: bars split by spaces, part of the tag name lost.
+  const seen = [
+    '< | | DSML | | calls>',
+    '< | | DSML | | invoke name="fs.listTree">',
+    '< | | DSML | | parameter name="path" string="true">.</ | | DSML | | parameter>',
+    '< | | DSML | | parameter name="maxDepth" string="false">3</ | | DSML | | parameter>',
+    '</ | | DSML | | invoke>',
+    '</ | | DSML | | calls>',
+  ].join('\n');
+  assert.deepEqual(parseReply(reply(seen)), { kind: 'command', command: 'fs.listTree', params: { path: '.', maxDepth: 3 }, native: true });
+});
+
+test('native markup keeps multi-line string values intact and types non-string values', () => {
+  const text = '<invoke name="fs.writeFile">\n<parameter name="path" string="true">a.html</parameter>\n<parameter name="content" string="true"><p>hi</p>\n<b>x</b>\n</parameter>\n<parameter name="force">true</parameter>\n</invoke>';
+  assert.deepEqual(parseReply(reply(text)), { kind: 'command', command: 'fs.writeFile', params: { path: 'a.html', content: '<p>hi</p>\n<b>x</b>', force: true }, native: true });
+});
+
+test('two native invokes in one reply get a correction; JSON still wins over markup', () => {
+  const two = '<invoke name="fs.stat"><parameter name="path">a</parameter></invoke>\n<invoke name="fs.stat"><parameter name="path">b</parameter></invoke>';
+  assert.equal(parseReply(reply(two)).kind, 'error');
+  const json = '{"command":"git.status","params":{}}';
+  assert.deepEqual(parseReply(reply('<invoke name="fs.stat"></invoke>', [json])), { kind: 'command', command: 'git.status', params: {} });
+});
+
 test('provider-native tool markup gets a specific correction', () => {
   const parsed = parseReply(reply('<tool_call>{"name":"read"}</tool_call>'));
   assert.equal(parsed.kind, 'error');

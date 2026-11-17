@@ -8,7 +8,8 @@ export interface ReplyInput {
 }
 
 export type ParsedReply =
-  | { kind: 'command'; command: string; params: Record<string, unknown> }
+  /** native: the model used its own tool-call markup instead of the JSON block (accepted, worth a reminder). */
+  | { kind: 'command'; command: string; params: Record<string, unknown>; native?: boolean }
   | { kind: 'final'; text: string }
   | { kind: 'error'; reason: string };
 
@@ -69,6 +70,44 @@ function bareObjects(text: string): string[] {
 }
 const MAX_BARE_LINES = 400;
 
+// Some models (DeepSeek's "DSML", Claude-style XML) fall back to their own
+// tool-call markup even when told to use JSON:
+//   <｜DSML｜invoke name="fs.listTree">
+//   <｜DSML｜parameter name="path" string="true">.</｜DSML｜parameter>
+//   <｜DSML｜parameter name="maxDepth" string="false">3</｜DSML｜parameter>
+//   </｜DSML｜invoke>
+// The prefix between "<" and the keyword varies (full-width bars, spaces the
+// page inserted, nothing at all), so it is matched loosely, on one line.
+const TAG_PREFIX = String.raw`<[^<>\n]*?\b`;
+const CLOSE_PREFIX = String.raw`<\/[^<>\n]*?\b`;
+const INVOKE = new RegExp(`${TAG_PREFIX}invoke\\s+name\\s*=\\s*"([^"]+)"[^<>\\n]*>`, 'g');
+const PARAMETER = new RegExp(`${TAG_PREFIX}parameter\\s+name\\s*=\\s*"([^"]+)"([^<>\\n]*)>([\\s\\S]*?)${CLOSE_PREFIX}parameter\\s*>`, 'g');
+const INVOKE_END = new RegExp(`${CLOSE_PREFIX}invoke\\s*>`);
+
+/** Value of one markup parameter: string="false" (or no flag) means a JSON literal when it parses as one. */
+function markupValue(raw: string, attrs: string): unknown {
+  const body = raw.replace(/^\r?\n/, '').replace(/\r?\n$/, '');
+  const flag = /\bstring\s*=\s*"(true|false)"/i.exec(attrs)?.[1]?.toLowerCase();
+  if (flag === 'true') return body;
+  const parsed = tryJson(body);
+  return parsed === undefined ? body : parsed;
+}
+
+/** Commands written as provider-native invoke/parameter markup. */
+function markupCommands(text: string): { command: string; params: Record<string, unknown> }[] {
+  const invokes = [...text.matchAll(INVOKE)];
+  return invokes.map((match, i) => {
+    const start = (match.index ?? 0) + match[0].length;
+    const next = invokes[i + 1]?.index ?? text.length;
+    let body = text.slice(start, next);
+    const end = INVOKE_END.exec(body);
+    if (end) body = body.slice(0, end.index);
+    const params: Record<string, unknown> = {};
+    for (const p of body.matchAll(PARAMETER)) params[p[1]] = markupValue(p[3], p[2]);
+    return { command: match[1].trim(), params };
+  });
+}
+
 export function parseReply(reply: ReplyInput): ParsedReply {
   const commands: { command: string; params: Record<string, unknown> }[] = [];
   let looksLikeCommand = false;
@@ -92,7 +131,13 @@ export function parseReply(reply: ReplyInput): ParsedReply {
   if (looksLikeCommand) {
     return { kind: 'error', reason: 'The command block is not valid JSON or has the wrong shape. "command" must be a string and "params" an object.' };
   }
-  if (/<\s*(tool_call|function_calls?|invoke)\b/i.test(reply.text)) {
+  // No JSON command: accept one native invoke instead of stalling the loop.
+  const native = markupCommands(reply.text);
+  if (native.length > 1) {
+    return { kind: 'error', reason: `Found ${native.length} tool calls in one reply. Send exactly ONE command per reply, as a fenced JSON block, and wait for its result.` };
+  }
+  if (native.length === 1) return { kind: 'command', ...native[0], native: true };
+  if (/<[^<>\n]*?\b(tool_call|function_calls?|invoke)\b/i.test(reply.text)) {
     return { kind: 'error', reason: 'BroAgentAI cannot read native tool-call markup. Use the fenced JSON command format instead.' };
   }
   return { kind: 'final', text: reply.text.trim() };
@@ -109,6 +154,9 @@ export const PROMPT_HEADING = 'BroAgentAI operating instructions';
 export function formatToolResult(command: string, ok: boolean, body: string, truncated = false): string {
   return `${TOOL_RESULT_TAG} ${command} ${ok ? 'OK' : 'ERROR'}\n\n${body}${truncated ? '\n\n[result truncated]' : ''}`;
 }
+
+/** Appended to a tool result when the command came as native markup, steering the model back to JSON. */
+export const NATIVE_CALL_REMINDER = `${NOTE_TAG} Your tool call was read from your built-in tool-call markup. Next time send it as one fenced JSON block, as in the operating instructions:\n${COMMAND_FORMAT}`;
 
 /** Message sent when a reply could not be parsed. */
 export function formatCorrection(reason: string): string {
