@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "e2e": "node e2e/sidepanel.spec.mjs",
     "e2e:native": "node e2e/native-host.spec.mjs",
+    "e2e:live:qwen": "node e2e/live-qwen.spec.mjs",
     "test": "node --test --experimental-strip-types src/**/*.test.mts"
   },
   "dependencies": {
