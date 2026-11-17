@@ -542,7 +542,7 @@ try {
       await until(async () => { const t = await lastUser(chat); return t.includes('BroAgentAI operating instructions') && t.includes('alpha-project') && t.includes('fs.writeFile'); }, 15000));
     check('agent: AI readiness reply is logged', await until(() => logRow('assistant', 'info').first().isVisible(), 15000), await text(page, '#cmdLog'));
 
-    // Ask mode: read runs automatically, write waits for approval.
+    // Always ask (the default): read runs automatically, write waits for approval.
     await say(chat, 'tolong baca readme lalu tulis catatan');
     check('agent: read tool runs without approval', await until(() => logRow('fs.readFile', 'ok').first().isVisible(), 15000), await text(page, '#cmdLog'));
     check('agent: write tool raises an approval card', await cardVisible(), await text(page, '#cmdLog'));
@@ -555,7 +555,8 @@ try {
       await until(() => fs.existsSync(notes) && /README starts with: /.test(fs.readFileSync(notes, 'utf8')), 15000),
       fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8') : '(missing)');
     check('agent: tool result is sent back and the AI finishes', await assistantSays(/Selesai\. Catatan sudah ditulis/), await lastAssistant(chat));
-    check('agent: write is logged as allowed once', await logRow('fs.writeFile', 'ok').first().isVisible() && /allow once/.test(await text(page, '#cmdLog')));
+    check('agent: default mode is Always ask', (await page.locator('#modeSel').inputValue()) === 'always-ask');
+    check('agent: write is logged as allowed', await logRow('fs.writeFile', 'ok').first().isVisible() && /- allowed -/.test(await text(page, '#cmdLog')), await text(page, '#cmdLog'));
     await page.screenshot({ path: path.join(shots, 'tab-agent.png'), fullPage: true });
 
     // Virtualized list: when the newest reply scrolls out of the DOM, the older
@@ -570,32 +571,80 @@ try {
       await text(page, '#cmdLog'));
     await chat.evaluate(() => window.__scrollBack());
 
-    // Read-only: writes are refused without a card.
-    await setMode('read-only');
-    await say(chat, 'tulis langsung');
-    check('agent: read-only denies a write and tells the AI', await assistantSays(/berhenti.*NOT_ALLOWED/s), await lastAssistant(chat));
-    check('agent: read-only write never touched disk', !fs.existsSync(direct) && !(await visible(page, '#approvalCard')));
+    const shellRow = (status) => logRow('shell.run', status);
+    const noCardFor = async (ms) => { await new Promise((r) => setTimeout(r, ms)); return !(await visible(page, '#approvalCard')); };
 
-    // Ask + Deny.
-    await setMode('ask');
+    // Always ask: the same tool asks again, every time.
     await say(chat, 'tulis langsung');
-    check('agent: ask mode shows the card again', await cardVisible());
+    check('agent: always-ask asks again for a tool already approved once', await cardVisible() && (await text(page, '#apNote')) === '', await text(page, '#apNote'));
     await page.locator('#apDeny').click();
     check('agent: denied write is reported to the AI and not executed',
       await assistantSays(/user denied this action/) && !fs.existsSync(direct), await lastAssistant(chat));
 
-    // Auto-edit: writes run automatically.
-    await setMode('auto-edit');
+    // Read-only: anything that changes something is refused without a card, shell included.
+    await setMode('read-only');
     await say(chat, 'tulis langsung');
-    check('agent: auto-edit writes without a card',
-      await until(() => fs.existsSync(direct), 15000) && !(await visible(page, '#approvalCard')));
+    check('agent: read-only denies a write and tells the AI', await assistantSays(/berhenti.*NOT_ALLOWED/s), await lastAssistant(chat));
+    check('agent: read-only write never touched disk', !fs.existsSync(direct) && !(await visible(page, '#approvalCard')));
+    await say(chat, 'jalankan shell lain');
+    check('agent: read-only denies shell commands', await until(() => shellRow('denied').first().isVisible(), 15000) && !(await visible(page, '#approvalCard')), await text(page, '#cmdLog'));
+    await assistantSays(/berhenti.*NOT_ALLOWED/s);
 
-    // Full-auto still asks for push.
-    await setMode('full-auto');
-    await say(chat, 'push sekarang');
-    check('agent: push asks even in full-auto', await cardVisible() && (await text(page, '#apTool')) === 'git.push', await text(page, '#cmdLog'));
+    // Ask once: first use of a tool asks, later uses of the same tool do not.
+    await setMode('ask-once');
+    await say(chat, 'tulis langsung');
+    check('agent: ask-once asks the first time and says it will remember',
+      await cardVisible() && /fs\.writeFile tidak akan ditanyakan lagi/.test(await text(page, '#apNote')), await text(page, '#apNote'));
+    await page.locator('#apAllow').click();
+    check('agent: ask-once runs the approved write', await until(() => fs.existsSync(direct), 15000));
+    await assistantSays(/Selesai/);
+    fs.rmSync(direct);
+    await say(chat, 'tulis langsung');
+    check('agent: ask-once does not ask again for the same tool',
+      await until(() => fs.existsSync(direct), 15000) && !(await visible(page, '#approvalCard')), await text(page, '#cmdLog'));
+    await assistantSays(/Selesai/);
+
+    // Shell in ask-once: a different tool asks; approval is per command line.
+    await say(chat, 'jalankan shell satu');
+    check('agent: shell command asks, showing the exact command line',
+      await cardVisible() && (await text(page, '#apTool')) === 'shell.run' && /^\$ .*shell-one/.test(await text(page, '#apDiff'))
+        && /TIDAK dibatasi ke workspace/.test(await text(page, '#apSummary')),
+      await text(page, '#approvalCard'));
+    await page.locator('#apAllow').click();
+    check('agent: shell output computed by the real shell reaches the AI', await assistantSays(/Shell menjawab: 42-shell-one/, 20000), await lastAssistant(chat));
+    await say(chat, 'jalankan shell satu');
+    check('agent: the same shell command is not asked again in ask-once',
+      await until(async () => (await shellRow('ok').count()) >= 2, 20000) && !(await visible(page, '#approvalCard')), await text(page, '#cmdLog'));
+    await say(chat, 'jalankan shell lain');
+    check('agent: a different shell command asks again', await cardVisible() && /shell-two/.test(await text(page, '#apDiff')), await text(page, '#apDiff'));
     await page.locator('#apDeny').click();
     await assistantSays(/user denied this action/);
+
+    // Changing the mode forgets what was approved.
+    await setMode('always-ask');
+    await setMode('ask-once');
+    await say(chat, 'tulis langsung');
+    check('agent: approvals do not survive a mode change', await cardVisible(), await text(page, '#cmdLog'));
+    await page.locator('#apDeny').click();
+    await assistantSays(/user denied this action/);
+
+    // Auto approve: nothing asks, including shell and push.
+    await setMode('auto-approve');
+    fs.rmSync(direct, { force: true });
+    await say(chat, 'tulis langsung');
+    check('agent: auto-approve writes without a card', await until(() => fs.existsSync(direct), 15000) && await noCardFor(500));
+    await assistantSays(/Selesai/);
+    const shellOkBefore = await shellRow('ok').count();
+    await say(chat, 'jalankan shell lain');
+    check('agent: auto-approve runs shell without a card',
+      await assistantSays(/Shell menjawab: 49-shell-two/, 20000) && (await shellRow('ok').count()) === shellOkBefore + 1 && !(await visible(page, '#approvalCard')),
+      await lastAssistant(chat));
+    await say(chat, 'push sekarang');
+    check('agent: auto-approve runs push without a card',
+      await until(async () => (await page.locator('#cmdLog [data-log-tool="git.push"]').count()) >= 1, 30000) && !(await visible(page, '#approvalCard')),
+      await text(page, '#cmdLog'));
+    await until(async () => /Selesai|berhenti/.test(await lastAssistant(chat)), 20000);
+    await setMode('always-ask');
 
     // Parser and safety feedback.
     await say(chat, 'dua perintah');
@@ -618,7 +667,7 @@ try {
     fs.rmSync(path.join(configDir, 'broagentai.json'));
 
     // Stop: replies are no longer acted on.
-    await setMode('ask');
+    await setMode('always-ask');
     await page.locator('#agentStop').click();
     check('agent: Stop ends the session', await until(async () => /Belum ada sesi/.test(await text(page, '#agentSession'))));
     const readsBefore = await logRow('fs.readFile', 'ok').count();

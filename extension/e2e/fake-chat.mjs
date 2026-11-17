@@ -29,6 +29,10 @@ const sendBtn = document.getElementById('sendBtn');
 const cmd = (command, params) => JSON.stringify({ command, params });
 
 // Each rule: [test(userText), prose, ...codeBlocks]
+// The real shell computes the number, so the marker cannot come from echoing the command text.
+const isWin = /win/i.test(navigator.platform);
+const shellCmd = (n, tag) => (isWin ? 'Write-Output "$(' + n + '*7)-shell-' + tag + '"' : 'echo "$((' + n + '*7))-shell-' + tag + '"');
+
 const rules = [
   [(t) => t.includes('BroAgentAI operating instructions'), 'READY'],
   [(t) => /baca readme/i.test(t), 'Baik, saya baca README dulu.', cmd('fs.readFile', { path: 'README.md' })],
@@ -40,6 +44,10 @@ const rules = [
   [(t) => /tool tak dikenal/i.test(t), 'Coba tool lain.', cmd('fs.format', { path: 'README.md' })],
   [(t) => /keluar workspace/i.test(t), 'Saya coba baca di luar.', cmd('fs.readFile', { path: '../outside.txt' })],
   [(t) => /push sekarang/i.test(t), 'Saya push.', cmd('git.push', {})],
+  [(t) => /jalankan shell satu/i.test(t), 'Saya jalankan perintah.', cmd('shell.run', { command: shellCmd(6, 'one') })],
+  [(t) => /jalankan shell lain/i.test(t), 'Saya jalankan perintah lain.', cmd('shell.run', { command: shellCmd(7, 'two') })],
+  [(t) => t.startsWith('[BroAgentAI tool result] shell.run OK'), (t) => 'Shell menjawab: ' + ((t.match(/(\d+-shell-\w+)/) || [])[1] || '?')],
+  [(t) => t.startsWith('[BroAgentAI tool result] git.push OK'), 'Selesai. Sudah di-push.'],
   [(t) => /pakai mcp/i.test(t), 'Saya panggil MCP.', cmd('mcp.fx.echo', { text: 'from chat' })],
   [(t) => t.startsWith('[BroAgentAI tool result] mcp.fx.echo OK'), 'MCP menjawab.'],
   [(t) => t.startsWith('[BroAgentAI tool result]') && / ERROR/.test(t.split('\n')[0]), (t) => 'Baik, saya berhenti. Alasan: ' + t.split('\n').slice(2).join(' ').slice(0, 120)],

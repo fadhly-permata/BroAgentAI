@@ -31,7 +31,7 @@ try {
   await chat.goto(FAKE_CHAT_URL);
   await page.bringToFront();
   await page.locator('.rail-btn[data-tab="agent"]').click();
-  await page.locator('#modeSel').selectOption('auto-edit');
+  await page.locator('#modeSel').selectOption('auto-approve');
   await page.locator('#agentStart').click();
   await until(async () => /Sesi aktif/.test(await page.locator('#agentSession').innerText()));
   const finals = () => page.locator('#cmdLog [data-log-tool="assistant"]').count();

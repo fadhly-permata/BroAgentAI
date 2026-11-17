@@ -8,6 +8,7 @@
 // closing the panel stops it, so nothing runs without the approval UI open.
 import { bridge } from './bridge-client.js';
 import { formatCorrection, formatToolResult, parseReply } from './agent-parser.js';
+import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
 
@@ -33,7 +34,7 @@ interface Session {
   provider: ProviderInfo;
   toolCalls: number; // since the last final answer
   totalCalls: number;
-  /** Categories the user allowed for the rest of this session. */
+  /** Approval keys (tool name, or one shell command line) remembered in ask-once mode. */
   allowed: Set<string>;
 }
 
@@ -48,7 +49,7 @@ let deps: AgentDeps;
 let session: Session | null = null;
 let logs: LogEntry[] = [];
 let queue: Promise<void> = Promise.resolve();
-let pendingApproval: ((decision: 'once' | 'session' | 'deny') => void) | null = null;
+let pendingApproval: ((decision: 'allow' | 'deny') => void) | null = null;
 
 const mode = () => ($('modeSel') as HTMLSelectElement).value;
 
@@ -156,16 +157,20 @@ function hideApproval(): void {
   pendingApproval = null;
 }
 
-function askApproval(check: any, params: Record<string, unknown>): Promise<'once' | 'session' | 'deny'> {
+function askApproval(check: any, params: Record<string, unknown>, remember: boolean): Promise<'allow' | 'deny'> {
   $('apRisk').textContent = String(check.category).toUpperCase();
   $('apRisk').className = 'risk risk-' + (check.category === 'read' ? 'read' : 'write');
   $('apTool').textContent = check.command;
-  $('apSummary').textContent = (check.source === 'mcp' ? 'MCP tool. ' : '') + (check.paths?.length ? 'Path: ' + check.paths.join(', ') : 'Tidak ada path spesifik.');
+  $('apSummary').textContent = check.category === 'execute'
+    ? 'Perintah shell. Berjalan dengan hak akunmu dan TIDAK dibatasi ke workspace.'
+    : (check.source === 'mcp' ? 'MCP tool. ' : '') + (check.paths?.length ? 'Path: ' + check.paths.join(', ') : 'Tidak ada path spesifik.');
   $('apDiff').textContent = check.preview || '';
   $('apDiff').classList.toggle('hidden', !check.preview);
   const shown = JSON.stringify(params, null, 2);
   $('apParams').textContent = shown.length > 4000 ? shown.slice(0, 4000) + '\n... (dipotong)' : shown;
-  $('apSession').textContent = `Allow ${check.category} for session`;
+  $('apNote').textContent = !remember ? ''
+    : check.category === 'execute' ? 'Tanya sekali: perintah yang persis sama tidak akan ditanyakan lagi di sesi ini.'
+    : `Tanya sekali: ${check.command} tidak akan ditanyakan lagi di sesi ini.`;
   $('approvalCard').classList.remove('hidden');
   return new Promise((resolve) => {
     pendingApproval = (decision) => { hideApproval(); resolve(decision); };
@@ -211,19 +216,21 @@ async function handleReply(reply: ProviderReply): Promise<void> {
     return send(formatToolResult(command, false, `NOT_ALLOWED: ${command} is not allowed in ${currentMode} mode. Do not retry it.`));
   }
   if (check.decision === 'ask') {
-    if (active.allowed.has(check.category)) {
+    // ask-once: an approval is remembered under the key the bridge returned.
+    const remember = currentMode === 'ask-once';
+    if (remember && active.allowed.has(check.approvalKey)) {
       approved = true;
-      decision = 'allowed for session';
+      decision = 'approved earlier';
     } else {
-      const answer = await askApproval(check, params);
+      const answer = await askApproval(check, params, remember);
       if (session !== active) return; // session stopped while waiting
       if (answer === 'deny') {
         log({ tool: command, category: check.category, decision: 'denied by user', status: 'denied', ms: 0 });
         return send(formatToolResult(command, false, 'NOT_ALLOWED: the user denied this action. Do not retry it; ask what to do instead.'));
       }
-      if (answer === 'session') active.allowed.add(check.category);
+      if (remember) active.allowed.add(check.approvalKey);
       approved = true;
-      decision = answer === 'session' ? 'allow for session' : 'allow once';
+      decision = remember ? 'allowed, remembered' : 'allowed';
     }
   }
 
@@ -260,8 +267,7 @@ export function initAgent(dependencies: AgentDeps): void {
 
   $('agentStart').addEventListener('click', () => { startSession(); });
   $('agentStop').addEventListener('click', () => { stopSession(); });
-  $('apAllow').addEventListener('click', () => pendingApproval?.('once'));
-  $('apSession').addEventListener('click', () => pendingApproval?.('session'));
+  $('apAllow').addEventListener('click', () => pendingApproval?.('allow'));
   $('apDeny').addEventListener('click', () => pendingApproval?.('deny'));
   $('logFilter').addEventListener('change', renderLog);
   $('clearLog').addEventListener('click', () => { logs = []; renderLog(); });
@@ -270,16 +276,29 @@ export function initAgent(dependencies: AgentDeps): void {
   });
 
   const select = $('modeSel') as HTMLSelectElement;
+  const HINTS: Record<string, string> = {
+    'read-only': 'modeHintReadOnly', 'always-ask': 'modeHintAlwaysAsk', 'ask-once': 'modeHintAskOnce', 'auto-approve': 'modeHintAutoApprove',
+  };
+  const showHint = () => { const key = HINTS[select.value]; $('modeHint').dataset.i18n = key; $('modeHint').textContent = t(key); };
+  // Values saved before the four-mode model.
+  const LEGACY: Record<string, string> = { ask: 'always-ask', 'auto-edit': 'ask-once', 'full-auto': 'auto-approve' };
   try {
     chrome.storage.local.get(MODE_KEY).then((stored) => {
-      if (typeof stored[MODE_KEY] === 'string' && [...select.options].some((o) => o.value === stored[MODE_KEY])) select.value = stored[MODE_KEY];
+      const raw = stored[MODE_KEY];
+      const value = typeof raw === 'string' ? (LEGACY[raw] ?? raw) : null;
+      if (value && [...select.options].some((o) => o.value === value)) select.value = value;
+      showHint();
     });
   } catch { /* storage unavailable */ }
   select.addEventListener('change', () => {
     chrome.storage.local.set({ [MODE_KEY]: select.value }).catch(() => {});
+    // Leaving ask-once (or tightening the mode) must not carry old approvals along.
+    session?.allowed.clear();
+    showHint();
     if (session) log({ tool: 'mode', category: '-', decision: select.value, status: 'info', ms: 0, detail: 'berlaku untuk perintah berikutnya' });
     deps.toast('Approval mode: ' + select.options[select.selectedIndex].text);
   });
+  showHint();
 
   renderLog();
   renderSession();

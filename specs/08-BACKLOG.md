@@ -106,6 +106,7 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [ ] 6.4b. Verifikasi selector Gemini dan Qwen di situs asli (butuh akun login).
 - [x] 6.4c. Loop penuh di DeepSeek asli lewat Chrome stable (2026-11-17): prompt pembuka, fs.readFile otomatis, fs.createFile + fs.writeFile dengan approval, jawaban akhir; file tertulis di disk.
 - [x] 6.5. Relay tahan terhadap daftar pesan ter-virtualisasi (pakai kunci urutan pesan, bukan jumlah elemen di DOM).
+- [x] 6.7. Empat mode approval (read-only, always-ask, ask-once, auto-approve) dan tool `shell.run` yang memilih shell per OS.
 - [ ] 6.6. Gemini/Qwen: cari kunci urutan pesan yang setara sebelum status dinaikkan dari experimental.
 
 ## Fase 7: E2E

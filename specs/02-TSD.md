@@ -535,21 +535,19 @@ The agent loop is tool-source agnostic: built-in filesystem/Git tools and MCP to
 
 ### 8.4 Approval modes
 
-| Mode | Reads | Writes/patches | Delete | Stage | Commit | Push/Pull |
-| --- | --- | --- | --- | --- | --- | --- |
-| Read-only | auto | deny | deny | deny | deny | deny |
-| Ask | auto | ask | ask | ask | ask | ask |
-| Auto-edit | auto | auto | ask | auto | ask | ask |
-| Full-auto | auto | auto | auto | auto | auto | ask (unless auto-sync enabled) |
-| MCP read-only tool | as read | — | — | — | — | — |
-| MCP write tool | deny | ask/auto | ask | — | — | — |
-| MCP destructive tool | deny | ask | ask | — | — | — |
+| Mode | Read tools | Everything else (write, delete, stage, commit, sync, MCP write/destructive, shell) |
+| --- | --- | --- |
+| `read-only` | auto | deny |
+| `always-ask` (default) | auto | ask every time |
+| `ask-once` | auto | ask on first use, then automatic for the session |
+| `auto-approve` | auto | auto |
 
-- MCP risk comes from annotations, then config overrides. In `Read-only`, only tools marked read-only are allowed.
-- Approval cards show command, params, risk class, affected paths, MCP server/tool when applicable, and a diff preview for writes.
-- "Allow once", "Allow for session", "Deny".
-- Push/pull always show a final confirmation modal with remote/branch/ahead/behind unless the user explicitly enables "Allow auto sync".
-- The current mode is stored per workspace and shown in the agent header.
+- The table lives in the host (`bridge/src/agent.ts`) and is enforced there: `agent.callTool` refuses what the mode denies, and anything that needs approval unless the panel states the user approved it.
+- `ask-once` remembers an approval per tool name. Shell commands are remembered per exact command line, so approving one command never approves another. Changing the mode clears the memory.
+- An unknown mode value is treated as `always-ask`; legacy names (`ask`, `auto-edit`, `full-auto`) map to `always-ask`, `ask-once`, `auto-approve`.
+- Approval cards show command, params, category, affected paths, MCP server/tool when applicable, a diff preview for writes, and the exact command line for `shell.run`.
+- `shell.run` is not confined to the workspace. In `auto-approve`, malicious file content or tool output can therefore trigger arbitrary commands unseen; that mode is for trusted workspaces only.
+- The current mode is stored in extension storage and shown in the agent header.
 
 ### 8.5 Parser and feedback
 

@@ -60,16 +60,24 @@ Method v1:
 - `term.create|input|resize|close|list` + event `term.output`, `term.exit`
 - `mcp.servers|tools|start|stop|restart|callTool` + event `mcp.status`
 - `tools.list`, `agent.prompt`, `agent.check`, `agent.callTool`
+- `shell.run { command, cwd?, timeoutMs? }`: satu perintah non-interaktif; shell dipilih per OS (PowerShell di Windows, `sh` di Linux/macOS).
 
 Semua method `fs.*` dan `git.*` bekerja pada workspace aktif; path selalu relatif terhadap root workspace.
 
 ## 4. Keamanan
 - Hanya extension dengan origin terdaftar yang bisa menjalankan bridge.
 - Semua path dikurung di workspace aktif (realpath, anti symlink escape).
-- Approval: setiap `fs.write/delete`, `git.commit/push`, `term.input` yang dikirim dari chat HARUS approval. Aksi manual user di panel (klik tombol sendiri) tidak butuh approval kedua.
-- Mode Agent: `read-only` | `ask` (default) | `auto-edit` | `full-auto`. Tabel keputusan ada di bridge (`agent.ts`) dan ditegakkan di sana: `agent.callTool` menolak yang dilarang mode, dan yang butuh approval kecuali panel menyatakan user sudah menyetujui. Push/pull dan tool MCP destruktif selalu minta approval.
+- Approval berlaku untuk perintah yang datang dari chat. Aksi manual user di panel (klik tombol sendiri) tidak butuh approval kedua.
+- Mode approval (ditegakkan di bridge, `agent.ts`):
+  - `read-only`: hanya tool baca yang jalan; semua yang mengubah sesuatu ditolak.
+  - `always-ask` (default): setiap aksi yang mengubah sesuatu minta approval, setiap kali.
+  - `ask-once`: tiap tool minta approval saat pertama dipakai, lalu jalan sendiri selama sesi. Perintah shell diingat per baris perintah, bukan per tool. Ganti mode menghapus ingatan ini.
+  - `auto-approve`: semua jalan tanpa bertanya, termasuk shell, hapus, dan push.
+  - Membaca selalu otomatis di semua mode. Nilai mode yang tidak dikenal diperlakukan sebagai `always-ask`.
+  - `agent.callTool` menolak yang dilarang mode, dan yang butuh approval kecuali panel menyatakan user sudah menyetujui.
+- `shell.run` TIDAK dikurung di workspace: perintah berjalan dengan hak akun user. Hanya direktori awal, timeout (default 60 s, maks 10 menit), dan ukuran output (256 KB per stream) yang dibatasi. Karena itu di `auto-approve` isi file atau hasil tool yang berbahaya bisa memicu perintah apa pun tanpa dilihat user; mode itu hanya untuk workspace yang dipercaya.
 - Loop agent berjalan di side panel, bukan service worker: menutup panel menghentikan loop, jadi tidak ada tool yang jalan tanpa UI approval terbuka.
-- Terminal (PTY) bukan tool agent; hanya user yang mengetik di tab Terminal.
+- Tab Terminal (PTY interaktif) hanya untuk user. Agent menjalankan perintah lewat `shell.run`, yang sekali jalan dan tanpa stdin.
 - MCP: server dari file project tidak bisa start sebelum user Review & trust; trust terikat hash command/URL/cwd/nama env+header, jadi perubahan config mencabutnya.
 - Provider chat adalah data (`extension/src/providers/<id>/provider.json`: pola URL + selector). Content script hanya mengetik prompt dan melaporkan balasan; tidak punya akses file/Git/MCP.
 - Bridge TIDAK pernah mengirim file/token user ke internet. Git dijalankan dengan `GIT_TERMINAL_PROMPT=0` sehingga tidak pernah menggantung menunggu kredensial.

@@ -124,7 +124,7 @@ try {
   await page.locator('.rail-btn[data-tab="agent"]').click();
   await page.locator('#agentStart').click();
   await until(async () => /Sesi aktif/.test(await text('#agentSession')), 15000);
-  await page.locator('#modeSel').selectOption('auto-edit');
+  await page.locator('#modeSel').selectOption('auto-approve');
   await say(chat, 'tolong baca readme lalu tulis catatan');
   check('agent loop reads and writes through the native host',
     await until(() => fs.existsSync(path.join(workspace, 'notes-from-ai.txt'))

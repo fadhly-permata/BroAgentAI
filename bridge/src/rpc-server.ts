@@ -19,6 +19,7 @@ import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
+import { runShell } from "./shell.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import {
@@ -331,6 +332,12 @@ export class RpcServer {
     });
     this.register("workspace.trust", () => this.#mcp.trust());
     this.register("workspace.untrust", () => this.#mcp.untrust());
+
+    // One-shot shell command for the agent. Not confined to the workspace; see shell.ts.
+    this.register("shell.run", (params) => {
+      const { command, cwd, timeoutMs } = readParams(params);
+      return runShell(this.#store, command, cwd, timeoutMs);
+    });
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
     this.register("tools.list", () => listTools(this));

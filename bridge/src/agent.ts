@@ -17,35 +17,57 @@ import { ErrorCode } from "./rpc.ts";
 import { WorkspaceError } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 import type { McpManager } from "./mcp.ts";
+import { shellFor } from "./shell.ts";
 
-export type AgentMode = "read-only" | "ask" | "auto-edit" | "full-auto";
-export type ToolCategory = "read" | "write" | "delete" | "stage" | "commit" | "sync" | "mcp-destructive";
+/**
+ * Approval modes.
+ *   read-only     only tools that change nothing may run
+ *   always-ask    every changing action needs the user's approval, every time
+ *   ask-once      the first use of each tool needs approval, then it runs
+ *                 on its own for the rest of the session
+ *   auto-approve  everything runs without asking
+ */
+export type AgentMode = "read-only" | "always-ask" | "ask-once" | "auto-approve";
+export type ToolCategory = "read" | "write" | "delete" | "stage" | "commit" | "sync" | "mcp-destructive" | "execute";
 export type Decision = "auto" | "ask" | "deny";
 
-export const AGENT_MODES: AgentMode[] = ["read-only", "ask", "auto-edit", "full-auto"];
+export const AGENT_MODES: AgentMode[] = ["read-only", "always-ask", "ask-once", "auto-approve"];
 /** Tool results sent back to the chat are capped at this many characters. */
 export const MAX_RESULT_CHARS = 48 * 1024;
 const MAX_INSTRUCTION_CHARS = 64 * 1024;
 const MAX_CATALOG_CHARS = 32 * 1024;
 const MAX_PREVIEW_LINES = 80;
 
-/** Approval table: category x mode. Push/pull (sync) is never automatic. */
-const POLICY: Record<ToolCategory, Record<AgentMode, Decision>> = {
-  read: { "read-only": "auto", ask: "auto", "auto-edit": "auto", "full-auto": "auto" },
-  write: { "read-only": "deny", ask: "ask", "auto-edit": "auto", "full-auto": "auto" },
-  stage: { "read-only": "deny", ask: "ask", "auto-edit": "auto", "full-auto": "auto" },
-  delete: { "read-only": "deny", ask: "ask", "auto-edit": "ask", "full-auto": "auto" },
-  commit: { "read-only": "deny", ask: "ask", "auto-edit": "ask", "full-auto": "auto" },
-  sync: { "read-only": "deny", ask: "ask", "auto-edit": "ask", "full-auto": "ask" },
-  "mcp-destructive": { "read-only": "deny", ask: "ask", "auto-edit": "ask", "full-auto": "ask" },
-};
+/** Names used before the four-mode model, mapped to the closest new mode. */
+const LEGACY_MODES: Record<string, AgentMode> = { ask: "always-ask", "auto-edit": "ask-once", "full-auto": "auto-approve" };
 
+/** Anything unknown falls back to always-ask, so a bad value can never loosen approvals. */
 export function normalizeMode(mode: unknown): AgentMode {
-  return typeof mode === "string" && (AGENT_MODES as string[]).includes(mode) ? (mode as AgentMode) : "ask";
+  if (typeof mode !== "string") return "always-ask";
+  if ((AGENT_MODES as string[]).includes(mode)) return mode as AgentMode;
+  return LEGACY_MODES[mode] ?? "always-ask";
 }
 
+/**
+ * Reading is always automatic. Everything else depends only on the mode:
+ * denied in read-only, asked in always-ask and ask-once, automatic in
+ * auto-approve. ask-once differs from always-ask in the panel, which
+ * remembers an approval per {@link approvalKey} for the session.
+ */
 export function decide(category: ToolCategory, mode: AgentMode): Decision {
-  return POLICY[category][mode];
+  if (category === "read") return "auto";
+  if (mode === "read-only") return "deny";
+  return mode === "auto-approve" ? "auto" : "ask";
+}
+
+/**
+ * What an "ask once" approval covers. A tool is remembered by name, except
+ * shell commands: approving one command must not approve every other command,
+ * so each distinct command line is its own key.
+ */
+export function approvalKey(command: string, params: Record<string, unknown>): string {
+  if (command === "shell.run") return `shell.run:${String(params.command ?? "").trim()}`;
+  return command;
 }
 
 export interface ToolDescriptor {
@@ -84,6 +106,13 @@ export const BUILTIN_TOOLS: ToolDescriptor[] = [
   { name: "git.push", category: "sync", description: "Push the current branch (never forced).", params: "{}", source: "builtin" },
   { name: "skills.list", category: "read", description: "List available skills (name + path).", params: "{}", source: "builtin" },
   { name: "skills.get", category: "read", description: "Read the full body of one skill.", params: '{"name": "release-notes"}', source: "builtin" },
+  {
+    name: "shell.run",
+    category: "execute",
+    description: `Run one non-interactive ${shellFor().name} command in the workspace root and get stdout, stderr and the exit code. Use it for tests, builds, linters, package managers or anything the other tools cannot do. No stdin; default timeout 60 s.`,
+    params: '{"command": "npm test", "cwd": "optional/sub/dir", "timeoutMs": 60000}',
+    source: "builtin",
+  },
 ];
 
 const MCP_NAME = /^mcp\.([a-zA-Z0-9_-]{1,40})\.(.+)$/;
@@ -168,6 +197,8 @@ export function writePreview(before: string | null, after: string): string {
 }
 
 function previewFor(host: ToolInvoker, command: string, params: Record<string, unknown>): string | undefined {
+  // For a shell command the "preview" is the exact command line the user is approving.
+  if (command === "shell.run") return typeof params.command === "string" ? `$ ${params.command}` : undefined;
   if (command !== "fs.writeFile" || typeof params.path !== "string" || typeof params.content !== "string") return undefined;
   const active = host.store.active();
   if (!active) return undefined;
@@ -193,6 +224,8 @@ export async function checkTool(host: ToolInvoker, command: unknown, params: unk
     category: resolved.descriptor.category,
     mode: agentMode,
     decision: decide(resolved.descriptor.category, agentMode),
+    /** In ask-once mode the panel remembers approvals under this key. */
+    approvalKey: approvalKey(resolved.descriptor.name, p),
     paths,
     preview: previewFor(host, resolved.descriptor.name, p),
   };
@@ -256,6 +289,7 @@ export async function buildPrompt(host: ToolInvoker, mode: unknown): Promise<{ p
     `- Path: ${active.path}`,
     `- OS: ${platform()}`,
     `- Git branch: ${branch}`,
+    `- Shell: ${shellFor().name} (write shell.run commands for this shell)`,
     `- Approval mode: ${agentMode}`,
     "",
     "## How to call a tool",
