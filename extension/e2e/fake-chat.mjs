@@ -41,6 +41,8 @@ const rules = [
   [(t) => t.startsWith('[BroAgentAI tool result] fs.writeFile OK'), 'Selesai. Catatan sudah ditulis.'],
   [(t) => /tulis langsung/i.test(t), 'Saya tulis file.', cmd('fs.writeFile', { path: 'direct.txt', content: 'written directly\n' })],
   [(t) => /dua perintah/i.test(t), 'Dua sekaligus.', cmd('fs.readFile', { path: 'README.md' }), cmd('fs.readFile', { path: 'image.bin' })],
+  // DeepSeek sometimes answers in its native tool-call markup ("DSML") instead of JSON.
+  [(t) => /pakai dsml/i.test(t), '<｜DSML｜function_calls>\n<｜DSML｜invoke name="fs.readFile">\n<｜DSML｜parameter name="path" string="true">README.md</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls>'],
   [(t) => /tool tak dikenal/i.test(t), 'Coba tool lain.', cmd('fs.format', { path: 'README.md' })],
   [(t) => /keluar workspace/i.test(t), 'Saya coba baca di luar.', cmd('fs.readFile', { path: '../outside.txt' })],
   [(t) => /push sekarang/i.test(t), 'Saya push.', cmd('git.push', {})],
@@ -100,9 +102,20 @@ function addAssistant(prose, blocks, key) {
   }, 2500); // > relay stability window: only the generating selector prevents a premature report
 }
 
+// Rate-limit stand-in: refuse this many agent-typed messages, leaving the text
+// in the composer and showing a toast, like a provider that throttles sends.
+window.__rejectAgentSends = 0;
 function submit() {
   const text = input.value;
   if (!text.trim()) return;
+  if (window.__rejectAgentSends > 0 && text.startsWith('[BroAgentAI')) {
+    window.__rejectAgentSends--;
+    const toast = document.createElement('div');
+    toast.className = 'rate-limit-toast';
+    toast.textContent = 'You are sending messages too frequently. Please wait.';
+    document.body.appendChild(toast);
+    return;
+  }
   input.value = '';
   const user = document.createElement('div');
   user.className = 'user';

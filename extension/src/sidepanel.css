@@ -802,6 +802,25 @@ button.pill:hover { filter: brightness(1.15); }
 #tab-agent .panel-head .pill { max-width: 60%; }
 #tab-agent .panel-head .pill span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .chat-detect { border-top: 1px solid var(--border); }
+.agent-status {
+  display: flex; align-items: center; gap: var(--sp-2); min-width: 0;
+  padding: 4px var(--sp-2);
+  border-left: 2px solid var(--info); border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--bg-sidebar);
+  font-size: var(--fs-sm); color: var(--text-muted);
+}
+.agent-status .status-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--info); }
+.agent-status .status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-status .mini { flex: none; }
+.agent-status:is([data-phase="running"], [data-phase="sending"], [data-phase="waiting"]) .status-dot { animation: ba-pulse 1.2s ease-in-out infinite; }
+.agent-status:is([data-phase="delay"], [data-phase="retry"], [data-phase="approval"]) { border-left-color: var(--warning); }
+.agent-status:is([data-phase="delay"], [data-phase="retry"], [data-phase="approval"]) .status-dot { background: var(--warning); }
+.agent-status:is([data-phase="failed"], [data-phase="offline"]) { border-left-color: var(--danger); color: var(--text); }
+.agent-status:is([data-phase="failed"], [data-phase="offline"]) .status-dot { background: var(--danger); }
+.agent-status[data-phase="idle"] { border-left-color: var(--success); }
+.agent-status[data-phase="idle"] .status-dot { background: var(--success); }
+@keyframes ba-pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .agent-status .status-dot { animation: none !important; } }
 .agent-controls select { height: var(--control-h-lg); }
 .approval {
   border-left: 3px solid var(--warning);

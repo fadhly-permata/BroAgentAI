@@ -555,6 +555,8 @@ try {
       await until(() => fs.existsSync(notes) && /README starts with: /.test(fs.readFileSync(notes, 'utf8')), 15000),
       fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8') : '(missing)');
     check('agent: tool result is sent back and the AI finishes', await assistantSays(/Selesai\. Catatan sudah ditulis/), await lastAssistant(chat));
+    check('agent: status line says the turn is done',
+      await until(() => visible(page, '#agentStatus[data-phase="idle"]')), await text(page, '#agentStatus'));
     check('agent: default mode is Always ask', (await page.locator('#modeSel').inputValue()) === 'always-ask');
     check('agent: write is logged as allowed', await logRow('fs.writeFile', 'ok').first().isVisible() && /- allowed -/.test(await text(page, '#cmdLog')), await text(page, '#cmdLog'));
     await page.screenshot({ path: path.join(shots, 'tab-agent.png'), fullPage: true });
@@ -674,6 +676,44 @@ try {
     await bridge.call('mcp.stop', { server: 'fx' });
     fs.rmSync(path.join(configDir, 'broagentai.json'));
 
+    // Settings > Agent: a delay before every automatic message.
+    await page.locator('.rail-btn[data-tab="settings"]').click();
+    await page.locator('.set-tab[data-set="agent"]').click();
+    await page.locator('#agentDelay').fill('1');
+    await page.locator('#agentDelay').press('Tab');
+    await page.locator('.rail-btn[data-tab="agent"]').click();
+    await setMode('read-only');
+
+    // Rate limit: the chat refuses one agent message; the agent waits, retries, and the loop goes on.
+    await chat.evaluate(() => { window.__rejectAgentSends = 2; }); // the adapter presses twice per send; two refusals force a panel retry
+    const readsBeforeRetry = await logRow('fs.readFile', 'ok').count();
+    await say(chat, 'tolong baca readme');
+    check('agent: the configured delay runs before the tool result is typed',
+      await until(() => visible(page, '#agentStatus[data-phase="delay"]'), 15000), await text(page, '#agentStatus'));
+    check('agent: a refused send is logged and retried',
+      await until(() => logRow('send', 'info').first().isVisible(), 20000) && /retry 1\/2/.test(await text(page, '#cmdLog')), await text(page, '#cmdLog'));
+    check('agent: the loop continues after the retry',
+      await assistantSays(/berhenti.*NOT_ALLOWED/s, 40000) && (await logRow('fs.readFile', 'ok').count()) === readsBeforeRetry + 1, await lastAssistant(chat));
+
+    // DeepSeek native tool-call markup is executed, and the result steers the AI back to JSON.
+    const readsBeforeDsml = await logRow('fs.readFile', 'ok').count();
+    await say(chat, 'pakai dsml');
+    check('agent: a DSML tool call runs as a command',
+      await until(async () => (await logRow('fs.readFile', 'ok').count()) === readsBeforeDsml + 1, 20000), await text(page, '#cmdLog'));
+    check('agent: the result after a DSML call reminds the AI to use JSON',
+      await until(async () => (await chat.locator('.user', { hasText: 'built-in tool-call markup' }).filter({ hasText: 'fs.readFile OK' }).count()) > 0, 15000));
+    await assistantSays(/berhenti/, 30000);
+
+    // Chat tab reload: the relay re-activates on its own.
+    await chat.reload();
+    check('agent: relay reconnects after the chat tab reloads',
+      await until(async () => /relay disambung lagi/.test(await text(page, '#cmdLog')), 20000), await text(page, '#cmdLog'));
+    const readsBeforeReload = await logRow('fs.readFile', 'ok').count();
+    await say(chat, 'tolong baca readme');
+    check('agent: commands run again after the reload',
+      await until(async () => (await logRow('fs.readFile', 'ok').count()) === readsBeforeReload + 1, 20000), await text(page, '#cmdLog'));
+    await assistantSays(/berhenti/, 30000);
+
     // Stop: replies are no longer acted on.
     await setMode('always-ask');
     await page.locator('#agentStop').click();
@@ -699,6 +739,7 @@ try {
   check('workspace is restored after reload',
     await until(async () => /alpha-project/.test(await text(page, '#headerWs'))), await text(page, '#headerWs'));
   check('tree is restored after reload', await until(() => fileRow('README.md').isVisible()));
+  check('agent delay setting is restored after reload', await until(async () => (await page.locator('#agentDelay').inputValue()) === '1'));
 
   // ---- 14. host missing -> honest offline state, no fake data
   const offlinePage = await ctx.newPage();

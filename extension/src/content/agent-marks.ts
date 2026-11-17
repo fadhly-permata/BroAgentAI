@@ -108,6 +108,9 @@ function scan(provider: ProviderInfo): void {
     acceptNode: (node) => (maybeMarker((node as Text).data) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
   });
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    // Already marked: skip before bubbleFor, whose getComputedStyle calls force
+    // a style recalc - on every scan, while a reply streams, in long chats.
+    if (node.parentElement?.closest(`[${ATTR}]`)) continue;
     const bubble = bubbleFor(node, provider);
     if (!bubble || bubble.hasAttribute(ATTR)) continue;
     const msg = agentMessageKind(visibleText(bubble));

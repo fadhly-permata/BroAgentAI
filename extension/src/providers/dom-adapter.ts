@@ -114,7 +114,19 @@ export class DomAdapter {
       }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 200)); // let the page enable its send button
+    await sleep(200); // let the page enable its send button
+    // A page that refuses a message (rate limit, still busy) leaves it in the
+    // composer. Press once more in case the send button enabled late; if the
+    // text is still there, report it so the panel can wait and retry instead
+    // of waiting forever for a reply that will never come.
+    for (let press = 0; press < 2; press++) {
+      this.#submit(composer);
+      if (await this.#accepted(text, ACCEPT_WAIT_MS)) return;
+    }
+    throw new Error(`${NOT_ACCEPTED}: the chat page kept the message in its input box (rate limit or still busy)`);
+  }
+
+  #submit(composer: HTMLElement): void {
     const submit = first(this.provider.selectors.submit);
     if (submit && !(submit as HTMLButtonElement).disabled) {
       submit.click();
@@ -125,4 +137,27 @@ export class DomAdapter {
     composer.dispatchEvent(new KeyboardEvent('keypress', init));
     composer.dispatchEvent(new KeyboardEvent('keyup', init));
   }
+
+  /** Did the page take the message, i.e. is the composer no longer holding it? */
+  async #accepted(text: string, waitMs: number): Promise<boolean> {
+    const head = normalize(text).slice(0, 40);
+    const deadline = Date.now() + waitMs;
+    for (;;) {
+      const composer = first(this.provider.selectors.composer);
+      if (!composer) return true; // re-rendered away: the page moved on
+      const current = normalize(composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement
+        ? composer.value
+        : composer.innerText ?? composer.textContent ?? '');
+      if (current === '' || !current.startsWith(head)) return true;
+      if (Date.now() >= deadline) return false;
+      await sleep(150);
+    }
+  }
 }
+
+/** Error prefix: the page did not take the message; worth retrying later. */
+export const NOT_ACCEPTED = 'NOT_ACCEPTED';
+const ACCEPT_WAIT_MS = 3000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();

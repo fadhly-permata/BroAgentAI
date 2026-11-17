@@ -127,6 +127,7 @@
         <button id="agentStart" class="primary full"><i data-icon="play"></i><span data-i18n="startSession">Start session</span></button>
         <button id="agentStop" class="danger full hidden"><i data-icon="debug-stop"></i><span data-i18n="stopSession">Stop</span></button>
       </div>
+      <div id="agentStatus" class="agent-status hidden" role="status" aria-live="polite"><span class="status-dot"></span><span id="agentStatusText" class="status-text"></span><button id="agentResend" class="mini hidden"><i data-icon="refresh"></i><span data-i18n="resend">Kirim ulang</span></button></div>
     </div>
 
     <div class="section agent-controls">
@@ -151,6 +152,7 @@
     <button class="set-tab" data-set="companion" role="tab" data-i18n="companionHost">Companion</button>
     <button class="set-tab" data-set="workspaces" role="tab" data-i18n="manageWorkspaces">Workspaces</button>
     <button class="set-tab" data-set="mcp" role="tab" data-i18n="mcpServers">MCP</button>
+    <button class="set-tab" data-set="agent" role="tab" data-i18n="agentSettings">Agent</button>
   </div>
 
   <div id="set-editor" class="set-panel active">
@@ -174,6 +176,11 @@
     <h3 data-i18n="manageWorkspaces">Manage Workspaces</h3>
     <div id="manageList" class="list"></div>
     <div class="setting"><label class="setting-title" for="ignoreInput" data-i18n="ignorePatterns">Ignore patterns</label><p class="setting-desc" data-i18n="ignoreDesc">Comma-separated names hidden from the explorer and search.</p><input id="ignoreInput" class="input setting-control" value=".git, node_modules, dist"></div>
+  </div>
+
+  <div id="set-agent" class="set-panel">
+    <h3 data-i18n="agentSettings">Agent</h3>
+    <div class="setting"><label class="setting-title" for="agentDelay" data-i18n="agentDelayLabel">Jeda sebelum tiap kirim</label><p class="setting-desc" data-i18n="agentDelayDesc">Detik yang ditunggu agent sebelum mengetik hasil tool ke chat.</p><div class="num-row"><input type="number" id="agentDelay" value="0" min="0" max="300" step="0.5" class="input-sm"><span class="muted" data-i18n="seconds">detik</span></div></div>
   </div>
 
   <div id="set-mcp" class="set-panel">
