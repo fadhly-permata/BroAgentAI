@@ -29,17 +29,12 @@ const PROVIDER_KEY = 'broagentai.homeProvider';
 const LOAD_WAIT_MS = 10_000;
 
 /**
- * Local embedded vector/SVG asset marks for each provider so they render instantly and reliably.
+ * Official provider marks (favicons/logos) so they render instantly and reliably.
  */
 const MARKS: Record<string, string> = {
-  qwen: '<defs><linearGradient id="pm-qwen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f74ff"/><stop offset="1" stop-color="#5b3fd1"/></linearGradient></defs>'
-    + '<path d="M12 2.2 20.5 7v10L12 21.8 3.5 17V7z" fill="url(#pm-qwen)"/>'
-    + '<circle cx="11.4" cy="11.4" r="3.6" fill="none" stroke="#fff" stroke-width="1.9"/><path d="m13.6 13.6 2.6 2.6" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/>',
-  deepseek: '<rect x="2" y="2" width="20" height="20" rx="5.5" fill="#4d6bfe"/>'
-    + '<path d="M5.2 13.1c.4-3.3 3.2-5.6 6.6-5.6 2.6 0 4.8 1.4 5.8 3.6l1.6-1.3.2 4.4-2-.8c-1 2.4-3.4 4-6.1 4-3.4 0-5.6-1.6-6.1-4.3z" fill="#fff"/>'
-    + '<circle cx="10.4" cy="11.4" r="1" fill="#4d6bfe"/>',
-  gemini: '<defs><linearGradient id="pm-gemini" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4285f4"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></defs>'
-    + '<path d="M12 1.8c.7 5.4 4.8 9.5 10.2 10.2-5.4.7-9.5 4.8-10.2 10.2-.7-5.4-4.8-9.5-10.2-10.2C7.2 11.3 11.3 7.2 12 1.8z" fill="url(#pm-gemini)"/>',
+  qwen: 'https://assets.alicdn.com/g/qwenweb/qwen-chat-fe/0.3.46/favicon.png',
+  deepseek: 'https://fe-static.deepseek.com/chat/favicon.svg',
+  gemini: 'https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png',
 };
 
 let deps: HomeDeps;
@@ -48,10 +43,15 @@ let selected = providers[0]?.id ?? '';
 const esc = (text: string) => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
 
 function providerMark(p: ProviderInfo): string {
-  const body = MARKS[p.id]
-    ?? `<path d="M4 4.5h16a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5z" fill="var(--home-mark-bg)"/>`
-      + `<text x="12" y="14.2" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--home-mark-fg)">${esc(((p.label)[0] || '?').toUpperCase())}</text>`;
-  return `<svg class="prov-mark" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+  const src = MARKS[p.id];
+  if (src) {
+    return `<img class="prov-mark" src="${esc(src)}" alt="${esc(p.label)}" />`;
+  }
+  // Fallback to a neutral chat bubble with its initial
+  return `<svg class="prov-mark" viewBox="0 0 24 24" aria-hidden="true">`
+    + `<path d="M4 4.5h16a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5z" fill="var(--home-mark-bg)"/>`
+    + `<text x="12" y="14.2" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--home-mark-fg)">${esc(((p.label)[0] || '?').toUpperCase())}</text>`
+    + `</svg>`;
 }
 
 function workspaceRows(list: HomeWorkspace[], active: HomeWorkspace | null): string {
