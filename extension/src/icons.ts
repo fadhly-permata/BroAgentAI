@@ -12,6 +12,7 @@ const PATHS: Record<string, string> = {
   terminal: '<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="m4 6 2 2-2 2"/><path d="M7.5 10.5h4"/>',
   agent: '<rect x="2.5" y="5" width="11" height="8.5" rx="2"/><path d="M8 5V2.5"/><circle cx="8" cy="2" r=".6"/><circle cx="5.75" cy="9" r=".9"/><circle cx="10.25" cy="9" r=".9"/><path d="M1 8.5v2M15 8.5v2"/>',
   settings: '<circle cx="8" cy="8" r="2"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/><circle cx="8" cy="8" r="4.6"/>',
+  about: '<circle cx="8" cy="8" r="6"/><path d="M8 5v1"/><path d="M8 8v4"/>',
   // Actions
   refresh: '<path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M12.5 1.5v3h-3"/>',
   'collapse-all': '<rect x="4.5" y="4.5" width="10" height="10" rx="1"/><path d="M1.5 11.5v-9a1 1 0 0 1 1-1h9"/><path d="M7 9.5h5"/>',

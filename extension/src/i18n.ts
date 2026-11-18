@@ -13,6 +13,9 @@ export const translations = {
     scm: 'Source Control',
     terminal: 'Terminal',
     agent: 'Agent',
+    about: 'About',
+    aboutDesc: 'Chrome/Edge side panel that turns your DeepSeek, Gemini or Qwen web chat into a local coding agent: files, Git, shell & MCP tools with approvals. No API key.',
+    author: 'Author',
     settings: 'Settings',
     showIgnored: 'Show ignored',
     refresh: 'Refresh',
@@ -148,6 +151,9 @@ export const translations = {
     scm: 'Source Control',
     terminal: 'Terminal',
     agent: 'Agen',
+    about: 'Tentang',
+    aboutDesc: 'Side panel Chrome/Edge yang mengubah chat web DeepSeek, Gemini, atau Qwen Anda menjadi agen koding lokal: file, Git, shell & alat MCP dengan persetujuan. Tanpa kunci API.',
+    author: 'Pembuat',
     settings: 'Pengaturan',
     showIgnored: 'Tampilkan diabaikan',
     refresh: 'Segarkan',
@@ -336,6 +342,10 @@ export function translatePage(lang: Lang) {
   // Agent
   const agentTitle = document.querySelector('#tab-agent .panel-head h2');
   if (agentTitle) agentTitle.textContent = t.agent;
+  
+  // About
+  const aboutTitle = document.querySelector('#tab-about .panel-head h2');
+  if (aboutTitle) aboutTitle.textContent = t.about;
   
   // Settings
   const settingsTitle = document.querySelector('#tab-settings .panel-head h2');

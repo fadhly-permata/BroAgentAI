@@ -3,6 +3,11 @@
   "name": "BroAgentAI",
   "version": "0.1.0",
   "description": "BroAgentAI extension",
+  "icons": {
+    "16": "assets/icon.png",
+    "48": "assets/icon.png",
+    "128": "assets/icon.png"
+  },
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
