@@ -29,12 +29,12 @@ const PROVIDER_KEY = 'broagentai.homeProvider';
 const LOAD_WAIT_MS = 10_000;
 
 /**
- * Official provider marks (favicons/logos) so they render instantly and reliably.
+ * Official provider marks (favicons/logos) saved locally so they render instantly and reliably.
  */
 const MARKS: Record<string, string> = {
-  qwen: 'https://assets.alicdn.com/g/qwenweb/qwen-chat-fe/0.3.46/favicon.png',
-  deepseek: 'https://fe-static.deepseek.com/chat/favicon.svg',
-  gemini: 'https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png',
+  qwen: '../assets/providers/qwen.png',
+  deepseek: '../assets/providers/deepseek.svg',
+  gemini: '../assets/providers/gemini.png',
 };
 
 let deps: HomeDeps;
