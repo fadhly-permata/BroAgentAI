@@ -6,6 +6,10 @@ function visible(el: Element | null): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
   const style = window.getComputedStyle(el);
   if (style.display === 'none' || style.visibility === 'hidden') return false;
+  // Inside a display:none ancestor (e.g. ChatGPT keeps the previous chat view,
+  // composer included, hidden in the DOM). The zero-size fallback below must
+  // never pick such an element: text typed there is never sent.
+  if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
   const rect = el.getBoundingClientRect();
   if (rect.width > 0 && rect.height > 0) return true;
   // Chrome may report 0,0 for elements in background/frozen tabs.
