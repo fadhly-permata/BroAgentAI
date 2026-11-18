@@ -36,6 +36,8 @@ const MARKS: Record<string, string> = {
   qwen: '/assets/providers/qwen.png',
   deepseek: '/assets/providers/deepseek.svg',
   gemini: '/assets/providers/gemini.png',
+  chatgpt: '/assets/providers/chatgpt.svg',
+  ptero: '/assets/providers/ptero.png',
 };
 
 let deps: HomeDeps;

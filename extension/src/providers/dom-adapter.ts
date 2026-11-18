@@ -24,6 +24,11 @@ function first(selector: string | undefined): HTMLElement | null {
   return null;
 }
 
+/** Drop elements nested inside another one in the list (a selector may match both). */
+function outermost(all: HTMLElement[]): HTMLElement[] {
+  return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
+}
+
 export class DomAdapter {
   readonly provider: ProviderInfo;
 
@@ -33,8 +38,7 @@ export class DomAdapter {
 
   /** Outermost assistant message elements (a selector may also match nested nodes). */
   #messages(): HTMLElement[] {
-    const all = [...document.querySelectorAll<HTMLElement>(this.provider.selectors.assistantMessage)];
-    return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
+    return outermost([...document.querySelectorAll<HTMLElement>(this.provider.selectors.assistantMessage)]);
   }
 
   #keyOf(el: HTMLElement): number | null {
@@ -62,15 +66,18 @@ export class DomAdapter {
     const source = this.#markdownOf(last);
     if (source !== null) return { count: messages.length, key, text: source, codeBlocks: fencedBlocks(source) };
 
-    const pres = [...last.querySelectorAll<HTMLElement>('pre')];
-    const blocks = pres.length > 0 ? pres : [...last.querySelectorAll<HTMLElement>('code')].filter((code) => (code.textContent ?? '').includes('\n'));
+    const { codeBlock, codeLine, exclude } = this.provider.selectors;
+    const blocks = codeBlock ? outermost([...last.querySelectorAll<HTMLElement>(codeBlock)]) : this.#preBlocks(last);
     const codeBlocks = blocks.map((block) => this.#codeOf(block));
+    const chromeText = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(exclude ?? '')].map((el) => el.innerText ?? '');
     let text = last.innerText ?? last.textContent ?? '';
-    const exclude = this.provider.selectors.exclude;
-    if (exclude) text = cutText(text, [...last.querySelectorAll<HTMLElement>(exclude)].map((el) => el.innerText ?? ''));
+    if (exclude) text = cutText(text, chromeText(last));
     // Editor-rendered blocks: swap their label/gutter text for the real code, fenced.
-    if (this.provider.selectors.codeLine) {
-      text = spliceCode(text, blocks.map((block, i) => ({ rendered: block.innerText ?? '', code: codeBlocks[i] })));
+    if (codeLine || codeBlock) {
+      text = spliceCode(text, blocks.map((block, i) => ({
+        rendered: exclude ? cutText(block.innerText ?? '', chromeText(block)) : block.innerText ?? '',
+        code: codeBlocks[i],
+      })));
     }
     return { count: messages.length, key, text, codeBlocks };
   }
@@ -87,21 +94,36 @@ export class DomAdapter {
     if (parts.length === 0) return null;
     const sources: string[] = [];
     for (const part of parts) {
-      part.removeAttribute(PAGE_SOURCE_ATTR);
-      part.dispatchEvent(new CustomEvent(PAGE_SOURCE_EVENT, { bubbles: true }));
-      const source = part.getAttribute(PAGE_SOURCE_ATTR);
-      part.removeAttribute(PAGE_SOURCE_ATTR);
+      const source = this.#pageSource(part);
       if (source === null) return null;
       sources.push(source);
     }
     return sources.join('\n\n');
   }
 
+  /** Text the MAIN-world helper finds in the element's React props, or null. */
+  #pageSource(el: HTMLElement): string | null {
+    el.removeAttribute(PAGE_SOURCE_ATTR);
+    el.dispatchEvent(new CustomEvent(PAGE_SOURCE_EVENT, { bubbles: true }));
+    const source = el.getAttribute(PAGE_SOURCE_ATTR);
+    el.removeAttribute(PAGE_SOURCE_ATTR);
+    return source;
+  }
+
+  #preBlocks(message: HTMLElement): HTMLElement[] {
+    const pres = [...message.querySelectorAll<HTMLElement>('pre')];
+    return pres.length > 0 ? pres : [...message.querySelectorAll<HTMLElement>('code')].filter((code) => (code.textContent ?? '').includes('\n'));
+  }
+
   #codeOf(block: HTMLElement): string {
+    if (this.provider.selectors.codeBlock) {
+      const source = this.#pageSource(block);
+      if (source !== null) return source;
+    }
     const lineSelector = this.provider.selectors.codeLine;
     const lines = lineSelector ? [...block.querySelectorAll<HTMLElement>(lineSelector)] : [];
     if (lines.length > 0) return joinLines(lines.map((line) => ({ top: line.style.top, text: line.textContent ?? '' })));
-    return (block.querySelector('code') ?? block).textContent ?? '';
+    return (block.querySelector('code') ?? block.querySelector('pre') ?? block).textContent ?? '';
   }
 
   /** Put text into the composer and submit it. */

@@ -1,0 +1,19 @@
+{
+  "id": "chatgpt",
+  "label": "ChatGPT",
+  "description": "OpenAI ChatGPT web chat",
+  "homepage": "https://chatgpt.com/",
+  "matchPatterns": ["https://chatgpt.com/*"],
+  "status": "experimental",
+  "verified": "2026-11-18, two layouts checked on the live site. Full loop from the side panel in Chrome (signed in, real bridge): READY, then fs.readFile, fs.createFile, fs.writeFile each ran once and the file was written byte-identical, final answer delivered. Signed in: ProseMirror composer ([data-composer-markdown]) filled through insertText, Enter-to-send, reply in [data-markdown-text-style=assistant-message], [data-talvt-turn-state=in_progress] while streaming, plus the composer's send/stop button (every size-token composer button but the voice one) which covers the ~2-5 s before the turn starts: without it a virtualized list (older turns leave the DOM, so the message count changes) could re-offer the previous reply as new, code blocks ([data-code-block], drawn by CodeMirror that renders only on-screen lines: a 200-line block had no .cm-line in the DOM, the full code came from React props via the page-source helper) and the code header ([data-markdown-copy=exclude]). Logged out (StyleX redesign): textarea[name=prompt] filled through the value setter, li[data-message-role] turns with [data-assistant-markdown-root], data-message-streaming, code header next to [data-message-content-controls]. Selectors avoid aria-labels, which follow the UI language. The #prompt-textarea / data-message-author-role / stop-button entries cover the older layout and are not re-verified",
+  "selectors": {
+    "composer": "textarea[name=\"prompt\"], [contenteditable=\"true\"][data-composer-markdown], #prompt-textarea",
+    "submit": "",
+    "assistantMessage": "[data-markdown-text-style=\"assistant-message\"], li[data-message-role=\"assistant\"] [data-assistant-markdown-root], [data-message-author-role=\"assistant\"] .markdown",
+    "userMessage": "[data-user-message-bubble], [data-message-author-role=\"user\"] .whitespace-pre-wrap",
+    "generating": "[data-talvt-turn-state=\"in_progress\"], li[data-message-role=\"assistant\"][data-message-streaming], button[data-testid=\"stop-button\"], form button.size-token-button-composer:not([data-composer-voice-start])",
+    "exclude": "[data-code-block] [data-markdown-copy=\"exclude\"], [data-message-content-controls], [data-message-content-controls] + div",
+    "codeBlock": "[data-code-block], [data-assistant-markdown-root] pre",
+    "codeLine": ".cm-line"
+  }
+}
