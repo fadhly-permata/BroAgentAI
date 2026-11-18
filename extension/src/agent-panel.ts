@@ -302,10 +302,8 @@ export async function switchProviderSession(targetId: string): Promise<void> {
   let promptToSend = handoff;
   try {
     const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode() });
-    promptToSend = systemPrompt.replace(
-      /Reply now with the single word READY and wait for the user's request\./,
-      `Kamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${handoff}`
-    );
+    // Append handoff context at the very end to override any "reply READY" instruction (recency bias)
+    promptToSend = systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${handoff}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
   } catch (err) {
     console.warn('Failed to get system prompt for handoff, using basic handoff:', err);
   }
