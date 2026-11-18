@@ -783,6 +783,10 @@ export function initAgent(dependencies: AgentDeps): void {
 
   $('agentStart').addEventListener('click', () => { startAgentSession(); });
   $('agentStop').addEventListener('click', () => { stopAgentSession(); });
+  $('agentSwitch').addEventListener('click', () => {
+    const sel = $('switchProvider') as HTMLSelectElement;
+    if (sel && sel.value) void switchProviderSession(sel.value);
+  });
   $('agentResend').addEventListener('click', () => {
     const text = session?.lastSent;
     if (!text) return;
