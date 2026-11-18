@@ -132,7 +132,10 @@ export const translations = {
     wordWrapDesc: 'Wrap long lines in the file preview.',
     ignoreDesc: 'Comma-separated names hidden from the explorer and search.',
     versionLabel: 'Version',
-    extIdLabel: 'Extension ID'
+    extIdLabel: 'Extension ID',
+    switchProviderLabel: 'Switch chat',
+    switchProviderBtn: 'Switch',
+    switchProviderHint: 'Move the session to another provider without redoing the work'
   },
   id: {
     brandName: 'BroAgentAI',
@@ -264,7 +267,10 @@ export const translations = {
     wordWrapDesc: 'Bungkus baris panjang di pratinjau file.',
     ignoreDesc: 'Nama dipisah koma yang disembunyikan dari explorer dan pencarian.',
     versionLabel: 'Versi',
-    extIdLabel: 'ID Extension'
+    extIdLabel: 'ID Extension',
+    switchProviderLabel: 'Pindah chat',
+    switchProviderBtn: 'Pindah',
+    switchProviderHint: 'Pindahkan sesi ke provider lain tanpa mengulang pekerjaan'
   }
 };
 

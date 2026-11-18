@@ -507,6 +507,9 @@ button.pill:hover { filter: brightness(1.15); }
 }
 .kv-key { color: var(--text-muted); flex: none; }
 .kv-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-weight: 400; color: var(--text); }
+.switch-provider .switch-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.switch-provider .switch-row select { min-width: 0; flex: 1; }
+.switch-provider .switch-row button { flex: none; }
 
 /* Cards & callouts */
 .card {
@@ -851,11 +854,40 @@ button.pill:hover { filter: brightness(1.15); }
   border-radius: var(--radius);
   font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 18px;
 }
-.cmdlog .log-row { padding: 1px var(--sp-2); word-break: break-word; border: none; background: none; }
+.cmdlog .log-row {
+  padding: 4px var(--sp-2) 4px 0;
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  word-break: break-word;
+}
 .cmdlog .log-row:hover { background: var(--hover); }
-.cmdlog .log-row .muted { font-size: inherit; color: var(--text-faint); }
-.cmdlog .log-row b { font-weight: 400; color: var(--code-key); }
-.cmdlog .log-row small { display: block; padding-left: var(--sp-3); font-size: var(--fs-xs); color: var(--text-muted); }
+.cmdlog .log-line {
+  display: flex; align-items: baseline; gap: var(--sp-1);
+  padding-left: var(--sp-2);
+  min-width: 0;
+}
+.cmdlog .log-badge {
+  flex: none;
+  min-width: 42px; text-align: center;
+  padding: 0 5px; height: 15px; line-height: 14px;
+  border-radius: 8px; border: 1px solid currentColor;
+  font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em;
+}
+.cmdlog .log-badge-ok { color: var(--success); }
+.cmdlog .log-badge-denied { color: var(--warning); }
+.cmdlog .log-badge-error { color: var(--danger); }
+.cmdlog .log-badge-info { color: var(--info); }
+.cmdlog .log-tool { font-weight: 600; color: var(--code-key); flex: none; }
+.cmdlog .log-meta { color: var(--text-muted); font-size: inherit; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdlog .log-dur { color: var(--text-faint); font-size: var(--fs-xs); flex: none; }
+.cmdlog .log-time { margin-left: auto; color: var(--text-faint); font-size: var(--fs-xs); flex: none; }
+.cmdlog .log-detail { display: block; margin-top: 1px; padding-left: calc(var(--sp-2) + 42px + var(--sp-1)); font-size: var(--fs-xs); color: var(--text-muted); white-space: pre-wrap; }
+/* Severity stripe: the colour repeats on the row edge so the eye can scan a column. */
+.cmdlog .log-row[data-log-status="ok"] { border-left-color: var(--success); }
+.cmdlog .log-row[data-log-status="denied"] { border-left-color: var(--warning); }
+.cmdlog .log-row[data-log-status="error"] { border-left-color: var(--danger); }
+.cmdlog .log-row[data-log-status="info"] { border-left-color: var(--info); }
 .cmdlog > .muted { padding: var(--sp-1) var(--sp-2); font-family: var(--font-sans); }
 .log-ok { color: var(--success); }
 .log-denied { color: var(--warning); }

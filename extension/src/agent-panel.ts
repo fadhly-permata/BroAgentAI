@@ -124,12 +124,32 @@ function log(entry: Omit<LogEntry, 'time'>): void {
   renderLog();
 }
 
+/** Human word for a status, shown in the row badge. */
+const STATUS_LABEL: Record<LogEntry['status'], string> = { ok: 'ok', denied: 'denied', error: 'error', info: 'info' };
+
+/**
+ * Activity rows, two tiers each: a headline (badge + tool + decision + duration +
+ * time) and an indented detail line. The badge and a left stripe carry the
+ * severity at a glance, so errors stand out from the wall of info lines.
+ */
 function renderLog(): void {
   const filter = ($('logFilter') as HTMLSelectElement).value;
   const rows = logs.filter((l) => filter === 'all' || l.status === filter);
-  $('cmdLog').innerHTML = rows.map((l) =>
-    `<div class="log-row" data-log-status="${l.status}" data-log-tool="${esc(l.tool)}"><span class="muted">${esc(l.time)}</span> <b>${esc(l.tool)}</b> - ${esc(l.category)} - ${esc(l.decision)} - <span class="log-${l.status}">${l.status}</span>${l.ms ? ' - ' + l.ms + 'ms' : ''}${l.detail ? '<br><small>' + esc(l.detail) + '</small>' : ''}</div>`
-  ).join('') || '<p class="muted">Belum ada aktivitas.</p>';
+  $('cmdLog').innerHTML = rows.map((l) => {
+    // Only the fields that carry something; no columns of bare dashes.
+    const meta = [l.category, l.decision].filter((v) => v && v !== '-');
+    const dur = l.ms ? l.ms + 'ms' : '';
+    return '<div class="log-row" data-log-status="' + l.status + '" data-log-tool="' + esc(l.tool) + '">'
+      + '<div class="log-line">'
+      + '<span class="log-badge log-badge-' + l.status + '">' + STATUS_LABEL[l.status] + '</span>'
+      + '<b class="log-tool">' + esc(l.tool) + '</b>'
+      + (meta.length ? '<span class="log-meta">' + esc(meta.join(' · ')) + '</span>' : '')
+      + (dur ? '<span class="log-dur">' + dur + '</span>' : '')
+      + '<span class="log-time">' + esc(l.time) + '</span>'
+      + '</div>'
+      + (l.detail ? '<small class="log-detail">' + esc(l.detail) + '</small>' : '')
+      + '</div>';
+  }).join('') || '<p class="muted">Belum ada aktivitas.</p>';
   $('cmdLog').scrollTop = $('cmdLog').scrollHeight;
 }
 
@@ -188,6 +208,118 @@ async function findChatTab(preferredTabId?: number): Promise<{ tab: chrome.tabs.
   return matches[0] ?? null;
 }
 
+/**
+ * Compact, provider-agnostic summary of a session, used as the first message
+ * after moving the chat to another provider. It cannot carry the raw history
+ * (the new chat never saw it), so it states where the work stands: the tools
+ * already run and the last thing the AI said, so the agent continues instead
+ * of starting over.
+ */
+function buildHandoffPrompt(active: Session): string {
+  const recent = logs.slice(-20).filter((l) => l.tool !== 'relay' && l.tool !== 'session.pause' && l.tool !== 'session.resume');
+  const ran = recent.filter((l) => l.status === 'ok').map((l) => '- ' + l.tool + (l.category && l.category !== '-' ? ' (' + l.category + ')' : ''));
+  const blocked = recent.filter((l) => l.status === 'denied' || l.status === 'error').map((l) => '- ' + l.tool + ': ' + (l.detail || l.decision || l.status));
+  const parts: string[] = [
+    'Kamu melanjutkan sesi BroAgentAI yang dipindah dari ' + active.provider.label + ' ke sini karena token/limit provider lama habis. JANGAN mulai ulang dari nol; lanjutkan pekerjaan yang sudah berjalan.',
+    'Total tool call sejauh ini: ' + active.totalCalls + '.',
+  ];
+  if (ran.length) parts.push('Tool yang sudah berhasil dijalankan:\n' + ran.join('\n'));
+  if (blocked.length) parts.push('Yang tertahan/gagal:\n' + blocked.join('\n'));
+  if (active.lastReplyText) {
+    const tail = active.lastReplyText.length > 1200 ? active.lastReplyText.slice(0, 1200) + '…' : active.lastReplyText;
+    parts.push('Balasan terakhir AI sebelum pindah:\n' + tail);
+  }
+  parts.push('Lanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.');
+  return parts.join('\n\n');
+}
+
+/** Fill the switch-provider <select> with every provider except the current one. */
+function renderSwitchProviders(): void {
+  const sel = $('switchProvider') as HTMLSelectElement;
+  if (!sel) return;
+  const currentId = session?.provider.id;
+  const options = providers.filter((p) => p.id !== currentId);
+  sel.innerHTML = options.map((p) => '<option value="' + esc(p.id) + '">' + esc(p.label) + '</option>').join('');
+  const hasChoice = options.length > 0 && !!session;
+  sel.disabled = !hasChoice;
+  const btn = $('agentSwitch') as HTMLButtonElement;
+  if (btn) btn.disabled = !hasChoice;
+}
+
+/**
+ * Move a running session to another provider's chat tab: summarize where the
+ * work stands, activate the target tab relay, deactivate the old one, point
+ * the session at the new tab and send the handoff prompt. Logs and ask-once
+ * approvals are kept on purpose (same task, same trust); the per-request
+ * tool-call counter resets so the new chat gets a fresh budget.
+ */
+export async function switchProviderSession(targetId: string): Promise<void> {
+  const active = session;
+  if (!active) { deps.toast('Mulai sesi dulu sebelum pindah provider'); return; }
+  const target = providers.find((p) => p.id === targetId);
+  if (!target) { deps.toast('Provider tidak dikenal: ' + targetId); return; }
+  if (target.id === active.provider.id) { deps.toast('Sudah di ' + target.label); return; }
+
+  const oldTabId = active.tabId;
+  const handoff = buildHandoffPrompt(active);
+  setPhase('connecting', 'Pindah ke ' + target.label);
+
+  // Find (or open) a chat tab of the target provider.
+  let targetTab = (await findChatTab().catch(() => null));
+  if (!targetTab || targetTab.provider.id !== target.id) {
+    try {
+      const created = await chrome.tabs.create({ url: target.homepage, active: true });
+      if (created.id !== undefined) targetTab = { tab: created, provider: target };
+    } catch (err: any) {
+      deps.toast('Gagal membuka tab ' + target.label + ': ' + (err?.message || err));
+      setPhase('paused', 'Gagal pindah provider');
+      return;
+    }
+  }
+  const targetTabId = targetTab?.tab.id;
+  if (targetTabId === undefined) { deps.toast('Tab ' + target.label + ' tidak ditemukan'); setPhase('paused', 'Gagal pindah provider'); return; }
+
+  // The target tab may still be loading; wait for its composer to answer.
+  let health: any = null;
+  for (let i = 0; i < 15; i++) {
+    try { health = await tabMessage(targetTabId, { type: 'ba.ping' }); } catch { health = null; }
+    if (health?.composer) break;
+    await new Promise((r) => setTimeout(r, 1000));
+    if (session !== active) return; // stopped meanwhile
+  }
+  if (!health?.composer) {
+    deps.toast('Kolom chat ' + target.label + ' belum siap. Login/termuat dulu, lalu coba lagi.');
+    setPhase('paused', 'Pindah provider gagal - tab belum siap');
+    return;
+  }
+
+  // Activate the new relay, retire the old one, then re-point the session.
+  await tabMessage(targetTabId, { type: 'ba.activate' });
+  if (session !== active) return;
+  try { await tabMessage(oldTabId, { type: 'ba.deactivate' }); } catch { /* old tab gone */ }
+  active.tabId = targetTabId;
+  active.provider = target;
+  active.toolCalls = 0;
+  active.resumeGuard = null;
+  active.paused = false;
+  active.lastSent = handoff;
+  $('detectedChat').textContent = target.label + ' - ' + (targetTab?.tab.title || '');
+
+  log({ tool: 'session.switch', category: active.provider.label, decision: 'handoff', status: 'info', ms: 0, detail: 'pindah provider; konteks diringkas ke prompt baru (' + active.totalCalls + ' tool call sejauh ini)' });
+  notify('BroAgentAI - Pindah provider', 'Sesi dipindah ke ' + target.label + '. Agent melanjutkan dengan ringkasan pekerjaan.');
+  renderSession();
+  renderSwitchProviders();
+
+  setPhase('sending', 'Mengirim ringkasan ke ' + target.label);
+  try {
+    await send(handoff);
+    setPhase('waiting', 'Menunggu balasan AI');
+  } catch (err: any) {
+    setPhase('failed', 'Ringkasan gagal terkirim: ' + (err?.message || err));
+    deps.toast('Ringkasan handoff gagal terkirim. Coba Resend di tab baru.');
+  }
+  void syncFocusWithSession();
+}
 async function refreshDetected(): Promise<void> {
   if (session) return;
   const found = await findChatTab().catch(() => null);
@@ -706,6 +838,7 @@ export function initAgent(dependencies: AgentDeps): void {
   renderLog();
   renderSession();
   renderProviders();
+  renderSwitchProviders();
 }
 
 /** Called when the Agent tab becomes visible. */
