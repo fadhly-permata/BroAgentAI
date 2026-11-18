@@ -29,8 +29,7 @@ const PROVIDER_KEY = 'broagentai.homeProvider';
 const LOAD_WAIT_MS = 10_000;
 
 /**
- * Brand-inspired marks (original drawings in each service's colors, 24px grid).
- * A provider without one gets a neutral chat bubble with its initial.
+ * Local embedded vector/SVG asset marks for each provider so they render instantly and reliably.
  */
 const MARKS: Record<string, string> = {
   qwen: '<defs><linearGradient id="pm-qwen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f74ff"/><stop offset="1" stop-color="#5b3fd1"/></linearGradient></defs>'
@@ -48,10 +47,10 @@ let selected = providers[0]?.id ?? '';
 
 const esc = (text: string) => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
 
-function providerMark(id: string, label: string): string {
-  const body = MARKS[id]
+function providerMark(p: ProviderInfo): string {
+  const body = MARKS[p.id]
     ?? `<path d="M4 4.5h16a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5z" fill="var(--home-mark-bg)"/>`
-      + `<text x="12" y="14.2" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--home-mark-fg)">${esc((label[0] || '?').toUpperCase())}</text>`;
+      + `<text x="12" y="14.2" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--home-mark-fg)">${esc(((p.label)[0] || '?').toUpperCase())}</text>`;
   return `<svg class="prov-mark" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
 }
 
@@ -78,7 +77,7 @@ export function renderHome(): void {
     const on = p.id === selected;
     return `<button class="prov-card${on ? ' selected' : ''}" data-prov="${esc(p.id)}" aria-pressed="${on}" title="${esc(p.description || p.label)}">`
       + `<span class="prov-check" aria-hidden="true">${icon('check')}</span>`
-      + providerMark(p.id, p.label)
+      + providerMark(p)
       + `<b>${esc(p.label)}</b>`
       + `<small>${esc(p.status === 'ready' ? (p.description || p.homepage.replace(/^https?:\/\//, '').replace(/\/$/, '')) : t('homeExperimental'))}</small>`
       + `</button>`;
