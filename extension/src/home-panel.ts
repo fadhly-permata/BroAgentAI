@@ -30,11 +30,12 @@ const LOAD_WAIT_MS = 10_000;
 
 /**
  * Official provider marks (favicons/logos) saved locally so they render instantly and reliably.
+ * Placed in the `public` directory so Vite copies them directly to the dist root.
  */
 const MARKS: Record<string, string> = {
-  qwen: '../assets/providers/qwen.png',
-  deepseek: '../assets/providers/deepseek.svg',
-  gemini: '../assets/providers/gemini.png',
+  qwen: '/assets/providers/qwen.png',
+  deepseek: '/assets/providers/deepseek.svg',
+  gemini: '/assets/providers/gemini.png',
 };
 
 let deps: HomeDeps;
