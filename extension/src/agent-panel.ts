@@ -42,9 +42,15 @@ interface Session {
   /** Text of the last reply handled, to drop it if it shows up again after the chat tab reloads. */
   lastReplyText: string | null;
   resumeGuard: string | null;
+  /**
+   * True while the chat tab is not the focused tab: the loop and the relay are
+   * held. A paused session still exists (Start shows Stop) and resumes on its
+   * own when the user comes back to the chat tab.
+   */
+  paused: boolean;
 }
 
-type PhaseKind = 'opening' | 'connecting' | 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'failed' | 'offline';
+type PhaseKind = 'opening' | 'connecting' | 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'paused' | 'failed' | 'offline';
 interface Phase { kind: PhaseKind; label: string; since: number; until?: number }
 
 const MAX_TOOL_CALLS = 40;
@@ -87,6 +93,31 @@ let ticking = false;
 
 const mode = () => ($('modeSel') as HTMLSelectElement).value;
 
+/** Phase that was showing when the tab lost focus, restored on resume. */
+let phaseBeforePause: Phase | null = null;
+
+/**
+ * Tell the user something even while they look at another tab: a toast for
+ * the panel, plus a system notification that shows outside the browser. The
+ * notification is best-effort - a missing icon or a denied permission must
+ * never break the session, so the toast always fires regardless.
+ */
+function notify(title: string, message: string): void {
+  deps.toast(message);
+  try {
+    chrome.notifications.create({
+      type: 'basic',
+      title,
+      message,
+      // No packaged PNG ships with the extension; a tiny inline SVG works as the
+      // notification icon. Wrapped so a rejecting icon still leaves the toast.
+      iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" rx="24" fill="#2563eb"/><text x="64" y="84" font-size="72" text-anchor="middle" fill="#fff" font-family="sans-serif">B</text></svg>',
+      ),
+    }, () => { /* notifications unavailable */ });
+  } catch { /* notifications unavailable */ }
+}
+
 function log(entry: Omit<LogEntry, 'time'>): void {
   logs.push({ ...entry, time: new Date().toLocaleTimeString() });
   if (logs.length > 500) logs = logs.slice(-500);
@@ -104,8 +135,10 @@ function renderLog(): void {
 
 function renderSession(): void {
   const busy = !!session || !!launching;
-  $('agentSession').textContent = session ? `Sesi aktif - ${session.provider.label}` : launching ? 'Memulai sesi...' : 'Belum ada sesi';
-  $('agentPill').className = 'pill ' + (session ? 'pill-ok' : launching ? 'pill-info' : 'pill-warn');
+  $('agentSession').textContent = session
+    ? (session.paused ? `Sesi dijeda - ${session.provider.label}` : `Sesi aktif - ${session.provider.label}`)
+    : launching ? 'Memulai sesi...' : 'Belum ada sesi';
+  $('agentPill').className = 'pill ' + (session ? (session.paused ? 'pill-warn' : 'pill-ok') : launching ? 'pill-info' : 'pill-warn');
   $('agentStart').classList.toggle('hidden', busy);
   $('agentStop').classList.toggle('hidden', !busy);
   $('ckAi').textContent = session ? 'x' : 'o';
@@ -203,6 +236,12 @@ async function deliver(text: string, pause = true): Promise<void> {
       setPhase('waiting', 'Menunggu balasan AI');
       return;
     }
+    // Held because the chat tab lost focus: not a failure. The message stays
+    // queued and goes out once the user is back (Resend or the next tool).
+    if (res?.code === 'PAUSED') {
+      setPhase('paused', 'Dijeda - tab chat tidak aktif');
+      return;
+    }
     const refused = res?.code === 'NOT_ACCEPTED';
     if (!refused || attempt >= SEND_ATTEMPTS) {
       const why = refused ? 'chat menolak pesan (rate limit?)' : (res?.code === 'UNREACHABLE' ? 'tab chat tidak merespons' : 'gagal mengirim');
@@ -222,6 +261,8 @@ async function deliver(text: string, pause = true): Promise<void> {
  * Runs every TICK_MS while a session is open: keeps the status time current,
  * nudges the relay to poll (its own timers are throttled in a background tab),
  * and re-activates a relay that lost its state because the chat tab reloaded.
+ * While paused it only keeps the clock going: the relay is asked to hold, so a
+ * background tab does no work until the user is back on it.
  */
 async function tick(): Promise<void> {
   renderStatus();
@@ -229,6 +270,7 @@ async function tick(): Promise<void> {
   const active = session;
   ticking = true;
   try {
+    if (active.paused) return;
     const res = await tabMessage(active.tabId, { type: 'ba.tick' });
     if (session !== active) return;
     if (phase?.kind === 'offline') {
@@ -243,13 +285,75 @@ async function tick(): Promise<void> {
       log({ tool: 'relay', category: '-', decision: '-', status: 'info', ms: 0, detail: 'tab chat dimuat ulang - relay disambung lagi' });
     }
   } catch {
-    if (session === active && phase?.kind !== 'offline') {
+    if (session === active && phase?.kind !== 'offline' && phase?.kind !== 'paused') {
       beforeOffline = phase;
       setPhase('offline', 'Tab chat tidak merespons (sedang reload atau ditidurkan Chrome?)');
     }
   } finally {
     ticking = false;
   }
+}
+
+/**
+ * True when the session's chat tab is the one the user is looking at: it is the
+ * active tab and its window has focus. Decides pause / resume.
+ */
+async function isChatTabFocused(tabId: number): Promise<boolean> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || !tab.active) return false;
+    const win = await chrome.windows.get(tab.windowId);
+    return !!win?.focused;
+  } catch {
+    // The tab is gone; treat as not focused (the close handler stops the session).
+    return false;
+  }
+}
+
+/**
+ * Hold the session: the chat tab is no longer focused. The relay is told to
+ * stop reporting and refuse sends, the tick stops nudging it, and the status
+ * line shows the pause. The session (and its approvals) stay intact so resume
+ * can continue exactly where it stopped.
+ */
+async function pauseSession(): Promise<void> {
+  const active = session;
+  if (!active || active.paused) return;
+  active.paused = true;
+  phaseBeforePause = phase;
+  setPhase('paused', 'Dijeda - tab chat tidak aktif');
+  renderSession();
+  log({ tool: 'session.pause', category: '-', decision: '-', status: 'info', ms: 0, detail: 'tab chat kehilangan fokus - sesi dijeda' });
+  notify('BroAgentAI - Sesi dijeda', 'Tab chat tidak aktif. Kembali ke tab itu untuk melanjutkan.');
+  try { await tabMessage(active.tabId, { type: 'ba.pause' }); } catch { /* tab gone; the close handler stops it */ }
+}
+
+/** Resume a held session once its chat tab is the focused one again. */
+async function resumeSession(): Promise<void> {
+  const active = session;
+  if (!active || !active.paused) return;
+  active.paused = false;
+  // Return to whatever the agent was doing before the pause (waiting, delay, ...).
+  phase = phaseBeforePause ?? { kind: 'waiting', label: 'Menunggu balasan AI', since: Date.now() };
+  phaseBeforePause = null;
+  renderStatus();
+  renderSession();
+  log({ tool: 'session.resume', category: '-', decision: '-', status: 'info', ms: 0, detail: 'tab chat fokus lagi - sesi dilanjutkan' });
+  notify('BroAgentAI - Sesi dilanjutkan', 'Tab chat aktif lagi. Agent melanjutkan prosesnya.');
+  try { await tabMessage(active.tabId, { type: 'ba.resume' }); } catch { /* tab gone */ }
+}
+
+/**
+ * Align pause / resume with the tab the user is looking at. Called on every tab
+ * activation and window focus change; cheap because it only acts on a change.
+ */
+async function syncFocusWithSession(): Promise<void> {
+  const active = session;
+  if (!active) return;
+  const focused = await isChatTabFocused(active.tabId);
+  if (session !== active) return; // stopped while we were checking
+  if (focused && active.paused) await resumeSession();
+  else if (!focused && !active.paused) await pauseSession();
 }
 
 /** Begin a start: the status line shows it and Start becomes Stop. Null when one is already running. */
@@ -339,11 +443,14 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
     const { prompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode() });
     if (launch.cancelled) return;
     await tabMessage(tabId, { type: 'ba.activate' });
-    session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: prompt, lastReplyText: null, resumeGuard: null };
+    session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: prompt, lastReplyText: null, resumeGuard: null, paused: false };
     await send(prompt);
     setPhase('waiting', 'Menunggu balasan AI');
     log({ tool: 'session.start', category: found.provider.label, decision: mode(), status: 'info', ms: 0, detail: `${toolCount} tools dikirim ke chat` });
     $('detectedChat').textContent = `${found.provider.label} - ${found.tab.title || ''}`;
+    // The chat tab may not be focused right after connect (Home opened it but the
+    // user could already be elsewhere): align the pause state now.
+    void syncFocusWithSession();
   } catch (err: any) {
     session = null;
     tabMessage(tabId, { type: 'ba.deactivate' }).catch(() => {});
@@ -365,11 +472,12 @@ export async function stopAgentSession(): Promise<void> {
   await stopSession();
 }
 
-async function stopSession(reason = 'dihentikan'): Promise<void> {
+async function stopSession(reason = 'dihentikan', opts: { notifyUser?: boolean } = {}): Promise<void> {
   if (!session) return;
   const tabId = session.tabId;
   session = null;
   phase = null;
+  phaseBeforePause = null;
   beforeOffline = null;
   pendingApproval?.('deny');
   hideApproval();
@@ -377,6 +485,7 @@ async function stopSession(reason = 'dihentikan'): Promise<void> {
   try { await tabMessage(tabId, { type: 'ba.deactivate' }); } catch { /* tab gone */ }
   log({ tool: 'session.stop', category: '-', decision: '-', status: 'info', ms: 0, detail: reason });
   renderSession();
+  if (opts.notifyUser) notify('BroAgentAI - Sesi dihentikan', reason);
   refreshDetected();
 }
 
@@ -408,6 +517,9 @@ function askApproval(check: any, params: Record<string, unknown>, remember: bool
 async function handleReply(reply: ProviderReply): Promise<void> {
   if (!session) return;
   const active = session;
+  // While paused nothing is acted on: the relay holds the reply and re-offers
+  // it once resumed (the panel also does not nudge a paused relay).
+  if (active.paused) return;
   const guard = active.resumeGuard;
   active.resumeGuard = null;
   if (guard !== null && reply.text === guard) {
@@ -510,7 +622,15 @@ export function initAgent(dependencies: AgentDeps): void {
       log({ tool: 'relay', category: '-', decision: '-', status: 'error', ms: 0, detail: err?.message || String(err) });
     });
   });
-  chrome.tabs.onRemoved.addListener((tabId) => { if (session?.tabId === tabId) stopSession('tab chat ditutup'); });
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    if (session?.tabId === tabId) stopSession('Tab chat ditutup - sesi dihentikan.', { notifyUser: true });
+  });
+
+  // Pause the session when the chat tab loses focus, resume it when the user
+  // returns. A tab switch fires onActivated; switching apps or minimizing fires
+  // onFocusChanged. Both are cheap: syncFocusWithSession only acts on a change.
+  chrome.tabs.onActivated.addListener(() => { void syncFocusWithSession(); });
+  chrome.windows.onFocusChanged.addListener(() => { void syncFocusWithSession(); });
 
   // Closable "Monitoring & Approval Agent" banner; dismissal persists across reloads.
   const setNoticeDismissed = (dismissed: boolean, persist: boolean) => {

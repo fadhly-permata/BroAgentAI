@@ -22,11 +22,19 @@ if (provider) {
   const adapter = new DomAdapter(provider);
   const tracker = new ReplyTracker(STABLE_MS);
   let active = false;
+  /**
+   * Set when the panel asks us to hold (the chat tab lost focus). The page keeps
+   * its own timers going, but poll() returns early so no reply is read or
+   * delivered while paused; whatever the AI already answered is still the
+   * latest reply and is offered as soon as the panel resumes us.
+   */
+  let paused = false;
   let timer: number | undefined;
   let failingSince = 0;
 
   const stop = () => {
     active = false;
+    paused = false;
     window.clearInterval(timer);
   };
 
@@ -50,9 +58,10 @@ if (provider) {
   // Called from our own interval and from the side panel's tick. A hidden tab
   // gets its timers throttled (down to once a minute after a few minutes in
   // the background); messages from the panel are not, so a long-running task
-  // in a background tab still finishes promptly.
+  // in a background tab still finishes promptly. While paused we skip the
+  // whole body: no read, no observe, no delivery.
   const poll = () => {
-    if (!active) return;
+    if (!active || paused) return;
     let reply;
     try { reply = adapter.readLatestReply(); } catch { return; }
     const ready = tracker.observe(reply, adapter.isGenerating(), Date.now());
@@ -64,12 +73,12 @@ if (provider) {
     if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string') return;
 
     if (message.type === 'ba.ping') {
-      sendResponse({ ...adapter.health(), label: provider.label, status: provider.status, active });
+      sendResponse({ ...adapter.health(), label: provider.label, status: provider.status, active, paused });
       return;
     }
     if (message.type === 'ba.tick') {
       poll();
-      sendResponse({ active, composer: adapter.health().composer, loadedMs: Date.now() - loadedAt });
+      sendResponse({ active, paused, composer: adapter.health().composer, loadedMs: Date.now() - loadedAt });
       return;
     }
     if (message.type === 'ba.activate') {
@@ -77,9 +86,24 @@ if (provider) {
       tracker.reset(adapter.readLatestReply());
       failingSince = 0;
       active = true;
+      paused = false;
       window.clearInterval(timer);
       timer = window.setInterval(poll, POLL_MS);
       sendResponse({ ok: true });
+      return;
+    }
+    if (message.type === 'ba.pause') {
+      // Hold: keep the tracker state, just stop reporting. The latest reply is
+      // not discarded, so resuming picks it up if it is still new.
+      paused = true;
+      failingSince = 0;
+      sendResponse({ ok: true, paused });
+      return;
+    }
+    if (message.type === 'ba.resume') {
+      paused = false;
+      failingSince = 0;
+      sendResponse({ ok: true, paused });
       return;
     }
     if (message.type === 'ba.deactivate') {
@@ -88,6 +112,8 @@ if (provider) {
       return;
     }
     if (message.type === 'ba.send') {
+      // A held relay must not type anything into the chat either.
+      if (paused) { sendResponse({ ok: false, code: 'PAUSED', error: 'relay paused (chat tab not focused)' }); return; }
       adapter.sendPrompt(String(message.text ?? ''))
         .then(() => sendResponse({ ok: true }))
         .catch((error) => {
