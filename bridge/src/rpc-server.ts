@@ -22,6 +22,7 @@ import { McpManager } from "./mcp.ts";
 import { runShell } from "./shell.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
+import { WorkspaceWatcher } from "./watcher.ts";
 import {
   gitAbort, gitBranches, gitCheckout, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitPull, gitPush,
   gitStage, gitStatus, gitTestRemote, gitUnstage,
@@ -66,6 +67,8 @@ export class RpcServer {
   readonly #emit: EmitEvent;
   readonly #terminals: TerminalManager;
   readonly #mcp: McpManager;
+  /** Only present when a sink is wired: tests build servers without events. */
+  readonly #watcher: WorkspaceWatcher | null;
 
   constructor(options: RpcServerOptions = {}) {
     this.#store = options.store ?? new WorkspaceStore();
@@ -73,7 +76,10 @@ export class RpcServer {
     this.#emit = options.emit ?? (() => {});
     this.#terminals = new TerminalManager(this.#store, this.#emit);
     this.#mcp = new McpManager(this.#store, this.#emit);
+    this.#watcher = options.emit ? new WorkspaceWatcher(this.#store, this.#emit) : null;
     this.#registerCoreHandlers();
+    // Start following the workspace that is active at boot.
+    this.#watcher?.restart();
   }
 
   /** Run a registered handler directly; throws instead of returning an error envelope. */
@@ -90,6 +96,7 @@ export class RpcServer {
 
   /** Release everything that outlives a request (terminals, child servers). */
   async shutdown(): Promise<void> {
+    this.#watcher?.close();
     this.#terminals.closeAll();
     await this.#mcp.stopAll();
   }
@@ -198,17 +205,23 @@ export class RpcServer {
     this.register("workspace.add", (params) => {
       const { path, name } = readParams(params);
       const workspace = this.#store.add(path, name);
+      // add() makes the workspace active, so the watcher follows it.
+      this.#watcher?.restart();
       return { workspace, activeWorkspaceId: this.#store.active()?.id ?? null };
     });
 
     this.register("workspace.remove", (params) => {
       const { id } = readParams(params);
-      return this.#store.remove(id);
+      const result = this.#store.remove(id);
+      // Removing the active workspace changes what is watched.
+      this.#watcher?.restart();
+      return result;
     });
 
     this.register("workspace.setActive", (params) => {
       const { id } = readParams(params);
       const workspace = this.#store.setActive(id);
+      this.#watcher?.restart();
       return { workspace, activeWorkspaceId: workspace.id };
     });
 

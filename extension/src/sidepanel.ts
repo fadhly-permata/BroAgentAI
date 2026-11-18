@@ -1,5 +1,5 @@
 import { bridge, BridgeErrorCode } from './bridge-client.js';
-import { renderExplorer, ExplorerOptions } from './explorer.js';
+import { renderExplorer, resetExplorerState, ExplorerOptions } from './explorer.js';
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
@@ -172,7 +172,7 @@ async function saveCurrentFile(){
     currentMtime=typeof res?.mtime==='number'?res.mtime:null;
     currentFile.content=content; dirty=false; $('edDirty').textContent='';
     $('edMeta').textContent='File dari workspace - '+content.length+' karakter';
-    toast('File tersimpan: '+currentFile.path); refreshScm();
+    toast('File tersimpan: '+currentFile.path); renderTree(); refreshScm();
   }catch(err:any){
     if(err?.code===BridgeErrorCode.MTIME_CONFLICT) toast('Konflik: file berubah di disk sejak dibuka. Tutup lalu buka ulang file sebelum menyimpan.');
     else toast('Gagal menyimpan: '+(err?.message||err));
@@ -183,7 +183,7 @@ function markDirty(){ dirty=true; $('edDirty').innerHTML='●<span class="sr-onl
 async function setActiveWorkspace(ws:any){
   try{
     await bridge.call('workspace.setActive', { id: ws.id });
-    activeWs=ws; closeEditorPreview(); renderWs(); await renderTree(); refreshScm();
+    activeWs=ws; closeEditorPreview(); resetExplorerState(); renderWs(); await renderTree(); refreshScm();
     $('searchResults').innerHTML=''; $('searchInfo').textContent='';
     toast('Workspace aktif: '+ws.name);
   }catch(err:any){ toast('Gagal set aktif: '+(err?.message||err)); }
@@ -488,7 +488,23 @@ initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ 
 
 connectBridge();
 
+/** Debounced auto-refresh for change events coming from the bridge watcher. */
+let changeRefreshTimer: any = null;
+function scheduleChangeRefresh() {
+  clearTimeout(changeRefreshTimer);
+  changeRefreshTimer = setTimeout(async () => {
+    if (!activeWs) return;
+    try { await renderTree(); } catch (e) { console.warn('auto refresh tree failed', e); }
+    refreshScm();
+  }, 250);
+}
+
 bridge.onEvent((ev) => {
+  // The bridge only watches the active workspace, so any event is relevant.
+  if (ev?.event === 'fs.changed' || ev?.event === 'git.changed') {
+    scheduleChangeRefresh();
+    return;
+  }
   console.log('Event from bridge:', ev);
 });
 

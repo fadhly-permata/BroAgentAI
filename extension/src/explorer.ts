@@ -9,6 +9,17 @@ const INDENT = 10;
 /** Left padding of a row at the given depth: room for the indent plus a 4px gutter. */
 const pad = (depth: number) => depth * INDENT + 4;
 
+/**
+ * Folders the user has open, kept across re-renders so an auto-refresh from
+ * the bridge watcher does not collapse the tree under them.
+ */
+const expandedPaths = new Set<string>();
+
+/** Forget every remembered folder (e.g. after switching workspace). */
+export function resetExplorerState(): void {
+  expandedPaths.clear();
+}
+
 export interface FileNode {
   name: string;
   path: string;
@@ -158,6 +169,22 @@ function renderNode(
       for (const child of sorted) renderNode(childrenEl, child, depth + 1, options);
     };
 
+    // Lazy-load a folder's children once; returns false when the bridge refused.
+    const loadChildren = async (): Promise<boolean> => {
+      if (node.children) return true;
+      paint(" (memuat...)");
+      try {
+        const children = await bridge.call("fs.listDir", { path: node.path, showIgnored: options.showIgnored });
+        node.children = (children as FileNode[]).map((child) => ({ ...child, isExpanded: false }));
+        paint();
+        return true;
+      } catch (err: any) {
+        paint(" (gagal)");
+        console.warn("Failed to load directory:", err);
+        return false;
+      }
+    };
+
     if (options.onContextClick) {
       row.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -168,24 +195,29 @@ function renderNode(
 
     row.addEventListener("click", async () => {
       select();
-      node.isExpanded = !node.isExpanded;
-      if (node.isExpanded && !node.children) {
-        paint(" (memuat...)");
-        try {
-          const children = await bridge.call("fs.listDir", { path: node.path, showIgnored: options.showIgnored });
-          node.children = (children as FileNode[]).map((child) => ({ ...child, isExpanded: false }));
-          paint();
-        } catch (err: any) {
-          node.isExpanded = false;
-          paint(" (gagal)");
-          console.warn("Failed to load directory:", err);
-          return;
-        }
-      } else {
+      if (node.isExpanded) {
+        node.isExpanded = false;
+        expandedPaths.delete(node.path);
         paint();
+        renderChildren();
+        return;
+      }
+      node.isExpanded = true;
+      expandedPaths.add(node.path);
+      paint();
+      if (!node.children) {
+        const loaded = await loadChildren();
+        if (!loaded) {
+          // Failed to read the folder: leave it closed so the next click retries.
+          node.isExpanded = false;
+          expandedPaths.delete(node.path);
+        }
       }
       renderChildren();
     });
+
+    // Re-open folders that were open before this render (auto-refresh keeps state).
+    if (depth > 0 && expandedPaths.has(node.path)) node.isExpanded = true;
 
     paint();
     row.append(toggle, iconEl, nameSpan);
@@ -193,7 +225,12 @@ function renderNode(
     if (dirBadge) row.appendChild(dirBadge);
     item.append(row, childrenEl);
     container.appendChild(item);
-    renderChildren();
+
+    if (node.isExpanded && !node.children) {
+      void loadChildren().then(() => renderChildren());
+    } else {
+      renderChildren();
+    }
     return;
   }
 
