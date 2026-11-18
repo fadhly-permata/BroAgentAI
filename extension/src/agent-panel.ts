@@ -298,7 +298,19 @@ export async function switchProviderSession(targetId: string): Promise<void> {
   active.toolCalls = 0;
   active.resumeGuard = null;
   active.paused = false;
-  active.lastSent = handoff;
+  // Fetch full system prompt and inject handoff context so the new AI knows its tools and rules
+  let promptToSend = handoff;
+  try {
+    const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode() });
+    promptToSend = systemPrompt.replace(
+      /Reply now with the single word READY and wait for the user's request\./,
+      `Kamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${handoff}`
+    );
+  } catch (err) {
+    console.warn('Failed to get system prompt for handoff, using basic handoff:', err);
+  }
+
+  active.lastSent = promptToSend;
   $('detectedChat').textContent = target.label + ' - ' + (targetTab?.tab.title || '');
 
   log({ tool: 'session.switch', category: active.provider.label, decision: 'handoff', status: 'info', ms: 0, detail: 'pindah provider; konteks diringkas ke prompt baru (' + active.totalCalls + ' tool call sejauh ini)' });
@@ -308,7 +320,7 @@ export async function switchProviderSession(targetId: string): Promise<void> {
 
   setPhase('sending', 'Mengirim ringkasan ke ' + target.label);
   try {
-    await send(handoff);
+    await send(promptToSend);
     setPhase('waiting', 'Menunggu balasan AI');
   } catch (err: any) {
     setPhase('failed', 'Ringkasan gagal terkirim: ' + (err?.message || err));
