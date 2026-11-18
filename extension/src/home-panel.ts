@@ -1,8 +1,11 @@
-// Home tab: pick a workspace and an AI provider, then Start. Start opens the
-// provider's chat in a new tab, waits for the page to load, and starts the
-// same agent session as the Agent tab's "Start session" button.
+// Home tab: pick a workspace and an AI provider, then Start. Start switches to
+// the Agent tab at once, where the agent opens the provider's chat in a new
+// tab, waits for it to load and connects - with the same status line and
+// Start/Stop button as the Agent tab's own "Start session". The Home button
+// mirrors that state: Stop Session while a session is starting or running.
 import './home.css';
 import { providers } from './providers/registry.js';
+import type { ProviderInfo } from './providers/types.js';
 import { t } from './i18n.js';
 import { icon } from './icons.js';
 
@@ -15,9 +18,10 @@ export interface HomeDeps {
   openFolder(): void;
   switchTab(tab: string): void;
   toast(message: string): void;
-  hasSession(): boolean;
-  /** Run the Agent tab's session-init; preferredTabId is the chat tab Home just opened. */
-  startSession(preferredTabId?: number): Promise<void>;
+  sessionState(): 'idle' | 'starting' | 'active';
+  /** Open `provider` in a new tab, wait `waitMs`, then connect (the Agent tab shows progress). */
+  launchSession(provider: ProviderInfo, waitMs: number): Promise<void>;
+  stopSession(): Promise<void>;
 }
 
 const PROVIDER_KEY = 'broagentai.homeProvider';
@@ -41,8 +45,6 @@ const MARKS: Record<string, string> = {
 
 let deps: HomeDeps;
 let selected = providers[0]?.id ?? '';
-let remaining = 0; // seconds left in the countdown; 0 = idle
-let starting = false;
 
 const esc = (text: string) => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
 
@@ -82,13 +84,17 @@ export function renderHome(): void {
       + `</button>`;
   }).join('');
 
-  const progress = starting ? Math.min(100, Math.round((1 - remaining / (LOAD_WAIT_MS / 1000)) * 100)) : 0;
-  const ctaLabel = !starting ? t('homeStart')
-    : remaining > 0 ? t('homeOpening').replace('{provider}', provider?.label ?? '').replace('{s}', String(remaining))
-    : t('homeStarting');
-  const hint = active
-    ? `${icon('folder-opened')}<span>${esc(active.name)}</span><span class="sep">&middot;</span><span>${esc(provider?.label ?? '-')}</span>`
-    : `${icon('info')}<span>${esc(t('homeNeedWorkspace'))}</span>`;
+  // Same session as the Agent tab: Start while idle, Stop while starting or running.
+  const state = deps.sessionState();
+  const busy = state !== 'idle';
+  const ctaLabel = busy ? t('homeStop') : t('homeStart');
+  const hint = state === 'starting'
+    ? `<span class="home-spin"></span><span>${esc(t('homeStarting'))}</span>`
+    : state === 'active'
+      ? `${icon('pulse')}<span>${esc(t('homeSessionActive'))}</span>`
+      : active
+        ? `${icon('folder-opened')}<span>${esc(active.name)}</span><span class="sep">&middot;</span><span>${esc(provider?.label ?? '-')}</span>`
+        : `${icon('info')}<span>${esc(t('homeNeedWorkspace'))}</span>`;
 
   body.innerHTML =
     `<section class="home-sec">`
@@ -98,45 +104,21 @@ export function renderHome(): void {
     + `</section>`
     + `<section class="home-sec"><div class="home-sec-head"><h3>${esc(t('homeProvider'))}</h3></div><div class="home-grid">${cards}</div></section>`
     + `<section class="home-sec home-cta-sec">`
-      + `<button id="homeStart" class="home-cta${starting ? ' busy' : ''}"${starting ? ' disabled aria-busy="true"' : ''} title="${esc(t('homeStartHint'))}">`
-        + `<span class="home-cta-ico">${starting ? '<span class="home-spin"></span>' : icon('play')}</span><span class="home-cta-label">${esc(ctaLabel)}</span>`
-        + (starting ? `<span class="home-cta-bar" style="width:${progress}%"></span>` : '')
+      + `<button id="homeStart" class="home-cta${busy ? ' stop' : ''}" data-state="${state}"${busy ? '' : ` title="${esc(t('homeStartHint'))}"`}>`
+        + `<span class="home-cta-ico">${icon(busy ? 'debug-stop' : 'play')}</span><span class="home-cta-label">${esc(ctaLabel)}</span>`
       + `</button>`
-      + `<p class="home-hint${active ? '' : ' warn'}" role="status" aria-live="polite">${hint}</p>`
+      + `<p class="home-hint${active || busy ? '' : ' warn'}" role="status" aria-live="polite">${hint}</p>`
     + `</section>`;
 }
 
-async function start(): Promise<void> {
-  if (starting) return;
-  if (deps.hasSession()) { deps.toast(t('homeSessionActive')); deps.switchTab('agent'); return; }
+/** Start, or Stop when a session is starting or running. Either way the Agent tab is where it shows. */
+function onCta(): void {
+  if (deps.sessionState() !== 'idle') { void deps.stopSession(); return; }
   if (!deps.getActive()) { deps.toast(t('homeNeedWorkspace')); return; }
   const provider = providers.find((p) => p.id === selected);
   if (!provider) return;
-  starting = true;
-  remaining = Math.round(LOAD_WAIT_MS / 1000);
-  renderHome();
-  let tabId: number | undefined;
-  try {
-    tabId = (await chrome.tabs.create({ url: provider.homepage, active: true })).id;
-  } catch (err: any) {
-    starting = false; remaining = 0; renderHome();
-    deps.toast('Gagal membuka tab: ' + (err?.message || err));
-    return;
-  }
-  const endAt = Date.now() + LOAD_WAIT_MS;
-  await new Promise<void>((resolve) => {
-    const timer = window.setInterval(() => {
-      remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
-      renderHome();
-      if (remaining <= 0) { window.clearInterval(timer); resolve(); }
-    }, 500);
-  });
-  try {
-    await deps.startSession(tabId);
-  } finally {
-    starting = false; remaining = 0; renderHome();
-  }
   deps.switchTab('agent');
+  void deps.launchSession(provider, LOAD_WAIT_MS);
 }
 
 export function initHome(dependencies: HomeDeps): void {
@@ -154,7 +136,7 @@ export function initHome(dependencies: HomeDeps): void {
       return;
     }
     if (el.closest('[data-act="open-folder"]')) { deps.openFolder(); return; }
-    if (el.closest('#homeStart')) void start();
+    if (el.closest('#homeStart')) onCta();
   });
   try {
     chrome.storage.local.get(PROVIDER_KEY).then((stored) => {

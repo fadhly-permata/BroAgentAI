@@ -44,7 +44,7 @@ interface Session {
   resumeGuard: string | null;
 }
 
-type PhaseKind = 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'failed' | 'offline';
+type PhaseKind = 'opening' | 'connecting' | 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'failed' | 'offline';
 interface Phase { kind: PhaseKind; label: string; since: number; until?: number }
 
 const MAX_TOOL_CALLS = 40;
@@ -68,6 +68,19 @@ let logs: LogEntry[] = [];
 let queue: Promise<void> = Promise.resolve();
 let pendingApproval: ((decision: 'allow' | 'deny') => void) | null = null;
 let phase: Phase | null = null;
+/**
+ * A start in progress (opening the chat tab, waiting for it, connecting). It
+ * shows in the status line and turns Start into Stop like a live session, so
+ * the user sees the process and can cancel it. `cancelled` is set by Stop.
+ */
+interface Launch { cancelled: boolean }
+let launching: Launch | null = null;
+const sessionListeners: (() => void)[] = [];
+
+export type AgentSessionState = 'idle' | 'starting' | 'active';
+export function agentSessionState(): AgentSessionState { return session ? 'active' : launching ? 'starting' : 'idle'; }
+/** Called whenever the session starts, stops, or a start begins or ends (Home mirrors it). */
+export function onAgentSessionChange(listener: () => void): void { sessionListeners.push(listener); }
 /** Phase to return to when an unreachable chat tab answers again. */
 let beforeOffline: Phase | null = null;
 let ticking = false;
@@ -90,12 +103,14 @@ function renderLog(): void {
 }
 
 function renderSession(): void {
-  $('agentSession').textContent = session ? `Sesi aktif - ${session.provider.label}` : 'Belum ada sesi';
-  $('agentPill').className = 'pill ' + (session ? 'pill-ok' : 'pill-warn');
-  $('agentStart').classList.toggle('hidden', !!session);
-  $('agentStop').classList.toggle('hidden', !session);
+  const busy = !!session || !!launching;
+  $('agentSession').textContent = session ? `Sesi aktif - ${session.provider.label}` : launching ? 'Memulai sesi...' : 'Belum ada sesi';
+  $('agentPill').className = 'pill ' + (session ? 'pill-ok' : launching ? 'pill-info' : 'pill-warn');
+  $('agentStart').classList.toggle('hidden', busy);
+  $('agentStop').classList.toggle('hidden', !busy);
   $('ckAi').textContent = session ? 'x' : 'o';
   $('ckAi').classList.toggle('done', !!session);
+  for (const listener of sessionListeners) { try { listener(); } catch { /* a listener's bug must not break the panel */ } }
 }
 
 function setPhase(kind: PhaseKind, label: string, untilMs?: number): void {
@@ -106,7 +121,7 @@ function setPhase(kind: PhaseKind, label: string, untilMs?: number): void {
 /** One line under the session controls: what the agent is doing right now, and for how long. */
 function renderStatus(): void {
   const box = $('agentStatus');
-  if (!session || !phase) {
+  if ((!session && !launching) || !phase) {
     box.classList.add('hidden');
     return;
   }
@@ -117,7 +132,7 @@ function renderStatus(): void {
   $('agentStatusText').textContent = phase.kind === 'idle' ? phase.label
     : `${phase.label} - ${phase.until !== undefined ? seconds(phase.until - now) : seconds(now - phase.since)}`;
   const stalled = phase.kind === 'failed' || (phase.kind === 'waiting' && now - phase.since > STALL_HINT_MS);
-  $('agentResend').classList.toggle('hidden', !(stalled && session.lastSent));
+  $('agentResend').classList.toggle('hidden', !(stalled && session?.lastSent));
 }
 
 function renderProviders(): void {
@@ -237,27 +252,92 @@ async function tick(): Promise<void> {
   }
 }
 
+/** Begin a start: the status line shows it and Start becomes Stop. Null when one is already running. */
+function beginLaunch(): Launch | null {
+  if (session || launching) return null;
+  if (!deps.hasWorkspace()) { deps.toast('Pilih workspace dulu'); return null; }
+  launching = { cancelled: false };
+  renderSession();
+  return launching;
+}
+
+function endLaunch(launch: Launch): void {
+  if (launching !== launch) return; // cancelled: Stop already cleaned up
+  launching = null;
+  if (!session) phase = null;
+  renderStatus();
+  renderSession();
+}
+
 /** Start the agent session; preferredTabId (e.g. a tab just opened from Home) wins over other chat tabs. */
 export async function startAgentSession(preferredTabId?: number): Promise<void> {
-  if (session) return;
-  if (!deps.hasWorkspace()) return deps.toast('Pilih workspace dulu');
+  const launch = beginLaunch();
+  if (!launch) return;
+  try { await connect(launch, preferredTabId); } finally { endLaunch(launch); }
+}
+
+/**
+ * Home's Start: open the provider's chat in a new tab, give it `waitMs` to load
+ * and sign in, then connect to that tab - all visible in the Agent tab's status
+ * line, and cancellable with Stop.
+ */
+export async function launchAgentSession(provider: ProviderInfo, waitMs: number): Promise<void> {
+  const launch = beginLaunch();
+  if (!launch) return;
+  try {
+    setPhase('opening', `Membuka ${provider.label}`);
+    let tabId: number | undefined;
+    try {
+      tabId = (await chrome.tabs.create({ url: provider.homepage, active: true })).id;
+    } catch (err: any) {
+      log({ tool: 'session.start', category: provider.label, decision: '-', status: 'error', ms: 0, detail: 'tab chat gagal dibuka: ' + (err?.message || err) });
+      deps.toast('Gagal membuka tab: ' + (err?.message || err));
+      return;
+    }
+    log({ tool: 'session.start', category: provider.label, decision: '-', status: 'info', ms: 0, detail: `tab chat dibuka; sesi dimulai dalam ${Math.round(waitMs / 1000)} detik` });
+    setPhase('opening', `Menunggu ${provider.label} termuat`, waitMs);
+    // Whole-second steps against a fixed end time: a hidden panel's timers are
+    // clamped to at least 1s each, so shorter steps would stretch the wait.
+    const end = Date.now() + waitMs;
+    while (Date.now() < end) {
+      if (launch.cancelled) return;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1000, end - Date.now())));
+    }
+    if (launch.cancelled) return;
+    await connect(launch, tabId);
+  } finally {
+    endLaunch(launch);
+  }
+}
+
+/** Find the chat tab, check its composer, send the operating prompt. Toasts and logs every failure. */
+async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
+  setPhase('connecting', 'Menyambung ke tab chat');
+  const fail = (message: string) => {
+    log({ tool: 'session.start', category: '-', decision: '-', status: 'error', ms: 0, detail: message });
+    deps.toast(message);
+  };
   const found = await findChatTab(preferredTabId);
+  if (launch.cancelled) return;
   if (!found) {
     const provider = providers[0];
     if (provider) await chrome.tabs.create({ url: provider.homepage });
-    return deps.toast('Tab chat dibuka. Login di sana, lalu klik Start session lagi.');
+    return fail('Tab chat dibuka. Login di sana, lalu klik Start session lagi.');
   }
   const tabId = found.tab.id!;
   let health: any;
   try {
     health = await tabMessage(tabId, { type: 'ba.ping' });
   } catch {
-    return deps.toast('Tab chat belum terhubung. Reload tab chat itu, lalu coba lagi.');
+    return fail('Tab chat belum terhubung. Reload tab chat itu, lalu coba lagi.');
   }
-  if (!health?.composer) return deps.toast(`Kolom chat ${found.provider.label} tidak ditemukan. Pastikan sudah login dan halaman chat terbuka.`);
+  if (launch.cancelled) return;
+  if (!health?.composer) return fail(`Kolom chat ${found.provider.label} tidak ditemukan. Pastikan sudah login dan halaman chat terbuka.`);
 
   try {
+    setPhase('connecting', 'Mengirim instruksi agent');
     const { prompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode() });
+    if (launch.cancelled) return;
     await tabMessage(tabId, { type: 'ba.activate' });
     session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: prompt, lastReplyText: null, resumeGuard: null };
     await send(prompt);
@@ -267,9 +347,22 @@ export async function startAgentSession(preferredTabId?: number): Promise<void> 
   } catch (err: any) {
     session = null;
     tabMessage(tabId, { type: 'ba.deactivate' }).catch(() => {});
-    deps.toast('Gagal memulai sesi: ' + (err?.message || err));
+    fail('Gagal memulai sesi: ' + (err?.message || err));
   }
-  renderSession();
+}
+
+/** Stop the live session, or cancel a start that is still opening / connecting. */
+export async function stopAgentSession(): Promise<void> {
+  if (launching && !session) {
+    launching.cancelled = true;
+    launching = null;
+    phase = null;
+    renderStatus();
+    log({ tool: 'session.start', category: '-', decision: '-', status: 'info', ms: 0, detail: 'dibatalkan sebelum sesi tersambung' });
+    renderSession();
+    return;
+  }
+  await stopSession();
 }
 
 async function stopSession(reason = 'dihentikan'): Promise<void> {
@@ -433,7 +526,7 @@ export function initAgent(dependencies: AgentDeps): void {
   $('agentNoticeShow').addEventListener('click', () => setNoticeDismissed(false, true));
 
   $('agentStart').addEventListener('click', () => { startAgentSession(); });
-  $('agentStop').addEventListener('click', () => { stopSession(); });
+  $('agentStop').addEventListener('click', () => { stopAgentSession(); });
   $('agentResend').addEventListener('click', () => {
     const text = session?.lastSent;
     if (!text) return;

@@ -3,7 +3,7 @@ import { renderExplorer, ExplorerOptions } from './explorer.js';
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
-import { initAgent, showAgent, startAgentSession, hasAgentSession } from './agent-panel.js';
+import { initAgent, showAgent, launchAgentSession, stopAgentSession, agentSessionState, onAgentSessionChange } from './agent-panel.js';
 import { initHome, renderHome } from './home-panel.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
@@ -479,7 +479,8 @@ on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
 
-initHome({ getWorkspaces: ()=>workspaces, getActive: ()=>activeWs, setActive: setActiveWorkspace, openFolder, switchTab, toast, hasSession: hasAgentSession, startSession: startAgentSession });
+initHome({ getWorkspaces: ()=>workspaces, getActive: ()=>activeWs, setActive: setActiveWorkspace, openFolder, switchTab, toast, sessionState: agentSessionState, launchSession: launchAgentSession, stopSession: stopAgentSession });
+onAgentSessionChange(renderHome);
 initAgent({ toast, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ renderTree(); refreshScm(); } });
 initMcp({ toast, openModal, hasWorkspace: ()=>!!activeWs });
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });

@@ -14,6 +14,8 @@
   --home-active-bg: rgba(0, 122, 204, 0.10);
   --home-accent: #007acc;
   --home-accent-hi: #1a8ad4;
+  --home-danger: #c72e2e;
+  --home-danger-hi: #d94a4a;
   --home-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   --home-mark-bg: #3c3c3c;
   --home-mark-fg: #cccccc;
@@ -119,20 +121,24 @@
 .home-cta:hover { filter: brightness(1.08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 0 3px rgba(0, 122, 204, 0.25), 0 2px 6px rgba(0, 0, 0, 0.35); }
 .home-cta:active { filter: brightness(.95); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3); }
 .home-cta:focus-visible { outline: 1px solid #ffffff; outline-offset: -3px; }
-.home-cta:disabled, .home-cta:disabled:hover { opacity: 1; cursor: progress; filter: none; background: linear-gradient(180deg, var(--home-accent-hi), var(--home-accent)); }
+/* While a session is starting or running the CTA is Stop Session (same session as the Agent tab). */
+.home-cta.stop {
+  border-color: var(--home-danger);
+  background: linear-gradient(180deg, var(--home-danger-hi), var(--home-danger));
+}
+.home-cta.stop:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 0 3px rgba(199, 46, 46, 0.25), 0 2px 6px rgba(0, 0, 0, 0.35); }
 .home-cta-ico { display: inline-flex; flex: none; }
 .home-cta-ico .ico { width: 14px; height: 14px; fill: currentColor; }
 .home-cta-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-cta-bar { position: absolute; left: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, 0.75); transition: width .5s linear; }
 .home-spin {
-  width: 12px; height: 12px; border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #ffffff;
+  width: 10px; height: 10px; flex: none; border-radius: 50%;
+  border: 2px solid rgba(0, 122, 204, 0.3); border-top-color: var(--home-accent);
   animation: home-spin .8s linear infinite;
 }
 @keyframes home-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .home-spin { animation: none; }
-  .prov-card, .home-cta, .home-cta-bar { transition: none; }
+  .prov-card, .home-cta { transition: none; }
   .prov-card:hover { transform: none; }
 }
 

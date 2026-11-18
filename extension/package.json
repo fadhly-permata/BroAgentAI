@@ -10,6 +10,7 @@
     "e2e": "node e2e/sidepanel.spec.mjs",
     "e2e:native": "node e2e/native-host.spec.mjs",
     "e2e:marks": "node e2e/agent-marks.spec.mjs",
+    "e2e:home": "node e2e/home-start.spec.mjs",
     "test": "node --test --experimental-strip-types src/**/*.test.mts"
   },
   "dependencies": {

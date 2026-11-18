@@ -365,6 +365,7 @@ input[type="checkbox"]:focus-visible { outline: 1px solid var(--focus); outline-
 span.pill { cursor: default; }
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .pill-ok { color: var(--success); background: rgba(56, 138, 52, 0.16); border-color: rgba(56, 138, 52, 0.7); }
+.pill-info { color: var(--info); background: rgba(55, 148, 255, 0.14); border-color: rgba(55, 148, 255, 0.6); }
 .pill-warn { color: var(--warning); background: rgba(204, 167, 0, 0.1); border-color: rgba(204, 167, 0, 0.55); }
 .pill-error { color: var(--danger); background: rgba(241, 76, 76, 0.1); border-color: rgba(241, 76, 76, 0.55); }
 button.pill:hover { filter: brightness(1.15); }
@@ -808,7 +809,7 @@ button.pill:hover { filter: brightness(1.15); }
 .agent-status .status-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--info); }
 .agent-status .status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-status .mini { flex: none; }
-.agent-status:is([data-phase="running"], [data-phase="sending"], [data-phase="waiting"]) .status-dot { animation: ba-pulse 1.2s ease-in-out infinite; }
+.agent-status:is([data-phase="opening"], [data-phase="connecting"], [data-phase="running"], [data-phase="sending"], [data-phase="waiting"]) .status-dot { animation: ba-pulse 1.2s ease-in-out infinite; }
 .agent-status:is([data-phase="delay"], [data-phase="retry"], [data-phase="approval"]) { border-left-color: var(--warning); }
 .agent-status:is([data-phase="delay"], [data-phase="retry"], [data-phase="approval"]) .status-dot { background: var(--warning); }
 .agent-status:is([data-phase="failed"], [data-phase="offline"]) { border-left-color: var(--danger); color: var(--text); }
