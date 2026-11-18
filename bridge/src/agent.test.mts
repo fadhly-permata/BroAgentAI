@@ -85,6 +85,11 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("- shell.run"));
   assert.match(prompt, new RegExp(`- Shell: ${process.platform === "win32" ? "powershell" : "sh"}`));
   assert.match(prompt, /READY/);
+
+  // A handoff prompt must not ask for READY: the AI continues the moved task.
+  const moved = (await ok("agent.prompt", { mode: "ask-once", handoff: true })).prompt;
+  assert.ok(!/single word READY/.test(moved));
+  assert.match(moved, /Do NOT reply READY/);
 });
 
 test("agent.check reports decision, approval key, paths and a preview without executing", async () => {

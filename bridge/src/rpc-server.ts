@@ -354,7 +354,10 @@ export class RpcServer {
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
     this.register("tools.list", () => listTools(this));
-    this.register("agent.prompt", (params) => buildPrompt(this, readParams(params ?? {}).mode));
+    this.register("agent.prompt", (params) => {
+      const p = readParams(params ?? {});
+      return buildPrompt(this, p.mode, p.handoff === true);
+    });
     this.register("agent.check", (params) => {
       const p = readParams(params);
       return checkTool(this, p.command, p.params, p.mode);
