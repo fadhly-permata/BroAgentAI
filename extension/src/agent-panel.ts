@@ -580,6 +580,10 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
     setPhase('waiting', 'Menunggu balasan AI');
     log({ tool: 'session.start', category: found.provider.label, decision: mode(), status: 'info', ms: 0, detail: `${toolCount} tools dikirim ke chat` });
     $('detectedChat').textContent = `${found.provider.label} - ${found.tab.title || ''}`;
+    // The session now exists: refresh the session pill and the switch-provider
+    // control so it lists the OTHER providers and is clickable right away.
+    renderSession();
+    renderSwitchProviders();
     // The chat tab may not be focused right after connect (Home opened it but the
     // user could already be elsewhere): align the pause state now.
     void syncFocusWithSession();
