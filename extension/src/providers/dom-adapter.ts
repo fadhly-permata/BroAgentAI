@@ -4,8 +4,14 @@ import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, cutText, fencedBlocks, joinLines, 
 
 function visible(el: Element | null): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
   const rect = el.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
+  if (rect.width > 0 && rect.height > 0) return true;
+  // Chrome may report 0,0 for elements in background/frozen tabs.
+  // For interactive elements, assume they are visible if not explicitly hidden.
+  if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable) return true;
+  return false;
 }
 
 function first(selector: string | undefined): HTMLElement | null {
