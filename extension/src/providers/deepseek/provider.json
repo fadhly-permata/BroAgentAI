@@ -7,7 +7,7 @@
   "status": "ready",
   "verified": "2026-11-17: composer, Enter-to-send, reply element, code block, idle/generating button state and the virtual-list item key checked on the live site; a full read + approved write loop ran in Chrome",
   "selectors": {
-    "composer": "textarea#chat-input, textarea",
+    "composer": "textarea#chat-input, textarea, div[contenteditable=\"true\"]",
     "submit": "",
     "assistantMessage": ".ds-assistant-message-main-content",
     "generating": "div[role='button'].ds-button--filled.ds-button--circle:not(.ds-button--disabled)",
