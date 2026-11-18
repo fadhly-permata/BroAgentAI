@@ -279,14 +279,10 @@ export async function switchProviderSession(targetId: string): Promise<void> {
   const targetTabId = targetTab?.tab.id;
   if (targetTabId === undefined) { deps.toast('Tab ' + target.label + ' tidak ditemukan'); setPhase('paused', 'Gagal pindah provider'); return; }
 
-  // The target tab may still be loading; wait for its composer to answer.
-  let health: any = null;
-  for (let i = 0; i < 15; i++) {
-    try { health = await tabMessage(targetTabId, { type: 'ba.ping' }); } catch { health = null; }
-    if (health?.composer) break;
-    await new Promise((r) => setTimeout(r, 1000));
-    if (session !== active) return; // stopped meanwhile
-  }
+  // Wait for the target relay; ensureRelay reloads the tab if the content
+  // script is missing (e.g. right after the extension was reloaded).
+  const health = await ensureRelay(targetTabId);
+  if (session !== active) return;
   if (!health?.composer) {
     deps.toast('Kolom chat ' + target.label + ' belum siap. Login/termuat dulu, lalu coba lagi.');
     setPhase('paused', 'Pindah provider gagal - tab belum siap');
@@ -546,6 +542,35 @@ export async function launchAgentSession(provider: ProviderInfo, waitMs: number)
   }
 }
 
+/**
+ * Ping the relay, retrying briefly. If it still does not answer, the content
+ * script is missing on that tab - typical right after the extension was
+ * reloaded, which does not re-inject content scripts into tabs already open.
+ * Reloading the tab lets Chrome inject it again, so the user does not have to
+ * do it by hand. Returns the health object or null.
+ */
+async function ensureRelay(tabId: number, launch?: Launch): Promise<any> {
+  const ping = async (): Promise<any> => {
+    try { return await tabMessage(tabId, { type: 'ba.ping' }); } catch { return null; }
+  };
+  // First: a few quick tries (the tab may just still be settling).
+  for (let i = 0; i < 5; i++) {
+    const health = await ping();
+    if (health) return health;
+    if (launch?.cancelled) return null;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  // Still nothing: reload the tab so Chrome injects the content script again.
+  try { await chrome.tabs.reload(tabId); } catch { return null; }
+  // Wait for the reload to reach "complete", then keep pinging while it boots.
+  for (let i = 0; i < 20; i++) {
+    if (launch?.cancelled) return null;
+    await new Promise((r) => setTimeout(r, 500));
+    const health = await ping();
+    if (health) return health;
+  }
+  return null;
+}
 /** Find the chat tab, check its composer, send the operating prompt. Toasts and logs every failure. */
 async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
   setPhase('connecting', 'Menyambung ke tab chat');
@@ -561,12 +586,8 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
     return fail('Tab chat dibuka. Login di sana, lalu klik Start session lagi.');
   }
   const tabId = found.tab.id!;
-  let health: any;
-  try {
-    health = await tabMessage(tabId, { type: 'ba.ping' });
-  } catch {
-    return fail('Tab chat belum terhubung. Reload tab chat itu, lalu coba lagi.');
-  }
+  const health = await ensureRelay(tabId, launch);
+  if (!health) return fail('Tab chat tidak merespons walau sudah dimuat ulang otomatis. Tutup tab itu lalu buka lagi dari Home.');
   if (launch.cancelled) return;
   if (!health?.composer) return fail(`Kolom chat ${found.provider.label} tidak ditemukan. Pastikan sudah login dan halaman chat terbuka.`);
 
