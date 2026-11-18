@@ -116,6 +116,9 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [x] 7.1. `npm run e2e`: panel + bridge asli, dan lewat native messaging Chromium asli.
 - [x] 7.2. Native messaging di Chrome stable terverifikasi (host dijalankan Chrome, sesi agent berjalan).
 
+## Fase 8: Advanced Agent Features (Future)
+- [ ] 8.1. Cross-Context Session Resume (Opsi B): Menyimpan state sesi (handoff) ke bridge agar bisa di-resume di jendela baru, incognito, atau profil berbeda. Memerlukan mekanisme Session ID, persistensi state yang aman, dan handshake antar konteks ekstensi.
+
 ---
 
 ## Aturan Pengerjaan
