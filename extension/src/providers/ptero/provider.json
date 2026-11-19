@@ -1,0 +1,17 @@
+{
+  "id": "ptero",
+  "label": "Ptero",
+  "description": "Ptero multi-model web chat (no signup). Set the mode next to the model picker to Quick Answer: in Smart (Auto) its server-side agent runs the commands itself and fails",
+  "homepage": "https://ptero.pro/",
+  "matchPatterns": ["https://ptero.pro/*"],
+  "status": "experimental",
+  "verified": "2026-11-18 (no account): #chat-input filled through the value setter, Enter and #chat-send-btn both send, the send button turns into .is-stop while generating, user/assistant turns (.chat-msg.user/.assistant > .chat-msg-content > .chat-msg-text, the activity/thinking card sits outside it) checked on the live site; a send-and-read run with the real DomAdapter + ReplyTracker delivered one reply with its js code block read from pre and the .chat-code-block-header label cut from the text, and no re-delivery. From an automated browser profile every model answered 'response stream ended'; a normal Chrome profile worked. Full loop from the side panel in Chrome (signed-in profile, real bridge): session start answered READY; in mode Smart (Auto) the model sent fs.readFile etc. to Ptero's own server-side tools (GitHub repo agent, error 'Invalid or missing repo') so nothing reached BroAgentAI; in mode Quick Answer fs.readFile + fs.writeFile ran through BroAgentAI and the file was written byte-identical",
+  "selectors": {
+    "composer": "#chat-input",
+    "submit": "#chat-send-btn:not(.is-stop)",
+    "assistantMessage": "#chat-messages .chat-msg.assistant > .chat-msg-content > .chat-msg-text",
+    "userMessage": "#chat-messages .chat-msg.user .chat-msg-text",
+    "generating": "#chat-send-btn.is-stop",
+    "exclude": ".chat-code-block-header"
+  }
+}

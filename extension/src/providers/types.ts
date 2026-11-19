@@ -30,6 +30,14 @@ export interface ProviderSelectors {
    */
   codeLine?: string;
   /**
+   * One element per code block inside a reply, for pages whose code blocks are
+   * not a <pre> (e.g. an editor widget that draws only the lines on screen).
+   * Each block's code is read from the page's React props through the
+   * MAIN-world helper first, then from codeLine lines, then from its
+   * code/pre text. Default: the reply's <pre> elements.
+   */
+  codeBlock?: string;
+  /**
    * Element(s) inside a reply whose React props hold the reply's markdown
    * (read by the MAIN-world helper content/page-source.iife.ts). Preferred
    * over the rendered DOM when set and readable: it has every code line, even

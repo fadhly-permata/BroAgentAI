@@ -304,6 +304,8 @@ Declarative selectors are data, not code. They can be prototyped in a "Provider 
 - Project config may enable/disable bundled providers, but cannot add selectors, host permissions, or code.
 - A provider plugin cannot access files, Git, or MCP directly; it only relays prompts/replies through the core.
 
+> **Planned change:** runtime-installable web chat plugins (selectors, per-site CSS and hook scripts, no rebuild) are designed in `09-WEBCHAT-PLUGINS.md` and proposed as ADR-020. Until ADR-020 is accepted, the rules above still apply.
+
 ## 5. MCP architecture
 
 ### 5.1 Role

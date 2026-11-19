@@ -259,8 +259,13 @@ function clip(text: string, max: number, label: string): string {
   return text.length <= max ? text : text.slice(0, max) + `\n[${label} truncated]`;
 }
 
-/** `agent.prompt`: the operating prompt sent to the chat AI when a session starts. */
-export async function buildPrompt(host: ToolInvoker, mode: unknown): Promise<{ prompt: string; mode: AgentMode; toolCount: number }> {
+/**
+ * `agent.prompt`: the operating prompt sent to the chat AI when a session starts.
+ * With `handoff` (a session moved to another provider) it does not end with
+ * "reply READY": the caller appends where the work stands, and the AI must
+ * continue with its next command instead of waiting for a new request.
+ */
+export async function buildPrompt(host: ToolInvoker, mode: unknown, handoff = false): Promise<{ prompt: string; mode: AgentMode; toolCount: number }> {
   const active = host.store.active();
   if (!active) throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
   const agentMode = normalizeMode(mode);
@@ -318,7 +323,9 @@ export async function buildPrompt(host: ToolInvoker, mode: unknown): Promise<{ p
     "## Workspace instructions",
     clip(instructions, MAX_INSTRUCTION_CHARS, "workspace instructions"),
     "",
-    "Reply now with the single word READY and wait for the user's request.",
+    handoff
+      ? "This session was moved here from another chat. Do NOT reply READY: continue the task described below with your next command."
+      : "Reply now with the single word READY and wait for the user's request.",
   ].join("\n");
 
   return { prompt, mode: agentMode, toolCount: tools.length };

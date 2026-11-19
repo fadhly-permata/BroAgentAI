@@ -8,10 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **ChatGPT and Ptero providers** (experimental). ChatGPT works signed in and logged out; Ptero needs its **Quick Answer** mode, because in Smart mode its server-side agent runs the commands itself. Official favicons on the Home cards.
+- **`codeBlock` provider selector.** Providers whose code blocks are not a `<pre>` (ChatGPT's CodeMirror only draws on-screen lines) read each block's full code from the page's React props, then from `codeLine` lines.
+- **Side panel rail on the window edge.** The activity rail now sits on the right, next to the browser edge, and follows the panel to the left when Chrome docks it there (`chrome.sidePanel.getLayout()`). About sits right above Settings.
+- **Plan for runtime-installable web chat plugins** (docs only): `specs/09-WEBCHAT-PLUGINS.md`, ADR-020 (Proposed), backlog Fase 9.
+
 - **Live refresh.** The bridge now watches the active workspace (`bridge/src/watcher.ts`) and emits debounced `fs.changed` / `git.changed` events. The Explorer and Source Control panels redraw on their own when files change on disk, after a commit or branch switch made outside the panel, or when a terminal command touches the repo. Expanded folders survive the redraw.
 
 ### Fixed
 
+- **Switch chat** reuses an open tab of the target provider instead of opening a new one every time, waits up to 30 s for the target page to load its composer, no longer pauses the session half-way, and no longer makes the new chat answer `READY` and stop (`agent.prompt` takes `handoff: true`).
+- **Start session** waits for the chat composer after the relay reloads a tab, instead of failing with "chat field not found".
+- The agent never types into a **hidden composer** anymore (ChatGPT keeps the previous chat view hidden in the page), which caused `NOT_ACCEPTED` and messages landing in another chat.
+- DeepSeek's "generating" check no longer matches the **warning button** next to an error reply, which made a chat with an error look busy forever.
 - Saving from the side-panel preview now refreshes the Explorer tree as well as the Source Control panel, so the file's size and Git badge are no longer stale.
 
 ## [0.1.0] - 2026-11-17

@@ -4,7 +4,7 @@
 
 > **BroAgentAI** stands for **Bro**wser **Agent** **AI**: an AI agent that lives in your browser.
 
-BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to your browser. You keep chatting with DeepSeek, Gemini or Qwen in their normal web tab (logged in, free tier, whatever you've got), and BroAgentAI lets that AI actually *do stuff* on your machine: read files, search, edit code, run Git, run shell commands, call MCP tools. You stay in control, and you approve anything risky before it happens.
+BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to your browser. You keep chatting with DeepSeek, Gemini, Qwen, ChatGPT or Ptero in their normal web tab (logged in, free tier, whatever you've got), and BroAgentAI lets that AI actually *do stuff* on your machine: read files, search, edit code, run Git, run shell commands, call MCP tools. You stay in control, and you approve anything risky before it happens.
 
 ![BroAgentAI side panel next to a DeepSeek chat, asking for approval before writing README.md](docs/screenshots/hero-approval.png)
 
@@ -19,8 +19,8 @@ BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to yo
 ```text
  ┌──────────── Browser ─────────────┐
  │  AI chat tab        Side panel   │
- │  (DeepSeek /  ◄──►  (explorer,   │
- │  Gemini/Qwen)       SCM, agent)  │
+ │  (DeepSeek,   ◄──►  (explorer,   │
+ │  ChatGPT, …)        SCM, agent)  │
  └──────────────────────┬───────────┘
                         │ Native Messaging (stdio, no open ports)
                         ▼
@@ -51,6 +51,8 @@ Pick an approval mode and every tool call shows up in the activity log. Writes c
 ![The agent finished the task: activity log shows the read, the approved write and the AI's final reply](docs/screenshots/hero-done.png)
 
 Messages the agent types into the chat get a small badge (`BroAgentAI · fs.readFile ✓`), so you can tell them apart from your own. The loop also survives rate limits, page reloads and stalled replies, with a **Resend** button for when a chat gets stuck.
+
+**Ran out of tokens halfway?** Use **Switch chat** in the Agent tab to move the running session to another provider. BroAgentAI reuses a tab of that provider if one is open (or opens one), waits for it to load, and sends the operating instructions plus a summary of where the work stands: the tools already run and the AI's last reply. The new chat picks up from there instead of starting over. The summary doesn't include your original request, so for a long task it helps if the last reply says what's left.
 
 ### 📁 Explorer, search and editor
 
@@ -120,8 +122,14 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 | DeepSeek | `https://chat.deepseek.com/` |
 | Gemini | `https://gemini.google.com/app` |
 | Qwen | `https://chat.qwen.ai/` |
+| ChatGPT (experimental) | `https://chatgpt.com/` |
+| Ptero (experimental) | `https://ptero.pro/` (set the mode next to the model picker to **Quick Answer**; in Smart mode Ptero's own server agent grabs the commands) |
+
+"Experimental" means the selectors work on the live site (a full read → write → answer loop passed) but haven't been around long enough to call stable.
 
 Each provider is just a folder under [`extension/src/providers/`](extension/src/providers) with a `provider.json` of DOM selectors. Adding a new chat site is mostly a matter of finding the right selectors, and the build picks it up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
+
+Coming up: **web chat plugins you can install without rebuilding**, each with its own selectors, per-site styling and small scripts for a site's quirks, managed from a Plugins page in Settings. It's planned, not built yet. See [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md).
 
 ### 🛡️ Safety stuff
 
@@ -175,7 +183,7 @@ Finally, load the extension:
 ### First run
 
 1. **Workspace → Open folder...** and point it at a project.
-2. Open DeepSeek, Gemini or Qwen in a normal tab and log in.
+2. Open DeepSeek, Gemini, Qwen, ChatGPT or Ptero in a normal tab and log in (Ptero needs no account).
 3. Go to the **Agent** tab in the panel, hit **Start**, then just chat with the AI in its tab like you normally would.
 
 > 💡 The UI starts in Bahasa Indonesia. Want English? Go to **Settings → Tampilan & Bahasa (Display & Language) → Language → English**.

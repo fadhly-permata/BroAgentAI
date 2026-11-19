@@ -301,3 +301,19 @@
 - Trust state is local and per machine; it is never committed.
 - The host can still list untrusted server definitions, but cannot start or call them.
 - Automation (CI, headless) needs an explicit opt-in flag, not an implicit bypass.
+
+## ADR-020: Web chat plugins are installable at runtime
+
+**Status:** Proposed (see `09-WEBCHAT-PLUGINS.md`)
+
+**Context:** ADR-018 bundles every provider at build time and keeps provider files declarative. In practice each site needed core changes for its quirks (ChatGPT CodeMirror code blocks and hidden composer, DeepSeek warning button, Ptero's server-side agent mode), users cannot add or fix a chat without a rebuild, and one shared agent-marks CSS looks broken on some sites.
+
+**Decision:** A web chat provider becomes a plugin (`plugin.json` + optional `style.css` + optional `plugin.js` hooks). The five current providers ship as built-in plugins. Users import plugins from local folders or `.zip` files at runtime, export them as `.zip`, and any user may publish updates (always reviewed, never automatic): selectors and CSS are registered with `chrome.scripting.registerContentScripts` after `chrome.permissions.request` for the plugin's own domains; hook scripts run through `chrome.userScripts`, one world per plugin, and only return data to the relay. Plugins never reach the bridge, files, Git, shell or MCP.
+
+**Consequences:**
+
+- Supersedes the runtime limits in ADR-018 and `07-PLUGIN-MCP.md` §4.3–4.5 once accepted.
+- User plugins with scripts need Chrome's "Allow User Scripts" toggle (Chrome 138+); without it they fall back to selectors + CSS.
+- One active plugin per domain; over-broad match patterns are rejected.
+- A malicious plugin can still read the chat page it runs on; this residual risk is documented and mitigated (local install only, source review, custom-plugin label, extra confirmation for Auto approve).
+- The provider registry becomes asynchronous and storage-backed.

@@ -418,15 +418,19 @@ button.pill:hover { filter: brightness(1.15); }
 .banner-actions { display: flex; gap: var(--sp-1); flex: none; }
 .banner-actions .mini { height: 22px; }
 
-/* Activity bar */
-.shell { display: flex; flex: 1; min-height: 0; position: relative; }
+/* Activity bar: on the browser-window edge of the panel. Chrome docks the side
+   panel on the right by default, so the rail sits on the right; when the user
+   moves the panel to the left, sidepanel.ts sets data-rail-side="left". */
+.shell { display: flex; flex-direction: row-reverse; flex: 1; min-height: 0; position: relative; }
 .rail {
   width: var(--activity-w); flex: none;
   display: flex; flex-direction: column;
   background: var(--bg-activity);
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   z-index: 5;
 }
+:root[data-rail-side="left"] .shell { flex-direction: row; }
+:root[data-rail-side="left"] .rail { border-left: none; border-right: 1px solid var(--border); }
 .rail-btn {
   position: relative;
   width: var(--activity-w); height: var(--activity-w);
@@ -437,10 +441,12 @@ button.pill:hover { filter: brightness(1.15); }
 .rail-btn:hover { background: transparent; color: var(--activity-fg); }
 .rail-btn .ico { width: 24px; height: 24px; stroke-width: 1; }
 .rail-btn.active { color: var(--activity-fg); }
+/* Active marker on the rail's outer edge (the window edge). */
 .rail-btn.active::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
-  border-left: 2px solid var(--accent);
+  content: ''; position: absolute; right: 0; top: 0; bottom: 0;
+  border-right: 2px solid var(--accent);
 }
+:root[data-rail-side="left"] .rail-btn.active::before { right: auto; left: 0; border-right: none; border-left: 2px solid var(--accent); }
 .rail-btn:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .rail-bottom { margin-top: auto; }
 /* Count pill on a rail icon. Text is pre-shortened (badge-format.ts, max 4 chars);

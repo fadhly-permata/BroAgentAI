@@ -418,6 +418,24 @@ function saveUISettings(settings: any) {
     localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify({ ...current, ...settings }));
   } catch {}
 }
+/**
+ * Keep the activity rail on the browser-window edge. The CSS default is the
+ * right side (Chrome's default); newer Chrome reports the side the user docked
+ * the panel to through sidePanel.getLayout(). Older versions lack it: right stays.
+ */
+function applyRailSide(): void {
+  // Declared with a callback in Chromium's side_panel.idl (Side: left | right).
+  const sidePanel = chrome.sidePanel as unknown as { getLayout?: (callback: (layout?: { side?: string }) => void) => void };
+  if (typeof sidePanel?.getLayout !== 'function') return;
+  try {
+    sidePanel.getLayout((layout) => {
+      if (chrome.runtime.lastError) return;
+      document.documentElement.dataset.railSide = layout?.side === 'left' ? 'left' : 'right';
+    });
+  } catch { /* keep the CSS default (right) */ }
+}
+applyRailSide();
+
 function applyUISettings() {
   const s = loadUISettings();
   

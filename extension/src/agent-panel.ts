@@ -53,6 +53,13 @@ interface Session {
 type PhaseKind = 'opening' | 'connecting' | 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'paused' | 'failed' | 'offline';
 interface Phase { kind: PhaseKind; label: string; since: number; until?: number }
 
+/** How long a switch waits for the target chat tab to load and show its composer. */
+const SWITCH_READY_MS = 30_000;
+/** Same for Start session (the tab may have just been reloaded to inject the relay). */
+const CONNECT_READY_MS = 20_000;
+/** True while a session is being moved to another provider (focus changes are expected then). */
+let switching = false;
+
 const MAX_TOOL_CALLS = 40;
 const REMINDER_EVERY = 8;
 const MODE_KEY = 'broagentai.agentMode';
@@ -208,6 +215,40 @@ async function findChatTab(preferredTabId?: number): Promise<{ tab: chrome.tabs.
   return matches[0] ?? null;
 }
 
+/** An open tab of `provider` other than `exclude`: the active one wins, then the most recently used. */
+async function findProviderTab(provider: ProviderInfo, exclude?: number): Promise<chrome.tabs.Tab | null> {
+  const tabs = (await chrome.tabs.query({}))
+    .filter((tab) => tab.id !== undefined && tab.id !== exclude && !!tab.url && providerForUrl(tab.url)?.id === provider.id);
+  const used = (tab: chrome.tabs.Tab) => (tab as { lastAccessed?: number }).lastAccessed ?? 0;
+  tabs.sort((a, b) => Number(b.active) - Number(a.active) || used(b) - used(a));
+  return tabs[0] ?? null;
+}
+
+/**
+ * Wait until a chat tab is usable: loaded, relay answering, composer rendered.
+ * A tab that was just opened is still loading (and chat apps draw the composer
+ * after load), so check the status first; ensureRelay reloads a tab whose relay
+ * does not answer, which must not happen to a page that is merely loading.
+ */
+async function waitForChatReady(tabId: number, timeoutMs: number, launch?: Launch): Promise<any> {
+  const end = Date.now() + timeoutMs;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  while (Date.now() < end && !launch?.cancelled) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return null;
+    if (tab.status === 'complete') break;
+    await sleep(300);
+  }
+  const health = await ensureRelay(tabId, launch);
+  if (!health) return null;
+  let latest = health;
+  while (!latest?.composer && Date.now() < end && !launch?.cancelled) {
+    await sleep(500);
+    latest = await tabMessage(tabId, { type: 'ba.ping' }).catch(() => latest);
+  }
+  return latest;
+}
+
 /**
  * Compact, provider-agnostic summary of a session, used as the first message
  * after moving the chat to another provider. It cannot carry the raw history
@@ -260,32 +301,46 @@ export async function switchProviderSession(targetId: string): Promise<void> {
   if (!target) { deps.toast('Provider tidak dikenal: ' + targetId); return; }
   if (target.id === active.provider.id) { deps.toast('Sudah di ' + target.label); return; }
 
+  if (switching) return;
+  switching = true;
+  try {
+    await moveSession(active, target);
+  } finally {
+    switching = false;
+    // Focus changes during the move were ignored; align pause/resume now.
+    void syncFocusWithSession();
+  }
+}
+
+async function moveSession(active: Session, target: ProviderInfo): Promise<void> {
   const oldTabId = active.tabId;
   const handoff = buildHandoffPrompt(active);
   setPhase('connecting', 'Pindah ke ' + target.label);
 
-  // Find (or open) a chat tab of the target provider.
-  let targetTab = (await findChatTab().catch(() => null));
-  if (!targetTab || targetTab.provider.id !== target.id) {
-    try {
-      const created = await chrome.tabs.create({ url: target.homepage, active: true });
-      if (created.id !== undefined) targetTab = { tab: created, provider: target };
-    } catch (err: any) {
-      deps.toast('Gagal membuka tab ' + target.label + ': ' + (err?.message || err));
-      setPhase('paused', 'Gagal pindah provider');
-      return;
+  // Reuse an open tab of the TARGET provider (never the session's own tab), else open one.
+  let targetTab = await findProviderTab(target, oldTabId).catch(() => null);
+  try {
+    if (targetTab?.id !== undefined) {
+      await chrome.tabs.update(targetTab.id, { active: true });
+      await chrome.windows.update(targetTab.windowId, { focused: true }).catch(() => {});
+    } else {
+      targetTab = await chrome.tabs.create({ url: target.homepage, active: true });
     }
+  } catch (err: any) {
+    deps.toast('Gagal membuka tab ' + target.label + ': ' + (err?.message || err));
+    setPhase('failed', 'Gagal pindah provider');
+    return;
   }
-  const targetTabId = targetTab?.tab.id;
-  if (targetTabId === undefined) { deps.toast('Tab ' + target.label + ' tidak ditemukan'); setPhase('paused', 'Gagal pindah provider'); return; }
+  const targetTabId = targetTab?.id;
+  if (targetTabId === undefined) { deps.toast('Tab ' + target.label + ' tidak ditemukan'); setPhase('failed', 'Gagal pindah provider'); return; }
 
-  // Wait for the target relay; ensureRelay reloads the tab if the content
-  // script is missing (e.g. right after the extension was reloaded).
-  const health = await ensureRelay(targetTabId);
+  // Wait for the page to load and draw its composer (a new tab needs a while).
+  setPhase('connecting', 'Menunggu ' + target.label + ' termuat');
+  const health = await waitForChatReady(targetTabId, SWITCH_READY_MS);
   if (session !== active) return;
   if (!health?.composer) {
     deps.toast('Kolom chat ' + target.label + ' belum siap. Login/termuat dulu, lalu coba lagi.');
-    setPhase('paused', 'Pindah provider gagal - tab belum siap');
+    setPhase('failed', 'Pindah provider gagal - tab belum siap');
     return;
   }
 
@@ -298,10 +353,12 @@ export async function switchProviderSession(targetId: string): Promise<void> {
   active.toolCalls = 0;
   active.resumeGuard = null;
   active.paused = false;
+  phaseBeforePause = null;
   // Fetch full system prompt and inject handoff context so the new AI knows its tools and rules
   let promptToSend = handoff;
   try {
-    const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode() });
+    // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
+    const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode(), handoff: true });
     // Append handoff context at the very end to override any "reply READY" instruction (recency bias)
     promptToSend = systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${handoff}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
   } catch (err) {
@@ -309,7 +366,7 @@ export async function switchProviderSession(targetId: string): Promise<void> {
   }
 
   active.lastSent = promptToSend;
-  $('detectedChat').textContent = target.label + ' - ' + (targetTab?.tab.title || '');
+  $('detectedChat').textContent = target.label + ' - ' + (targetTab?.title || '');
 
   log({ tool: 'session.switch', category: active.provider.label, decision: 'handoff', status: 'info', ms: 0, detail: 'pindah provider; konteks diringkas ke prompt baru (' + active.totalCalls + ' tool call sejauh ini)' });
   notify('BroAgentAI - Pindah provider', 'Sesi dipindah ke ' + target.label + '. Agent melanjutkan dengan ringkasan pekerjaan.');
@@ -324,7 +381,6 @@ export async function switchProviderSession(targetId: string): Promise<void> {
     setPhase('failed', 'Ringkasan gagal terkirim: ' + (err?.message || err));
     deps.toast('Ringkasan handoff gagal terkirim. Coba Resend di tab baru.');
   }
-  void syncFocusWithSession();
 }
 async function refreshDetected(): Promise<void> {
   if (session) return;
@@ -487,7 +543,8 @@ async function resumeSession(): Promise<void> {
  */
 async function syncFocusWithSession(): Promise<void> {
   const active = session;
-  if (!active) return;
+  // Mid-switch the old tab loses focus on purpose; the move re-syncs when done.
+  if (!active || switching) return;
   const focused = await isChatTabFocused(active.tabId);
   if (session !== active) return; // stopped while we were checking
   if (focused && active.paused) await resumeSession();
@@ -596,9 +653,9 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
     return fail('Tab chat dibuka. Login di sana, lalu klik Start session lagi.');
   }
   const tabId = found.tab.id!;
-  const health = await ensureRelay(tabId, launch);
-  if (!health) return fail('Tab chat tidak merespons walau sudah dimuat ulang otomatis. Tutup tab itu lalu buka lagi dari Home.');
+  const health = await waitForChatReady(tabId, CONNECT_READY_MS, launch);
   if (launch.cancelled) return;
+  if (!health) return fail('Tab chat tidak merespons walau sudah dimuat ulang otomatis. Tutup tab itu lalu buka lagi dari Home.');
   if (!health?.composer) return fail(`Kolom chat ${found.provider.label} tidak ditemukan. Pastikan sudah login dan halaman chat terbuka.`);
 
   try {
