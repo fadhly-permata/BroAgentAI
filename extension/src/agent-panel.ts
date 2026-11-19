@@ -15,6 +15,8 @@ import type { ProviderInfo, ProviderReply } from './providers/types.js';
 
 export interface AgentDeps {
   toast(message: string): void;
+  /** Ask with OK/Cancel; resolves false when the user closes it any other way. */
+  confirm(title: string, bodyHtml: string): Promise<boolean>;
   hasWorkspace(): boolean;
   /** Called after a tool changed files so the explorer / SCM can refresh. */
   onFilesChanged(): void;
@@ -37,6 +39,8 @@ interface Session {
   totalCalls: number;
   /** Approval keys (tool name, or one shell command line) remembered in ask-once mode. */
   allowed: Set<string>;
+  /** R10: the user confirmed Auto approve for this session's custom (user-installed) plugin. */
+  customAutoOk?: boolean;
   /** Last message the agent typed into the chat, for "Resend". */
   lastSent: string | null;
   /** Text of the last reply handled, to drop it if it shows up again after the chat tab reloads. */
@@ -160,10 +164,31 @@ function renderLog(): void {
   $('cmdLog').scrollTop = $('cmdLog').scrollHeight;
 }
 
+/** A custom (user-installed) plugin is labelled as such wherever the session shows (R10). */
+const providerLabel = (p: ProviderInfo) => (p.source === 'user' ? `${p.label} (custom)` : p.label);
+
+/**
+ * R10: a custom plugin's chat page can write any reply, and Auto approve runs
+ * the commands in it without asking. Ask once per session; declining switches
+ * the session to "Always ask".
+ */
+async function guardCustomAutoApprove(active: Pick<Session, 'provider' | 'customAutoOk'>, stillCurrent: () => boolean = () => session === active): Promise<void> {
+  if (active.provider.source !== 'user' || mode() !== 'auto-approve' || active.customAutoOk) return;
+  const ok = await deps.confirm('Auto approve + plugin custom',
+    `<p><b>${esc(active.provider.label)}</b> adalah plugin <b>custom</b> (bukan bawaan BroAgentAI). Halaman chat yang ditanganinya bisa menulis balasan apa saja, dan <b>Auto approve</b> langsung menjalankan perintah di dalamnya: tulis/hapus file, shell, push.</p>`
+    + `<p>OK = tetap Auto approve untuk sesi ini. Batal = pindah ke <b>Always ask</b>.</p>`);
+  if (!stillCurrent()) return;
+  if (ok) { active.customAutoOk = true; return; }
+  const select = $('modeSel') as HTMLSelectElement;
+  select.value = 'always-ask';
+  select.dispatchEvent(new Event('change'));
+  log({ tool: 'mode', category: active.provider.label, decision: 'always-ask', status: 'info', ms: 0, detail: 'Auto approve tidak dikonfirmasi untuk plugin custom' });
+}
+
 function renderSession(): void {
   const busy = !!session || !!launching;
   $('agentSession').textContent = session
-    ? (session.paused ? `Sesi dijeda - ${session.provider.label}` : `Sesi aktif - ${session.provider.label}`)
+    ? (session.paused ? `Sesi dijeda - ${providerLabel(session.provider)}` : `Sesi aktif - ${providerLabel(session.provider)}`)
     : launching ? 'Memulai sesi...' : 'Belum ada sesi';
   $('agentPill').className = 'pill ' + (session ? (session.paused ? 'pill-warn' : 'pill-ok') : launching ? 'pill-info' : 'pill-warn');
   $('agentStart').classList.toggle('hidden', busy);
@@ -376,6 +401,9 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   renderSession();
   renderSwitchProviders();
 
+  // R10: moving to a custom plugin under Auto approve needs its own OK.
+  active.customAutoOk = false;
+  await guardCustomAutoApprove(active);
   setPhase('sending', 'Mengirim ringkasan ke ' + target.label);
   try {
     await send(promptToSend);
@@ -662,11 +690,15 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
   if (!health?.composer) return fail(`Kolom chat ${found.provider.label} tidak ditemukan. Pastikan sudah login dan halaman chat terbuka.`);
 
   try {
+    // R10 first: the prompt below states the approval mode, so settle it before building it.
+    const pending: Session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: null, lastReplyText: null, resumeGuard: null, paused: false };
+    await guardCustomAutoApprove(pending, () => !launch.cancelled);
+    if (launch.cancelled) return;
     setPhase('connecting', 'Mengirim instruksi agent');
     const { prompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode() });
     if (launch.cancelled) return;
     await activateRelay(tabId, found.provider);
-    session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: prompt, lastReplyText: null, resumeGuard: null, paused: false };
+    session = { ...pending, lastSent: prompt };
     await send(prompt);
     setPhase('waiting', 'Menunggu balasan AI');
     log({ tool: 'session.start', category: found.provider.label, decision: mode(), status: 'info', ms: 0, detail: `${toolCount} tools dikirim ke chat` });
@@ -929,6 +961,7 @@ export function initAgent(dependencies: AgentDeps): void {
     // Leaving ask-once (or tightening the mode) must not carry old approvals along.
     session?.allowed.clear();
     showHint();
+    if (session && select.value === 'auto-approve') void guardCustomAutoApprove(session);
     if (session) log({ tool: 'mode', category: '-', decision: select.value, status: 'info', ms: 0, detail: 'berlaku untuk perintah berikutnya' });
     deps.toast('Approval mode: ' + select.options[select.selectedIndex].text);
   });

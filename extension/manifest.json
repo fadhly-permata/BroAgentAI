@@ -24,7 +24,8 @@
     "tabs",
     "nativeMessaging",
     "notifications",
-    "scripting"
+    "scripting",
+    "userScripts"
   ],
   "optional_host_permissions": [
     "https://*/*"

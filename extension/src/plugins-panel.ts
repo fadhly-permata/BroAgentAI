@@ -8,6 +8,7 @@ import { readZip, rootFiles, safeRelativePath, writeZip, ZIP_LIMITS, ZipError } 
 import { manifestsOverlap, planInstall, type DomainConflict, type InstallPlan, type InstalledPlugin } from './plugins/conflicts.ts';
 import { installPackage, loadPluginState, removeUserPlugin, setPluginEnabled, type PluginRef } from './plugins/store.ts';
 import { compactDiff, lineDiff } from './plugins/diff.ts';
+import { syncUserScripts } from './plugins/sync.ts';
 import type { PluginEntry } from './plugins/merge.ts';
 
 export interface PluginsDeps {
@@ -27,6 +28,12 @@ let deps: PluginsDeps;
 /** Whether Chrome granted site access, per user plugin id (filled while rendering). */
 let access = new Map<string, boolean>();
 
+/** chrome.userScripts is undefined while "Allow User Scripts" is off (P0 finding, R14). */
+const userScriptsOn = () => typeof (chrome as unknown as { userScripts?: { register?: unknown } }).userScripts?.register === 'function';
+let lastScriptSyncAttempt = '';
+/** What the service worker last did with plugin scripts (plugins/sync.ts). */
+let scriptSync: { at: number; available: boolean; registered: string[]; error?: string } | null = null;
+
 const installed = (): InstalledPlugin[] => pluginEntries.map((e) => ({ manifest: e.manifest, source: e.source, enabled: e.enabled && !e.problem }));
 
 // ---------- list ----------
@@ -43,7 +50,14 @@ async function computeAccess(): Promise<void> {
 function badges(e: PluginEntry): string {
   const b: string[] = [];
   b.push(e.source === 'builtin' ? `<span class="pl-badge">${tr('Built-in', 'Bawaan')}</span>` : e.overridesBuiltin ? `<span class="pl-badge warn">${tr('Override', 'Pengganti bawaan')}</span>` : `<span class="pl-badge warn">${tr('Custom', 'Custom')}</span>`);
-  if (e.hasScript) b.push(`<span class="pl-badge" title="${esc(tr('Has plugin.js hooks', 'Punya hook plugin.js'))}">${tr('Script', 'Script')}${e.source === 'user' ? ' · ' + tr('not run yet', 'belum dijalankan') : ''}</span>`);
+  if (e.hasScript) {
+    // Built-in hooks are bundled into the relay; a user plugin's plugin.js needs "Allow User Scripts" (R14).
+    const off = e.source === 'user' && !userScriptsOn();
+    // "on" only once the service worker actually registered it; otherwise say what is pending.
+    const registered = !!scriptSync?.registered.includes(e.id);
+    const state = e.source !== 'user' ? '' : off ? tr('off', 'mati') : registered ? tr('on', 'nyala') : tr('not registered yet', 'belum terdaftar');
+    b.push(`<span class="pl-badge${e.source === 'user' && !registered ? ' warn' : ''}" title="${esc(tr('Has plugin.js hooks', 'Punya hook plugin.js'))}">Script${state ? ' · ' + state : ''}</span>`);
+  }
   if (e.problem) b.push(`<span class="pl-badge err">${tr('Needs update', 'Perlu update')}</span>`);
   if (e.source === 'user' && e.enabled && access.get(e.id) === false) b.push(`<span class="pl-badge err">${tr('Access revoked', 'Akses dicabut')}</span>`);
   if (!e.enabled) b.push(`<span class="pl-badge">${tr('Off', 'Mati')}</span>`);
@@ -71,11 +85,21 @@ export async function renderPlugins(): Promise<void> {
   const body = document.getElementById('pluginsBody');
   if (!body || !deps) return;
   await computeAccess();
+  const stored: Record<string, unknown> = await chrome.storage.local.get('broagentai.plugins.scriptSync').catch(() => ({}));
+  scriptSync = (stored['broagentai.plugins.scriptSync'] as typeof scriptSync) ?? null;
   const anyScript = pluginEntries.some((e) => e.source === 'user' && e.hasScript);
+  // Scripts that should run but are not registered: the service worker may predate the toggle (it then
+  // lacks chrome.userScripts), so register them from here. Once per set of plugins, so an error cannot loop.
+  const wanted = pluginEntries.filter((e) => e.source === 'user' && e.enabled && e.hasScript && !e.problem && access.get(e.id) !== false).map((e) => `${e.id}@${e.manifest.version}`).sort().join(',');
+  const missing = userScriptsOn() && pluginEntries.some((e) => e.source === 'user' && e.enabled && e.hasScript && !e.problem && access.get(e.id) !== false && !scriptSync?.registered.includes(e.id));
+  if (missing && wanted !== lastScriptSyncAttempt) { lastScriptSyncAttempt = wanted; void syncUserScripts(); }
   body.innerHTML =
     `<p class="setting-desc">${tr('Each web chat BroAgentAI drives is a plugin: its selectors, how BroAgentAI looks on that site, and hooks for its quirks. Import a plugin folder or .zip to add a chat or replace a built-in one; nothing is rebuilt.', 'Tiap web chat yang dijalankan BroAgentAI adalah plugin: selector-nya, tampilan BroAgentAI di site itu, dan hook untuk keanehannya. Import folder atau .zip plugin untuk menambah chat atau mengganti yang bawaan; tanpa rebuild.')}</p>`
     + `<div class="btn-row"><button class="mini primary" data-pl-act="import-folder">${tr('Import folder…', 'Import folder…')}</button><button class="mini primary" data-pl-act="import-zip">${tr('Import .zip…', 'Import .zip…')}</button></div>`
-    + (anyScript ? `<p class="hint">${tr('plugin.js hooks of custom plugins do not run yet; their selectors and style.css do.', 'Hook plugin.js milik plugin custom belum dijalankan; selector dan style.css-nya sudah.')}</p>` : '')
+    + (anyScript && !userScriptsOn()
+      ? `<div class="callout callout-warn"><span>${tr('plugin.js of your custom plugins is off: Chrome only runs it when "Allow User Scripts" is on for BroAgentAI. Open chrome://extensions → BroAgentAI → Details → turn on "Allow User Scripts", then press Check again. Until then those plugins run on their selectors and style.css only.', 'plugin.js milik plugin custom Anda mati: Chrome hanya menjalankannya kalau "Allow User Scripts" nyala untuk BroAgentAI. Buka chrome://extensions → BroAgentAI → Details → nyalakan "Allow User Scripts", lalu tekan Cek lagi. Sampai itu, plugin tersebut jalan dengan selector dan style.css saja.')}</span><button class="mini" data-pl-act="recheck">${tr('Check again', 'Cek lagi')}</button></div>`
+      : '')
+    + (scriptSync?.error ? `<p class="err">${esc(tr('Registering plugin scripts failed: ', 'Gagal mendaftarkan script plugin: ') + scriptSync.error)}</p>` : '')
     + `<div class="pl-list">${pluginEntries.map(row).join('')}</div>`;
 }
 
@@ -319,6 +343,12 @@ export function initPlugins(dependencies: PluginsDeps): void {
     if (!el) return;
     const act = el.dataset.plAct;
     if (act === 'import-folder') { void importFrom('folder'); return; }
+    if (act === 'recheck') {
+      lastScriptSyncAttempt = '';
+      void (userScriptsOn() ? syncUserScripts() : chrome.runtime.sendMessage({ type: 'ba.plugins.sync' }).catch(() => {})).then(() => renderPlugins());
+      deps.toast(userScriptsOn() ? tr('User scripts are on; plugin.js runs after reloading the chat tabs.', 'User scripts nyala; plugin.js jalan setelah tab chat dimuat ulang.') : tr('"Allow User Scripts" is still off.', '"Allow User Scripts" masih mati.'));
+      return;
+    }
     if (act === 'import-zip' || act === 'update') { void importFrom('zip'); return; }
     const e = entryOf(el);
     if (!e) return;
@@ -330,4 +360,8 @@ export function initPlugins(dependencies: PluginsDeps): void {
     if (act === 'grant') { void chrome.permissions.request({ origins: e.manifest.matches }).then(() => renderPlugins()); return; }
   });
   void refreshProviders().then(() => renderPlugins());
+  // The service worker reports plugin-script registration separately; show it as it lands.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes['broagentai.plugins.scriptSync']) void renderPlugins();
+  });
 }

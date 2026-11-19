@@ -240,8 +240,12 @@ function switchTab(t:string){
   if(t==='terminal') showTerminal(); 
 }
 let modalCb:(()=>void)|null=null;
-function openModal(title:string,body:string,cb:()=>void){ $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
-function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null }
+/** Called once when the modal closes (OK, Cancel, X, Escape or a newer modal); used by confirmModal. */
+let modalOnClose:(()=>void)|null=null;
+function openModal(title:string,body:string,cb:()=>void){ const prev=modalOnClose; modalOnClose=null; prev?.(); $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
+function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null; const f=modalOnClose; modalOnClose=null; f?.() }
+/** OK resolves true; anything that closes the modal otherwise resolves false. */
+function confirmModal(title:string,body:string):Promise<boolean>{ return new Promise((resolve)=>{ let decided=false; openModal(title,body,()=>{ decided=true; resolve(true) }); modalOnClose=()=>{ if(!decided) resolve(false) } }) }
 async function doSearch(){
   const query = ($('searchInput') as HTMLInputElement).value.trim();
   if (!query) {
@@ -502,7 +506,7 @@ try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId
 
 initHome({ getWorkspaces: ()=>workspaces, getActive: ()=>activeWs, setActive: setActiveWorkspace, openFolder, switchTab, toast, sessionState: agentSessionState, launchSession: launchAgentSession, stopSession: stopAgentSession });
 onAgentSessionChange(renderHome);
-initAgent({ toast, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ renderTree(); refreshScm(); } });
+initAgent({ toast, confirm: confirmModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ renderTree(); refreshScm(); } });
 initMcp({ toast, openModal, hasWorkspace: ()=>!!activeWs });
 initPlugins({ toast, openModal });
 // Web chat plugins: merge the user's installed ones, and follow installs/updates/toggles.

@@ -8,6 +8,7 @@
 // so this runs on install/update/startup and whenever plugins or permissions change.
 import { mergePlugins, type PluginState } from './merge.ts';
 import { loadPluginState } from './store.ts';
+import { PLUGIN_WORLD_CSP, pluginWorldId, userWorldPrelude, userWorldReady } from './user-world.ts';
 
 /** Self-contained relay build for user-plugin sites (vite.relay.config.ts). */
 export const DYNAMIC_RELAY = 'src/content/relay-dynamic.js';
@@ -61,5 +62,70 @@ async function doSync(): Promise<void> {
     if (scripts.length > 0) await chrome.scripting.registerContentScripts(scripts);
   } catch (err) {
     console.error('[BroAgentAI] plugin registration sync failed:', err);
+  }
+  await syncUserScripts();
+}
+
+/** chrome.userScripts as Chrome 133+ ships it (worldId is newer than the bundled @types/chrome). */
+interface UserScriptsApi {
+  configureWorld(properties: { worldId?: string; csp?: string; messaging?: boolean }): Promise<void>;
+  getScripts(filter?: { ids?: string[] }): Promise<Array<{ id: string }>>;
+  register(scripts: Array<{ id: string; matches: string[]; js: Array<{ code: string }>; runAt?: string; world?: string; worldId?: string }>): Promise<void>;
+  unregister(filter?: { ids?: string[] }): Promise<void>;
+}
+
+/**
+ * The userScripts API, or null when Chrome hides it: "Allow User Scripts" is off
+ * for BroAgentAI (Chrome 138+), or Chrome is too old. P0 found the object itself
+ * is undefined then (R14).
+ */
+export function userScriptsApi(): UserScriptsApi | null {
+  const api = (chrome as unknown as { userScripts?: UserScriptsApi }).userScripts;
+  return typeof api?.register === 'function' ? api : null;
+}
+
+/**
+ * plugin.js of enabled user plugins, each in its own world (R3) with a strict
+ * CSP (R11) and no extension messaging, so a plugin can only touch the page.
+ * It runs on all of the plugin's sites, built-in hosts included (an override).
+ */
+/** Last plugin-script sync, shown on the Plugins page (errors here are otherwise only in the service-worker console). */
+export const SCRIPT_SYNC_KEY = 'broagentai.plugins.scriptSync';
+export interface ScriptSyncStatus { at: number; available: boolean; registered: string[]; error?: string }
+
+/**
+ * Also called from the side panel: after "Allow User Scripts" is turned on, a
+ * service worker that was already running still has no chrome.userScripts
+ * (only contexts created later get it), so the panel registers the scripts.
+ */
+export async function syncUserScripts(): Promise<void> {
+  const api = userScriptsApi();
+  const report = (status: Omit<ScriptSyncStatus, 'at'>) => chrome.storage.local.set({ [SCRIPT_SYNC_KEY]: { at: Date.now(), ...status } }).catch(() => {});
+  if (!api) { await report({ available: false, registered: [] }); return; } // plugins still run on selectors + style.css
+  try {
+    const state = await loadPluginState();
+    const existing = (await api.getScripts()).filter((s) => s.id.startsWith(ID_PREFIX));
+    if (existing.length > 0) await api.unregister({ ids: existing.map((s) => s.id) });
+    const scripts: Parameters<UserScriptsApi['register']>[0] = [];
+    for (const entry of mergePlugins([], state).entries) {
+      const stored = state.user[entry.id];
+      if (entry.source !== 'user' || !entry.enabled || entry.problem || !stored?.script) continue;
+      if (!(await chrome.permissions.contains({ origins: entry.manifest.matches }).catch(() => false))) continue;
+      const worldId = pluginWorldId(entry.id);
+      await api.configureWorld({ worldId, csp: PLUGIN_WORLD_CSP, messaging: false });
+      scripts.push({
+        id: `${ID_PREFIX}${entry.id}`,
+        matches: entry.manifest.matches,
+        js: [{ code: userWorldPrelude(entry.id) }, { code: stored.script }, { code: userWorldReady(entry.id) }],
+        runAt: 'document_idle',
+        world: 'USER_SCRIPT',
+        worldId,
+      });
+    }
+    if (scripts.length > 0) await api.register(scripts);
+    await report({ available: true, registered: scripts.map((s) => s.id.slice(ID_PREFIX.length)) });
+  } catch (err) {
+    console.error('[BroAgentAI] plugin script sync failed:', err);
+    await report({ available: true, registered: [], error: err instanceof Error ? err.message : String(err) });
   }
 }

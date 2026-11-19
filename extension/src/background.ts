@@ -11,6 +11,12 @@ chrome.runtime.onStartup.addListener(() => { void syncPluginRegistrations(); });
 onPluginStateChange(() => { void syncPluginRegistrations(); });
 chrome.permissions.onAdded.addListener(() => { void syncPluginRegistrations(); });
 chrome.permissions.onRemoved.addListener(() => { void syncPluginRegistrations(); });
+// The Plugins page asks for a re-sync, e.g. after "Allow User Scripts" was turned on.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id || message?.type !== 'ba.plugins.sync') return undefined;
+  void syncPluginRegistrations().then(() => sendResponse({ ok: true }));
+  return true;
+});
 
 console.log('BroAgentAI background loaded');
 

@@ -128,7 +128,7 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [ ] 9.2b. DeepSeek `detectError` ("Usage limit reached" → panel nyaranin pindah provider). Ketahan: kondisi error kuota nggak bisa dipancing buat dites.
 - [x] 9.3. P3 (dicek live dengan plugin duck.ai: import folder + .zip, full loop agent, update, rollback, export, hapus): import plugin tanpa rebuild dari folder atau `.zip` (selector + CSS), update dengan diff, izin domain, penanganan konflik domain.
 - [x] 9.3a. Halaman Settings → Plugins (spec §4.6), satu-satunya tempat ngatur plugin (tanpa mode developer): tombol Import + status toggle User Scripts; tiap baris plugin dengan label + saklar on/off; aksi Update, Export `.zip`, Remove, Reset to built-in, Re-grant access, Reload open tabs, Health check; layar review yang sama buat install & update.
-- [ ] 9.4. P4: `plugin.js` user lewat `chrome.userScripts`, deteksi toggle, fallback, aturan keamanan plugin custom.
+- [x] 9.4. P4 (dicek live: plugin.js duck.ai jalan di world sendiri, prepare jalan sebelum prompt, konfirmasi Auto approve untuk plugin custom): `plugin.js` user lewat `chrome.userScripts`, deteksi toggle, fallback, aturan keamanan plugin custom.
 - [ ] 9.5. P5: template plugin, panduan README, e2e isolasi plugin, ADR-020 diterima.
 
 ---

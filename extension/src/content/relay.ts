@@ -11,7 +11,8 @@ import './plugin-scripts.js';
 import { DomAdapter, NOT_ACCEPTED } from '../providers/dom-adapter.js';
 import { providerForUrl, refreshProviders } from '../providers/registry.js';
 import type { ProviderInfo } from '../providers/types.js';
-import { runPrepare } from '../plugins/hooks.js';
+import { PREPARE_TIMEOUT_MS, runPrepare } from '../plugins/hooks.js';
+import { callUserHook } from '../plugins/user-world.ts';
 import { createHookApi } from '../plugins/hook-api.js';
 import { startAgentMarks } from './agent-marks.js';
 import { ReplyTracker } from './reply-tracker.js';
@@ -36,6 +37,19 @@ if (!relayGlobal[RELAY_FLAG]) {
     const provider = providerForUrl(location.href);
     if (provider) startRelay(provider);
   });
+}
+
+/**
+ * Run the page plugin's prepare hook. Built-in hooks are bundled into this
+ * relay; a user plugin's plugin.js runs in its own world and is reached through
+ * the DOM bridge (plugins/user-world.ts). A user plugin that overrides a
+ * built-in replaces it completely, so the built-in hook does not run then.
+ */
+function prepareFor(provider: ProviderInfo): Promise<{ ran: boolean; error?: string }> {
+  if (provider.source === 'user') {
+    return provider.hasScript ? callUserHook(provider.id, 'prepare', PREPARE_TIMEOUT_MS) : Promise.resolve({ ran: false });
+  }
+  return runPrepare(provider.id, createHookApi());
 }
 
 function startRelay(provider: ProviderInfo): void {
@@ -107,7 +121,7 @@ function startRelay(provider: ProviderInfo): void {
       // The plugin's prepare hook first (close popups, pick a mode), so the
       // operating prompt lands in a page that is ready for it. Never throws;
       // a failed or slow hook is reported and the session goes on.
-      void runPrepare(provider.id, createHookApi()).then((prepare) => {
+      void prepareFor(provider).then((prepare) => {
         // Replies already on the page belong to the past; only new ones are reported.
         tracker.reset(adapter.readLatestReply());
         failingSince = 0;

@@ -78,7 +78,7 @@ export function mergePlugins(builtIns: BuiltInPlugin[], state: PluginState): { e
   entries.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name));
   const providers = entries
     .filter((e) => e.enabled && !e.problem)
-    .map((e) => toProviderInfo(e.manifest, { icon: e.icon, style: e.style }))
+    .map((e): ProviderInfo => ({ ...toProviderInfo(e.manifest, { icon: e.icon, style: e.style }), source: e.source, hasScript: e.hasScript }))
     .sort((a, b) => a.id.localeCompare(b.id));
   return { entries, providers };
 }
