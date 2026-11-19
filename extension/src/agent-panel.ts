@@ -9,6 +9,7 @@
 import { bridge } from './bridge-client.js';
 import { NATIVE_CALL_REMINDER, formatCorrection, formatToolResult, parseReply } from './agent-parser.js';
 import { SEND_ATTEMPTS, retryBackoffMs, sendDelayMs, toolTimeoutMs } from './agent-timing.js';
+import { buildHandoffSnapshot, formatHandoffContext } from './agent-handoff.js';
 import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
@@ -285,21 +286,14 @@ async function waitForChatReady(tabId: number, timeoutMs: number, launch?: Launc
  * of starting over.
  */
 function buildHandoffPrompt(active: Session): string {
-  const recent = logs.slice(-20).filter((l) => l.tool !== 'relay' && l.tool !== 'session.pause' && l.tool !== 'session.resume');
-  const ran = recent.filter((l) => l.status === 'ok').map((l) => '- ' + l.tool + (l.category && l.category !== '-' ? ' (' + l.category + ')' : ''));
-  const blocked = recent.filter((l) => l.status === 'denied' || l.status === 'error').map((l) => '- ' + l.tool + ': ' + (l.detail || l.decision || l.status));
-  const parts: string[] = [
-    'Kamu melanjutkan sesi BroAgentAI yang dipindah dari ' + active.provider.label + ' ke sini karena token/limit provider lama habis. JANGAN mulai ulang dari nol; lanjutkan pekerjaan yang sudah berjalan.',
-    'Total tool call sejauh ini: ' + active.totalCalls + '.',
-  ];
-  if (ran.length) parts.push('Tool yang sudah berhasil dijalankan:\n' + ran.join('\n'));
-  if (blocked.length) parts.push('Yang tertahan/gagal:\n' + blocked.join('\n'));
-  if (active.lastReplyText) {
-    const tail = active.lastReplyText.length > 1200 ? active.lastReplyText.slice(0, 1200) + '…' : active.lastReplyText;
-    parts.push('Balasan terakhir AI sebelum pindah:\n' + tail);
-  }
-  parts.push('Lanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.');
-  return parts.join('\n\n');
+  const snapshot = buildHandoffSnapshot({
+    provider: active.provider.label,
+    totalCalls: active.totalCalls,
+    lastSent: active.lastSent,
+    lastReplyText: active.lastReplyText,
+    logs,
+  });
+  return formatHandoffContext(snapshot);
 }
 
 /** Fill the switch-provider <select> with every provider except the current one. */
