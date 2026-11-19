@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>P0 spike</title>
+<style>
+  body { font: 13px system-ui, sans-serif; margin: 12px; background: #1e1e1e; color: #ddd; }
+  button { display: block; width: 100%; margin: 6px 0; padding: 8px; font: inherit; cursor: pointer; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #111; padding: 8px; font: 11px monospace; max-height: 60vh; overflow: auto; }
+  p { margin: 4px 0; color: #aaa; }
+</style>
+</head>
+<body>
+  <h3>BroAgentAI P0 spike</h3>
+  <p>Run 1 → 2, then open https://example.com/ in a tab.</p>
+  <button id="perm">1. Request access to example.com</button>
+  <button id="setup">2. Configure worlds + register scripts</button>
+  <button id="show">Show stored results</button>
+  <button id="clear">Clear results + unregister all</button>
+  <pre id="out">(no results yet)</pre>
+  <script src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "BroAgentAI P0 spike (web chat plugins)",
+  "version": "0.0.1",
+  "description": "Throwaway spike for specs/09-WEBCHAT-PLUGINS.md phase P0. Not part of BroAgentAI.",
+  "permissions": ["storage", "scripting", "userScripts", "sidePanel"],
+  "optional_host_permissions": ["https://example.com/*"],
+  "background": { "service_worker": "sw.js" },
+  "side_panel": { "default_path": "panel.html" },
+  "action": { "default_title": "BroAgentAI P0 spike" }
+}

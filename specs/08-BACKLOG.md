@@ -120,7 +120,7 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 - [ ] 8.1. Cross-Context Session Resume (Opsi B): Menyimpan state sesi (handoff) ke bridge agar bisa di-resume di jendela baru, incognito, atau profil berbeda. Memerlukan mekanisme Session ID, persistensi state yang aman, dan handshake antar konteks ekstensi.
 
 ## Fase 9: Web Chat Plugins (rencana, lihat `09-WEBCHAT-PLUGINS.md`)
-- [ ] 9.0. Spike P0: buktikan toggle userScripts, `worldId`, field world pengirim pesan, persistensi content script dinamis, CSS lewat `registerContentScripts`, bridge event antar world, `permissions.request` dari side panel.
+- [x] 9.0. Spike P0 (hasil: `spikes/webchat-plugins-p0/FINDINGS.md`): buktikan toggle userScripts, `worldId`, field world pengirim pesan, persistensi content script dinamis, CSS lewat `registerContentScripts`, bridge event antar world, `permissions.request` dari side panel.
 - [ ] 9.1. P1: format `plugin.json` + validator, registry async, 5 provider jadi plugin bawaan tanpa perubahan perilaku.
 - [ ] 9.2. P2: bridge hook + hook bawaan (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), CSS dasar netral + `style.css` per plugin.
 - [ ] 9.3. P3: import plugin tanpa rebuild dari folder atau `.zip` (selector + CSS), update dengan diff, izin domain, penanganan konflik domain.
