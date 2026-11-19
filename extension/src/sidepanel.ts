@@ -3,8 +3,10 @@ import { renderExplorer, resetExplorerState, ExplorerOptions } from './explorer.
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
-import { initAgent, showAgent, launchAgentSession, stopAgentSession, agentSessionState, onAgentSessionChange } from './agent-panel.js';
+import { initAgent, showAgent, launchAgentSession, stopAgentSession, agentSessionState, onAgentSessionChange, refreshProviderControls } from './agent-panel.js';
 import { initHome, renderHome } from './home-panel.js';
+import { initPlugins, renderPlugins } from './plugins-panel.js';
+import { refreshProviders, watchProviders } from './providers/registry.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
 import { createCodeView, type CodeView } from './code-view.js';
@@ -471,6 +473,7 @@ on('langSel','change',(e)=>{
   document.documentElement.lang = v;
   translatePage(v);
   renderWs(); // dynamic text is not covered by data-i18n
+  void renderPlugins();
 });
 on('themeSel','change',(e)=>{
   const v = (e.target as HTMLSelectElement).value as Theme; 
@@ -501,6 +504,11 @@ initHome({ getWorkspaces: ()=>workspaces, getActive: ()=>activeWs, setActive: se
 onAgentSessionChange(renderHome);
 initAgent({ toast, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ renderTree(); refreshScm(); } });
 initMcp({ toast, openModal, hasWorkspace: ()=>!!activeWs });
+initPlugins({ toast, openModal });
+// Web chat plugins: merge the user's installed ones, and follow installs/updates/toggles.
+const onProvidersChanged = () => { renderHome(); refreshProviderControls(); void renderPlugins(); };
+void refreshProviders().then(onProvidersChanged);
+watchProviders(onProvidersChanged);
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });
 initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); }, openFile: (path)=>{ openFile(path); } });
 

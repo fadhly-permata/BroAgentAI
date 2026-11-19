@@ -1,17 +1,21 @@
-// Provider registry: every built-in web chat plugin (extension/plugins/<id>/
-// plugin.json, plus its icon) is bundled at build time. vite.config.ts validates
-// the same files and derives the manifest's host permissions and content-script
-// matches from them, so an invalid plugin fails the build instead of shipping.
-// User-installed plugins join this list in a later phase (specs/09 §5 P3).
+// Provider registry: the built-in web chat plugins (extension/plugins/<id>/,
+// bundled at build time and validated by vite.config.ts) merged with the
+// user's installed plugins from chrome.storage.local (specs/09 §4.3).
+//
+// `providers` starts with the enabled built-ins, so code that runs before the
+// first refresh still works; refreshProviders() merges the user plugins and
+// watchProviders() keeps the list current when plugins change.
 import type { ProviderInfo } from './types.js';
-import { matchPatternToRegExp, toProviderInfo, validatePluginManifest } from '../plugins/manifest.js';
+import { matchPatternToRegExp, validatePluginManifest } from '../plugins/manifest.ts';
+import { EMPTY_PLUGIN_STATE, mergePlugins, type BuiltInPlugin, type PluginEntry, type PluginState } from '../plugins/merge.ts';
+import { loadPluginState, onPluginStateChange } from '../plugins/store.ts';
 
 const manifests = import.meta.glob('../../plugins/*/plugin.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 const assets = import.meta.glob('../../plugins/*/*.{png,svg}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const styles = import.meta.glob('../../plugins/*/*.css', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>;
 
-function builtInProviders(): ProviderInfo[] {
-  const list: ProviderInfo[] = [];
+function loadBuiltIns(): BuiltInPlugin[] {
+  const list: BuiltInPlugin[] = [];
   for (const [path, raw] of Object.entries(manifests)) {
     const result = validatePluginManifest(raw);
     if (!result.ok) {
@@ -19,14 +23,41 @@ function builtInProviders(): ProviderInfo[] {
       continue;
     }
     const folder = path.slice(0, path.lastIndexOf('/') + 1);
-    const icon = result.plugin.icon ? assets[folder + result.plugin.icon] : undefined;
-    const style = result.plugin.style ? styles[folder + result.plugin.style] : undefined;
-    list.push(toProviderInfo(result.plugin, { icon, style }));
+    const { icon, style, script } = result.plugin;
+    list.push({
+      manifest: result.plugin,
+      icon: icon ? assets[folder + icon] : undefined,
+      style: style ? styles[folder + style] : undefined,
+      script: !!script, // vite.config.ts already checked the file exists
+    });
   }
-  return list.sort((a, b) => a.id.localeCompare(b.id));
+  return list;
 }
 
-export const providers: ProviderInfo[] = builtInProviders();
+export const builtInPlugins: BuiltInPlugin[] = loadBuiltIns();
+
+let merged = mergePlugins(builtInPlugins, EMPTY_PLUGIN_STATE);
+/** Enabled providers (built-in and user), sorted by id. Reassigned on refresh. */
+export let providers: ProviderInfo[] = merged.providers;
+/** Every plugin, enabled or not, for the Plugins page. */
+export let pluginEntries: PluginEntry[] = merged.entries;
+
+function apply(state: PluginState): void {
+  merged = mergePlugins(builtInPlugins, state);
+  providers = merged.providers;
+  pluginEntries = merged.entries;
+}
+
+/** Merge the user's installed plugins in. Falls back to built-ins only when storage is unavailable. */
+export async function refreshProviders(): Promise<ProviderInfo[]> {
+  try { apply(await loadPluginState()); } catch (err) { console.warn('[BroAgentAI] plugin storage unavailable:', err); }
+  return providers;
+}
+
+/** Re-merge and call `onChange` whenever plugins are installed, updated, removed or toggled. */
+export function watchProviders(onChange: () => void): void {
+  onPluginStateChange((state) => { apply(state); onChange(); });
+}
 
 export { matchPatternToRegExp };
 

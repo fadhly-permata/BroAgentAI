@@ -195,11 +195,6 @@ function renderStatus(): void {
   $('agentResend').classList.toggle('hidden', !(stalled && session?.lastSent));
 }
 
-function renderProviders(): void {
-  $('providerList').innerHTML = '<h4>Chat providers</h4>' + providers.map((p) =>
-    `<div class="log-row" data-provider="${esc(p.id)}"><b>${esc(p.label)}</b> - <code>${esc(p.matchPatterns.join(', '))}</code> - ${p.status === 'ready' ? 'ready' : 'experimental (selector belum diverifikasi di situs asli)'}</div>`
-  ).join('');
-}
 
 async function tabMessage(tabId: number, message: unknown): Promise<any> {
   return chrome.tabs.sendMessage(tabId, message);
@@ -941,7 +936,11 @@ export function initAgent(dependencies: AgentDeps): void {
 
   renderLog();
   renderSession();
-  renderProviders();
+  renderSwitchProviders();
+}
+
+/** Re-render the provider controls after web chat plugins changed (installed, removed, toggled). */
+export function refreshProviderControls(): void {
   renderSwitchProviders();
 }
 

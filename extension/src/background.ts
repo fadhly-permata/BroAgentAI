@@ -1,4 +1,16 @@
 import { bridge } from './bridge-client';
+import { syncPluginRegistrations } from './plugins/sync.ts';
+import { onPluginStateChange } from './plugins/store.ts';
+
+// User web chat plugins: their sites get the relay through dynamic content
+// scripts, which an extension reload/update clears (specs/09 R15). Re-apply on
+// every service-worker start and whenever plugins or site access change.
+void syncPluginRegistrations();
+chrome.runtime.onInstalled.addListener(() => { void syncPluginRegistrations(); });
+chrome.runtime.onStartup.addListener(() => { void syncPluginRegistrations(); });
+onPluginStateChange(() => { void syncPluginRegistrations(); });
+chrome.permissions.onAdded.addListener(() => { void syncPluginRegistrations(); });
+chrome.permissions.onRemoved.addListener(() => { void syncPluginRegistrations(); });
 
 console.log('BroAgentAI background loaded');
 

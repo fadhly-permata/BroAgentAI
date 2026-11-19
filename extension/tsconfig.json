@@ -5,7 +5,9 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["chrome", "vite/client"],
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.mts"]

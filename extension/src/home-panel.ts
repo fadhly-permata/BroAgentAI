@@ -63,6 +63,8 @@ export function renderHome(): void {
   const body = document.getElementById('homeBody');
   if (!body || !deps) return;
   const active = deps.getActive();
+  // The selected plugin may have been removed or turned off.
+  if (!providers.some((p) => p.id === selected)) selected = providers[0]?.id ?? '';
   const provider = providers.find((p) => p.id === selected);
   const cards = providers.map((p) => {
     const on = p.id === selected;
@@ -131,7 +133,8 @@ export function initHome(dependencies: HomeDeps): void {
   try {
     chrome.storage.local.get(PROVIDER_KEY).then((stored) => {
       const id = stored[PROVIDER_KEY];
-      if (typeof id === 'string' && providers.some((p) => p.id === id)) { selected = id; renderHome(); }
+      // Kept even when its plugin is not merged yet (user plugins load async); renderHome falls back if it is gone.
+      if (typeof id === 'string') { selected = id; renderHome(); }
     }).catch(() => {});
   } catch { /* storage unavailable */ }
   renderHome();

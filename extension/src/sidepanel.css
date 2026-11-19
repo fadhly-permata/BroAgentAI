@@ -1013,3 +1013,34 @@ button.pill:hover { filter: brightness(1.15); }
   .scm-toolbar > button:not(.square) .ico { display: none; }
   #newBranchBtn { padding: 0 6px; }
 }
+
+/* ----- Settings > Plugins (web chat plugins, specs/09 §4.6) ---------------- */
+.pl-list { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2); }
+.pl-row { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-2); background: var(--bg-widget); }
+.pl-row.off { opacity: 0.65; }
+.pl-head { display: flex; align-items: center; gap: var(--sp-2); }
+.pl-icon { width: 24px; height: 24px; border-radius: 6px; flex: none; object-fit: contain; }
+.pl-icon-none { background: var(--bg-input); }
+.pl-title { flex: 1; min-width: 0; }
+.pl-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.pl-badge { font-size: 10px; line-height: 16px; padding: 0 6px; border-radius: 8px; background: var(--bg-badge); color: var(--text); }
+.pl-badge.warn { background: color-mix(in srgb, var(--warning) 25%, transparent); }
+.pl-badge.err { background: color-mix(in srgb, var(--danger) 25%, transparent); }
+.pl-domains { margin: var(--sp-1) 0; display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; }
+.pl-actions { flex-wrap: wrap; }
+.pl-switch { position: relative; width: 32px; height: 18px; flex: none; cursor: pointer; }
+.pl-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.pl-switch span { position: absolute; inset: 0; border-radius: 9px; background: var(--border-strong); transition: background .15s; }
+.pl-switch span::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.pl-switch input:checked + span { background: var(--accent); }
+.pl-switch input:checked + span::after { transform: translateX(14px); }
+.pl-switch input:focus-visible + span { outline: 1px solid var(--focus); }
+.pl-switch input:disabled + span { opacity: .5; cursor: not-allowed; }
+.pl-code { max-height: 220px; overflow: auto; font-size: 11px; white-space: pre; background: var(--bg-console); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-2); }
+.pl-diff span { display: block; }
+.pl-diff .pl-add { background: var(--diff-add-bg); color: var(--diff-add-fg); }
+.pl-diff .pl-del { background: var(--diff-del-bg); color: var(--diff-del-fg); }
+.pl-diff .pl-gap { color: var(--text-faint); }
+.pl-list-items { margin: var(--sp-1) 0; padding-left: var(--sp-4); }
+.pl-list-items.err li { color: var(--danger); }
+.pl-list-items.warn li { color: var(--warning); }

@@ -1,4 +1,6 @@
-// Content-script relay, injected only on bundled provider URLs.
+// Content-script relay, injected on the pages of the enabled web chat plugins:
+// statically for built-in plugins (manifest), dynamically for user plugins
+// (registered by the service worker, see plugins/sync.ts).
 // It does two things and nothing else: type a prompt into the chat composer
 // when the side panel asks, and report each finished assistant reply. It has
 // no access to files, Git or MCP; those live behind the panel and the bridge.
@@ -7,7 +9,8 @@
 import './plugin-global.js';
 import './plugin-scripts.js';
 import { DomAdapter, NOT_ACCEPTED } from '../providers/dom-adapter.js';
-import { providerForUrl } from '../providers/registry.js';
+import { providerForUrl, refreshProviders } from '../providers/registry.js';
+import type { ProviderInfo } from '../providers/types.js';
 import { runPrepare } from '../plugins/hooks.js';
 import { createHookApi } from '../plugins/hook-api.js';
 import { startAgentMarks } from './agent-marks.js';
@@ -19,10 +22,23 @@ const STABLE_MS = 1200;
 /** Stop polling after deliveries kept failing this long (the side panel is gone). */
 const GIVE_UP_MS = 60_000;
 
-const provider = providerForUrl(location.href);
 const loadedAt = Date.now();
 
-if (provider) {
+// A page can get the relay twice (the static content script of a built-in plugin
+// and the dynamic one of a user plugin whose patterns overlap it). Both run in
+// this extension's isolated world, so a flag there keeps only the first.
+const RELAY_FLAG = Symbol.for('broagentai.relay');
+const relayGlobal = globalThis as unknown as Record<symbol, boolean>;
+if (!relayGlobal[RELAY_FLAG]) {
+  relayGlobal[RELAY_FLAG] = true;
+  // User plugins live in chrome.storage; merge them before picking this page's plugin.
+  void refreshProviders().then(() => {
+    const provider = providerForUrl(location.href);
+    if (provider) startRelay(provider);
+  });
+}
+
+function startRelay(provider: ProviderInfo): void {
   // Agent-typed messages get their own look, session or not (they persist in the chat history).
   startAgentMarks(provider);
   const adapter = new DomAdapter(provider);

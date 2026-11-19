@@ -18,5 +18,15 @@
   "side_panel": {
     "default_path": "src/sidepanel.html"
   },
-  "permissions": ["storage", "sidePanel", "tabs", "nativeMessaging", "notifications"]
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "tabs",
+    "nativeMessaging",
+    "notifications",
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ]
 }
