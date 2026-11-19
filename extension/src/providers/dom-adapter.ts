@@ -1,4 +1,4 @@
-// Shared DOM adapter: drives a chat page using only the selectors from provider.json.
+// Shared DOM adapter: drives a chat page using only the selectors from a plugin's plugin.json.
 import type { ProviderHealth, ProviderInfo, ProviderReply } from './types.js';
 import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, cutText, fencedBlocks, joinLines, spliceCode } from './reply-text.js';
 

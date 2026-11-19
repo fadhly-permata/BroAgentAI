@@ -127,7 +127,7 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 
 "Experimental" means the selectors work on the live site (a full read → write → answer loop passed) but haven't been around long enough to call stable.
 
-Each provider is just a folder under [`extension/src/providers/`](extension/src/providers) with a `provider.json` of DOM selectors. Adding a new chat site is mostly a matter of finding the right selectors, and the build picks it up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
+Each provider is a built-in web chat plugin: a folder under [`extension/plugins/`](extension/plugins) with a `plugin.json` (name, version, URL patterns, DOM selectors) and an icon. Adding a new chat site is mostly a matter of finding the right selectors; the build validates every `plugin.json` and picks the folder up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
 
 Coming up: **web chat plugins you can install without rebuilding**, each with its own selectors, per-site styling and small scripts for a site's quirks, managed from a Plugins page in Settings. It's planned, not built yet. See [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md).
 
@@ -206,7 +206,8 @@ Host config, the workspace list and trust records live in `%APPDATA%\BroAgentAI`
 It's an npm workspaces monorepo:
 
 ```text
-extension/   MV3 extension: side panel, editor tab, content scripts, providers (Vite + CRXJS)
+extension/   MV3 extension: side panel, editor tab, content scripts (Vite + CRXJS)
+             plugins/<id>/ built-in web chat plugins (plugin.json + icon)
 bridge/      broagentai-bridge: native-messaging host (files, git, shell, terminal, MCP)
 shared/      protocol types shared by both
 scripts/     native-host install/uninstall, manifest generation

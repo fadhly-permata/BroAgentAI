@@ -4,15 +4,29 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { crx } from "@crxjs/vite-plugin";
 import baseManifest from "./manifest.json" with { type: "json" };
+import { validatePluginManifest } from "./src/plugins/manifest.ts";
 
-// Provider plugins are data files: src/providers/<id>/provider.json. Their URL
-// patterns are the ONLY source of host permissions and content-script matches,
-// so adding a provider folder updates the manifest without touching core code.
-const providersDir = fileURLToPath(new URL("./src/providers", import.meta.url));
-const matchPatterns = readdirSync(providersDir, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && existsSync(join(providersDir, entry.name, "provider.json")))
-  .flatMap((entry) => JSON.parse(readFileSync(join(providersDir, entry.name, "provider.json"), "utf8")).matchPatterns as string[])
-  .sort();
+// Built-in web chat plugins: plugins/<id>/plugin.json. Their URL patterns are
+// the ONLY source of host permissions and content-script matches, so adding a
+// plugin folder updates the manifest without touching core code. An invalid
+// plugin.json (or two plugins claiming the same pattern) fails the build.
+const pluginsDir = fileURLToPath(new URL("./plugins", import.meta.url));
+const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && existsSync(join(pluginsDir, entry.name, "plugin.json")));
+const problems: string[] = [];
+const seen = new Map<string, string>();
+for (const entry of pluginDirs) {
+  const result = validatePluginManifest(JSON.parse(readFileSync(join(pluginsDir, entry.name, "plugin.json"), "utf8")));
+  if (!result.ok) { problems.push(`plugins/${entry.name}: ${result.errors.join("; ")}`); continue; }
+  if (result.plugin.id !== entry.name) problems.push(`plugins/${entry.name}: id "${result.plugin.id}" must match its folder name`);
+  for (const pattern of result.plugin.matches) {
+    const owner = seen.get(pattern);
+    if (owner) problems.push(`plugins/${entry.name}: pattern ${pattern} is already claimed by ${owner}`);
+    seen.set(pattern, entry.name);
+  }
+}
+if (problems.length > 0) throw new Error("Invalid built-in web chat plugins:\n- " + problems.join("\n- "));
+const matchPatterns = [...seen.keys()].sort();
 
 const manifest = {
   ...baseManifest,

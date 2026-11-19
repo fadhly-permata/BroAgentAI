@@ -15,6 +15,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **Live refresh.** The bridge now watches the active workspace (`bridge/src/watcher.ts`) and emits debounced `fs.changed` / `git.changed` events. The Explorer and Source Control panels redraw on their own when files change on disk, after a commit or branch switch made outside the panel, or when a terminal command touches the repo. Expanded folders survive the redraw.
 
+### Changed
+
+- **Providers are built-in web chat plugins.** Each lives in `extension/plugins/<id>/` with a `plugin.json` (`apiVersion`, `name`, `version`, `author`, `matches`, `selectors`, ...) and its icon; `src/plugins/manifest.ts` validates them (concrete https hosts only, supported `apiVersion`, required selectors) and the build fails on an invalid plugin or a URL pattern claimed twice. Behaviour is unchanged: same selectors, same host permissions.
+
 ### Fixed
 
 - **Switch chat** reuses an open tab of the target provider instead of opening a new one every time, waits up to 30 s for the target page to load its composer, no longer pauses the session half-way, and no longer makes the new chat answer `READY` and stop (`agent.prompt` takes `handoff: true`).

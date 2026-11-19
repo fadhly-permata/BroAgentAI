@@ -28,27 +28,15 @@ const PROVIDER_KEY = 'broagentai.homeProvider';
 /** Time the freshly opened chat page gets to load before the session starts. */
 const LOAD_WAIT_MS = 10_000;
 
-/**
- * Official provider marks (favicons/logos) saved locally so they render instantly and reliably.
- * Placed in the `public` directory so Vite copies them directly to the dist root.
- */
-const MARKS: Record<string, string> = {
-  qwen: '/assets/providers/qwen.png',
-  deepseek: '/assets/providers/deepseek.svg',
-  gemini: '/assets/providers/gemini.png',
-  chatgpt: '/assets/providers/chatgpt.svg',
-  ptero: '/assets/providers/ptero.png',
-};
-
 let deps: HomeDeps;
 let selected = providers[0]?.id ?? '';
 
 const esc = (text: string) => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
 
+/** The plugin's own icon (bundled locally, so it renders instantly and passes the CSP), else a neutral mark. */
 function providerMark(p: ProviderInfo): string {
-  const src = MARKS[p.id];
-  if (src) {
-    return `<img class="prov-mark" src="${esc(src)}" alt="${esc(p.label)}" />`;
+  if (p.icon) {
+    return `<img class="prov-mark" src="${esc(p.icon)}" alt="${esc(p.label)}" />`;
   }
   // Fallback to a neutral chat bubble with its initial
   return `<svg class="prov-mark" viewBox="0 0 24 24" aria-hidden="true">`
