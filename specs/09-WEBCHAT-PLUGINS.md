@@ -80,7 +80,7 @@ A `.zip` holds the files at its root or inside one top-level folder; nothing els
 ### 3.3 `plugin.js` hooks
 
 ```js
-BroAgentAI.registerPlugin({
+BroAgentAI.registerPlugin('my-chat', {   // first argument: the id from plugin.json
   async prepare(api) {},            // before the first prompt in a tab (close popups, pick a mode)
   findComposer(api) {},             // -> Element | null (default: selectors.composer)
   isGenerating(api) {},             // -> boolean (default: selectors.generating)
@@ -90,7 +90,7 @@ BroAgentAI.registerPlugin({
 });
 ```
 
-Every hook is optional. A missing hook, a hook that throws, or a hook that times out falls back to the generic adapter. `api` exposes only page helpers: `$`, `$$`, `click`, `setSelect`, `sleep`, `reactProp(el, names)` (served by the core MAIN-world helper, see §4.3). It exposes nothing that reaches the extension, the bridge, or other tabs.
+Every hook is optional. A missing hook, a hook that throws, or a hook that times out falls back to the generic adapter. **Implemented so far (P2): `prepare`** (10 s timeout). The others are added when a plugin needs them; unknown hook names are ignored with a warning, so a newer plugin still loads on an older runtime. `api` exposes only page helpers: `$`, `$$`, `click`, `setSelect`, `sleep`, `reactProp(el, names)` (served by the core MAIN-world helper, see §4.3). It exposes nothing that reaches the extension, the bridge, or other tabs.
 
 ### 3.4 Built-in plugins after conversion
 
@@ -163,7 +163,7 @@ Home provider cards and the switch-provider list show only enabled plugins.
 | --- | --- | --- |
 | **P0 Spike** | Prove the unknowns on Chrome 157 with the user's own profile: user-scripts toggle detection, `worldId` per plugin, the sender field that identifies a user-script world, dynamic content scripts after an extension reload, `registerContentScripts` with `css`, DOM-event bridge between isolated and user-script worlds, `permissions.request` from the side panel. | **Done 2026-11-19:** `spikes/webchat-plugins-p0/FINDINGS.md`; R4, R11, R14, R15 adjusted. Browser-restart persistence not tested (covered by R15 re-sync). |
 | **P1 Format + registry** | `plugin.json` schema + validator, registry reading built-in plugins (it becomes async and storage-backed in P3, when user plugins join), convert the five providers to `extension/plugins/`, keep behaviour identical. | Typecheck + tests pass; all five providers pass the live loop again; no user-visible change. |
-| **P2 Built-in hooks + CSS** | Hook bridge, compiled built-in hooks (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), neutral base CSS in `agent-marks.ts`, per-plugin `style.css`, `findBubble`. Move the ChatGPT `codeBlock` logic out of the core. | Ptero works without manual mode change; DeepSeek quota shows in the panel; marks look right on all five sites. |
+| **P2 Built-in hooks + CSS** (done except DeepSeek, see 9.2 in the backlog) | Hook bridge, compiled built-in hooks (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), neutral base CSS in `agent-marks.ts`, per-plugin `style.css`, `findBubble`. Move the ChatGPT `codeBlock` logic out of the core. | Ptero works without manual mode change; DeepSeek quota shows in the panel; marks look right on all five sites. |
 | **P3 User plugins (no script)** | Import from folder or `.zip`, validate/review, permissions, dynamic registration, Settings → Plugins tab (list, enable/disable, update with diff, remove, reset built-in, export `.zip`), Home cards from the registry, conflict handling. | A selector + CSS plugin for a new site installs from a folder and from a `.zip` and runs a full loop without a rebuild; an exported `.zip` re-imports as an update. |
 | **P4 User plugin scripts** | `userScripts` registration per world, toggle detection and guidance, messaging checks, timeouts, fallback, custom-plugin safety rules. | A user plugin with `plugin.js` hooks runs a full loop; toggle off → falls back to selectors with a clear notice. |
 | **P5 Hardening + docs** | Plugin template, README "Write a plugin" guide, e2e with a fake chat plugin, ADR-020 accepted, `07-PLUGIN-MCP.md` §4 updated. | Docs reviewed; e2e green. |

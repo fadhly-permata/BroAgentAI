@@ -36,6 +36,10 @@ test('every built-in plugin is valid, named after its folder, with its icon pres
     assert.deepEqual(result.warnings, [], `${folder} warnings`);
     assert.equal(result.plugin.id, folder);
     assert.ok(result.plugin.icon && existsSync(join(pluginsDir, folder, result.plugin.icon)), `${folder} icon file`);
+    for (const key of ['script', 'style'] as const) {
+      const file = result.plugin[key];
+      if (file) assert.ok(existsSync(join(pluginsDir, folder, file)), `${folder} ${key} file ${file}`);
+    }
   }
 });
 
@@ -83,7 +87,7 @@ test('unknown fields and a homepage outside matches only warn', () => {
 test('toProviderInfo maps the manifest to the provider the panel uses', () => {
   const result = validatePluginManifest(minimal({ author: 'Someone', description: 'A chat' }));
   assert.ok(result.ok);
-  const info = toProviderInfo(result.plugin, '/assets/icon-abc.png');
+  const info = toProviderInfo(result.plugin, { icon: '/assets/icon-abc.png', style: '[data-ba-agent] { color: red }' });
   assert.deepEqual(info, {
     id: 'my-chat',
     label: 'My Chat',
@@ -95,5 +99,6 @@ test('toProviderInfo maps the manifest to the provider the panel uses', () => {
     version: '1.0.0',
     author: 'Someone',
     icon: '/assets/icon-abc.png',
+    style: '[data-ba-agent] { color: red }',
   });
 });

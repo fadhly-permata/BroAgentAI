@@ -19,6 +19,10 @@ for (const entry of pluginDirs) {
   const result = validatePluginManifest(JSON.parse(readFileSync(join(pluginsDir, entry.name, "plugin.json"), "utf8")));
   if (!result.ok) { problems.push(`plugins/${entry.name}: ${result.errors.join("; ")}`); continue; }
   if (result.plugin.id !== entry.name) problems.push(`plugins/${entry.name}: id "${result.plugin.id}" must match its folder name`);
+  for (const key of ["script", "style", "icon"] as const) {
+    const file = result.plugin[key];
+    if (file && !existsSync(join(pluginsDir, entry.name, file))) problems.push(`plugins/${entry.name}: ${key} "${file}" does not exist`);
+  }
   for (const pattern of result.plugin.matches) {
     const owner = seen.get(pattern);
     if (owner) problems.push(`plugins/${entry.name}: pattern ${pattern} is already claimed by ${owner}`);

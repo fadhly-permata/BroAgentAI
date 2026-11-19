@@ -205,6 +205,14 @@ async function tabMessage(tabId: number, message: unknown): Promise<any> {
   return chrome.tabs.sendMessage(tabId, message);
 }
 
+/** Activate a chat tab's relay; it runs the plugin's prepare hook first. Logs what the hook did. */
+async function activateRelay(tabId: number, provider: ProviderInfo): Promise<void> {
+  const res = await tabMessage(tabId, { type: 'ba.activate' });
+  const prepare = res?.prepare as { ran?: boolean; error?: string } | undefined;
+  if (prepare?.error) log({ tool: 'plugin.prepare', category: provider.label, decision: '-', status: 'error', ms: 0, detail: 'hook prepare gagal, sesi tetap jalan: ' + prepare.error });
+  else if (prepare?.ran) log({ tool: 'plugin.prepare', category: provider.label, decision: '-', status: 'info', ms: 0, detail: 'halaman chat disiapkan oleh plugin ' + provider.label });
+}
+
 /** Find an open tab of a bundled provider; the active tab wins. */
 async function findChatTab(preferredTabId?: number): Promise<{ tab: chrome.tabs.Tab; provider: ProviderInfo } | null> {
   const tabs = await chrome.tabs.query({});
@@ -345,7 +353,7 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   }
 
   // Activate the new relay, retire the old one, then re-point the session.
-  await tabMessage(targetTabId, { type: 'ba.activate' });
+  await activateRelay(targetTabId, target);
   if (session !== active) return;
   try { await tabMessage(oldTabId, { type: 'ba.deactivate' }); } catch { /* old tab gone */ }
   active.tabId = targetTabId;
@@ -662,7 +670,7 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
     setPhase('connecting', 'Mengirim instruksi agent');
     const { prompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode() });
     if (launch.cancelled) return;
-    await tabMessage(tabId, { type: 'ba.activate' });
+    await activateRelay(tabId, found.provider);
     session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: prompt, lastReplyText: null, resumeGuard: null, paused: false };
     await send(prompt);
     setPhase('waiting', 'Menunggu balasan AI');

@@ -17,6 +17,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Agent messages look right on every chat site.** The badge sits in a label strip above the text instead of covering it, the page keeps its own bubble shape, and icons inside a bubble keep their icon font (Gemini's expand arrow no longer turns into the letters "expand"). Site-specific fixes live in each plugin's `style.css` (Gemini, Ptero).
+- **DeepSeek replies are read without the code-block banner** (language, Copy, Download), and agent marks no longer land on the off-screen conversation outline: on pages whose chat rows carry a message key, only messages inside those rows are marked.
+- **Ptero switches itself to Quick Answer.** Its plugin's `prepare` hook closes the welcome dialog and selects Quick Answer when a session starts or moves to Ptero, so its server-side agent no longer grabs the commands.
 - **Providers are built-in web chat plugins.** Each lives in `extension/plugins/<id>/` with a `plugin.json` (`apiVersion`, `name`, `version`, `author`, `matches`, `selectors`, ...) and its icon; `src/plugins/manifest.ts` validates them (concrete https hosts only, supported `apiVersion`, required selectors) and the build fails on an invalid plugin or a URL pattern claimed twice. Behaviour is unchanged: same selectors, same host permissions.
 
 ### Fixed

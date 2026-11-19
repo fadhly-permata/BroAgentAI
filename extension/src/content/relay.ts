@@ -2,8 +2,14 @@
 // It does two things and nothing else: type a prompt into the chat composer
 // when the side panel asks, and report each finished assistant reply. It has
 // no access to files, Git or MCP; those live behind the panel and the bridge.
+// Order matters: plugin-global exposes BroAgentAI.registerPlugin before
+// plugin-scripts evaluates the built-in plugin.js files that call it.
+import './plugin-global.js';
+import './plugin-scripts.js';
 import { DomAdapter, NOT_ACCEPTED } from '../providers/dom-adapter.js';
 import { providerForUrl } from '../providers/registry.js';
+import { runPrepare } from '../plugins/hooks.js';
+import { createHookApi } from '../plugins/hook-api.js';
 import { startAgentMarks } from './agent-marks.js';
 import { ReplyTracker } from './reply-tracker.js';
 
@@ -82,15 +88,20 @@ if (provider) {
       return;
     }
     if (message.type === 'ba.activate') {
-      // Replies already on the page belong to the past; only new ones are reported.
-      tracker.reset(adapter.readLatestReply());
-      failingSince = 0;
-      active = true;
-      paused = false;
-      window.clearInterval(timer);
-      timer = window.setInterval(poll, POLL_MS);
-      sendResponse({ ok: true });
-      return;
+      // The plugin's prepare hook first (close popups, pick a mode), so the
+      // operating prompt lands in a page that is ready for it. Never throws;
+      // a failed or slow hook is reported and the session goes on.
+      void runPrepare(provider.id, createHookApi()).then((prepare) => {
+        // Replies already on the page belong to the past; only new ones are reported.
+        tracker.reset(adapter.readLatestReply());
+        failingSince = 0;
+        active = true;
+        paused = false;
+        window.clearInterval(timer);
+        timer = window.setInterval(poll, POLL_MS);
+        sendResponse({ ok: true, prepare });
+      });
+      return true;
     }
     if (message.type === 'ba.pause') {
       // Hold: keep the tracker state, just stop reporting. The latest reply is

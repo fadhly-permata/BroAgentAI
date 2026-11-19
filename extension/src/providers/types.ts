@@ -71,6 +71,8 @@ export interface ProviderInfo {
   author?: string;
   /** URL of the plugin's icon, when it ships one. */
   icon?: string;
+  /** Text of the plugin's style.css: how BroAgentAI's marks look on this site. */
+  style?: string;
 }
 
 export interface ProviderReply {

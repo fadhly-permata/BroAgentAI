@@ -116,8 +116,8 @@ export function validatePluginManifest(raw: unknown): ManifestResult {
   return { ok: true, plugin: raw as PluginManifest, warnings };
 }
 
-/** The provider the panel, Home cards and relay work with. */
-export function toProviderInfo(plugin: PluginManifest, iconUrl?: string): ProviderInfo {
+/** The provider the panel, Home cards and relay work with. `files` holds the plugin's loaded icon URL and style.css text. */
+export function toProviderInfo(plugin: PluginManifest, files: { icon?: string; style?: string } = {}): ProviderInfo {
   return {
     id: plugin.id,
     label: plugin.name,
@@ -128,6 +128,7 @@ export function toProviderInfo(plugin: PluginManifest, iconUrl?: string): Provid
     selectors: { ...plugin.selectors },
     version: plugin.version,
     author: plugin.author,
-    icon: iconUrl,
+    icon: files.icon,
+    style: files.style,
   };
 }

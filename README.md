@@ -123,11 +123,11 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 | Gemini | `https://gemini.google.com/app` |
 | Qwen | `https://chat.qwen.ai/` |
 | ChatGPT (experimental) | `https://chatgpt.com/` |
-| Ptero (experimental) | `https://ptero.pro/` (set the mode next to the model picker to **Quick Answer**; in Smart mode Ptero's own server agent grabs the commands) |
+| Ptero (experimental) | `https://ptero.pro/` (the plugin switches Ptero to **Quick Answer** when a session starts; in Smart mode Ptero's own server agent grabs the commands) |
 
 "Experimental" means the selectors work on the live site (a full read → write → answer loop passed) but haven't been around long enough to call stable.
 
-Each provider is a built-in web chat plugin: a folder under [`extension/plugins/`](extension/plugins) with a `plugin.json` (name, version, URL patterns, DOM selectors) and an icon. Adding a new chat site is mostly a matter of finding the right selectors; the build validates every `plugin.json` and picks the folder up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
+Each provider is a built-in web chat plugin: a folder under [`extension/plugins/`](extension/plugins) with a `plugin.json` (name, version, URL patterns, DOM selectors), an icon, and optionally a `style.css` (how BroAgentAI's marks look on that site) and a `plugin.js` (hooks for the site's quirks, e.g. Ptero's mode switch). Adding a new chat site is mostly a matter of finding the right selectors; the build validates every `plugin.json` and picks the folder up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
 
 Coming up: **web chat plugins you can install without rebuilding**, each with its own selectors, per-site styling and small scripts for a site's quirks, managed from a Plugins page in Settings. It's planned, not built yet. See [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md).
 

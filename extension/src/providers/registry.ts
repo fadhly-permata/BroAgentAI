@@ -8,6 +8,7 @@ import { matchPatternToRegExp, toProviderInfo, validatePluginManifest } from '..
 
 const manifests = import.meta.glob('../../plugins/*/plugin.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 const assets = import.meta.glob('../../plugins/*/*.{png,svg}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const styles = import.meta.glob('../../plugins/*/*.css', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>;
 
 function builtInProviders(): ProviderInfo[] {
   const list: ProviderInfo[] = [];
@@ -19,7 +20,8 @@ function builtInProviders(): ProviderInfo[] {
     }
     const folder = path.slice(0, path.lastIndexOf('/') + 1);
     const icon = result.plugin.icon ? assets[folder + result.plugin.icon] : undefined;
-    list.push(toProviderInfo(result.plugin, icon));
+    const style = result.plugin.style ? styles[folder + result.plugin.style] : undefined;
+    list.push(toProviderInfo(result.plugin, { icon, style }));
   }
   return list.sort((a, b) => a.id.localeCompare(b.id));
 }
