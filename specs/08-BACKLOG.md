@@ -119,6 +119,15 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 ## Fase 8: Advanced Agent Features (Future)
 - [ ] 8.1. Cross-Context Session Resume (Opsi B): Menyimpan state sesi (handoff) ke bridge agar bisa di-resume di jendela baru, incognito, atau profil berbeda. Memerlukan mekanisme Session ID, persistensi state yang aman, dan handshake antar konteks ekstensi.
 
+## Fase 9: Web Chat Plugins (rencana, lihat `09-WEBCHAT-PLUGINS.md`)
+- [ ] 9.0. Spike P0: buktikan toggle userScripts, `worldId`, field world pengirim pesan, persistensi content script dinamis, CSS lewat `registerContentScripts`, bridge event antar world, `permissions.request` dari side panel.
+- [ ] 9.1. P1: format `plugin.json` + validator, registry async, 5 provider jadi plugin bawaan tanpa perubahan perilaku.
+- [ ] 9.2. P2: bridge hook + hook bawaan (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), CSS dasar netral + `style.css` per plugin.
+- [ ] 9.3. P3: import plugin tanpa rebuild dari folder atau `.zip` (selector + CSS), update dengan diff, izin domain, penanganan konflik domain.
+- [ ] 9.3a. Halaman Settings → Plugins (spec §4.6), satu-satunya tempat ngatur plugin (tanpa mode developer): tombol Import + status toggle User Scripts; tiap baris plugin dengan label + saklar on/off; aksi Update, Export `.zip`, Remove, Reset to built-in, Re-grant access, Reload open tabs, Health check; layar review yang sama buat install & update.
+- [ ] 9.4. P4: `plugin.js` user lewat `chrome.userScripts`, deteksi toggle, fallback, aturan keamanan plugin custom.
+- [ ] 9.5. P5: template plugin, panduan README, e2e isolasi plugin, ADR-020 diterima.
+
 ---
 
 ## Aturan Pengerjaan
