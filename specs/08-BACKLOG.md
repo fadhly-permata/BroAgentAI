@@ -118,6 +118,8 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 
 ## Fase 8: Advanced Agent Features (Future)
 - [ ] 8.1. Cross-Context Session Resume (Opsi B): Menyimpan state sesi (handoff) ke bridge agar bisa di-resume di jendela baru, incognito, atau profil berbeda. Memerlukan mekanisme Session ID, persistensi state yang aman, dan handshake antar konteks ekstensi.
+  - [x] 8.1a. Persistensi snapshot handoff di bridge: `session.save/load/clear/list` (`bridge/src/session-store.ts`), Session ID dibatasi ke `[A-Za-z0-9_-]{1,64}` (tak bisa keluar folder), snapshot divalidasi saat tulis & baca, disimpan di `<configDir>/sessions/<id>.json`.
+  - [ ] 8.1b. Handshake antar konteks ekstensi (panel meminta snapshot via `session.load` lalu mengirimnya sebagai pesan pertama) + UI resume.
 
 ## Fase 9: Web Chat Plugins (rencana, lihat `09-WEBCHAT-PLUGINS.md`)
 - [x] 9.0. Spike P0 (hasil: `spikes/webchat-plugins-p0/FINDINGS.md`): buktikan toggle userScripts, `worldId`, field world pengirim pesan, persistensi content script dinamis, CSS lewat `registerContentScripts`, bridge event antar world, `permissions.request` dari side panel.
