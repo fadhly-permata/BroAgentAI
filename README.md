@@ -16,24 +16,9 @@ BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to yo
 
 ## How it works
 
-```text
- ┌──────────── Browser ─────────────┐
- │  AI chat tab        Side panel   │
- │  (DeepSeek,   ◄──►  (explorer,   │
- │  ChatGPT, …)        SCM, agent)  │
- └──────────────────────┬───────────┘
-                        │ Native Messaging (stdio, no open ports)
-                        ▼
-              broagentai-bridge (Node.js)
-              files · git · shell · MCP servers
-```
+![BroAgentAI architecture](docs/architecture.svg)
 
-1. You open the side panel and start a session. BroAgentAI types a short "operating instructions" message into your chat tab with the list of tools it can use.
-2. The AI answers with a JSON command like `{"command":"fs.readFile","params":{"path":"README.md"}}`.
-3. The panel spots the command, checks your approval mode, runs it through the local bridge and sends the result back to the chat.
-4. Repeat until the AI says it's done.
-
-The local companion, **broagentai-bridge**, is a small Node.js native-messaging host. The browser starts and stops it for you, so once it's set up there's no terminal or `start.bat` to babysit.
+BroAgentAI connects your browser extension to your local workspace through Native Messaging. The local bridge provides tools for filesystem, Git, shell, terminal, MCP, workspace, watcher and agent operations.
 
 ## Features
 
