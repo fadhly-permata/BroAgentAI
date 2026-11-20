@@ -217,8 +217,6 @@ function renderSession(): void {
   $('agentPill').className = 'pill ' + (session ? (session.paused ? 'pill-warn' : 'pill-ok') : launching ? 'pill-info' : 'pill-warn');
   $('agentStart').classList.toggle('hidden', busy);
   $('agentStop').classList.toggle('hidden', !busy);
-  $('ckAi').textContent = session ? 'x' : 'o';
-  $('ckAi').classList.toggle('done', !!session);
   for (const listener of sessionListeners) { try { listener(); } catch { /* a listener's bug must not break the panel */ } }
 }
 

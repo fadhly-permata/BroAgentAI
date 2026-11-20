@@ -4,10 +4,11 @@
 import { bridge } from "./bridge-client.js";
 import { fileIcon, icon } from "./icons.js";
 
-/** Horizontal step per tree level, px (matches --tree-indent). */
-const INDENT = 10;
-/** Left padding of a row at the given depth: room for the indent plus a 4px gutter. */
-const pad = (depth: number) => depth * INDENT + 4;
+/** Horizontal step per tree level, px (matches --tree-indent in sidepanel.css). */
+const TREE_INDENT = 8;
+
+/** Depth is handed to CSS via a custom property; indentation is a CSS concern. */
+const depthStyle = (depth: number) => `--depth:${depth}`;
 
 /**
  * Folders the user has open, kept across re-renders so an auto-refresh from
@@ -77,6 +78,7 @@ export async function renderExplorer(
     rootEl.innerHTML = "";
     const treeContainer = document.createElement("div");
     treeContainer.className = "ba-tree";
+    treeContainer.setAttribute("role", "tree");
     rootEl.appendChild(treeContainer);
 
     renderNode(treeContainer, node, 0, options);
@@ -105,8 +107,8 @@ export async function renderExplorer(
 
 /**
  * Render one node as `.ba-tree-item` = row (`.ba-tree-node`) + children box
- * (`.ba-tree-children`). Collapsing just empties the children box, so a
- * re-expand can never duplicate rows.
+ * (`.ba-tree-children`). Depth lives on the item so CSS can indent the row and
+ * draw the guide without any pixel math in JS.
  */
 function renderNode(
   container: HTMLElement,
@@ -116,13 +118,16 @@ function renderNode(
 ): void {
   const item = document.createElement("div");
   item.className = "ba-tree-item";
+  item.style.cssText = depthStyle(depth);
 
   const row = document.createElement("div");
   row.className = "ba-tree-node";
-  row.style.paddingLeft = `${pad(depth)}px`;
   row.dataset.path = node.path;
   row.tabIndex = -1;
   row.title = node.path;
+  row.setAttribute("role", "treeitem");
+  row.setAttribute("aria-level", String(depth + 1));
+  row.setAttribute("aria-selected", "false");
 
   // Twistie (chevron for folders, blank spacer for files) keeps names aligned.
   const toggle = document.createElement("span");
@@ -138,8 +143,12 @@ function renderNode(
   }
 
   const select = () => {
-    row.closest(".ba-tree")?.querySelectorAll(".ba-tree-node.selected").forEach((el) => el.classList.remove("selected"));
+    row.closest(".ba-tree")?.querySelectorAll(".ba-tree-node.selected").forEach((el) => {
+      el.classList.remove("selected");
+      el.setAttribute("aria-selected", "false");
+    });
     row.classList.add("selected");
+    row.setAttribute("aria-selected", "true");
     row.focus({ preventScroll: true });
   };
 
@@ -149,9 +158,9 @@ function renderNode(
     toggle.innerHTML = icon("chevron-right");
     const childrenEl = document.createElement("div");
     childrenEl.className = "ba-tree-children";
-    // Indent guide sits under this folder's chevron; the root level has none.
+    childrenEl.setAttribute("role", "group");
+    // Guide x-position is computed in CSS from inherited --depth; root has none.
     if (depth === 0) childrenEl.classList.add("no-guide");
-    else childrenEl.style.setProperty("--guide-x", `${pad(depth) + 8}px`);
 
     const paint = (suffix = "") => {
       iconEl.innerHTML = fileIcon(node.name, node.isExpanded ? "dir-open" : "dir");

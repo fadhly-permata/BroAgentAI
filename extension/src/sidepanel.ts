@@ -43,11 +43,8 @@ function renderWs(){
   head.title=activeWs?activeWs.path:'';
   $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'" role="menuitem"><span class="ws-check">'+(w===activeWs?icon('check'):'')+'</span><span class="ws-text"><b>'+escapeHtml(w.name)+'</b><small>'+escapeHtml(w.path)+'</small></span></button>').join('');
   $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card'+(w===activeWs?' active-ws':'')+'"><div class="ws-item-main"><b>'+escapeHtml(w.name)+'</b><small title="'+escapeHtml(w.path)+'">'+escapeHtml(w.path)+' - '+escapeHtml(w.last)+'</small></div><div class="ws-item-actions"><button class="mini" data-open="'+i+'">Open</button><button class="mini" data-rename="'+i+'">Rename</button><button class="mini danger" data-remove="'+i+'">Remove</button></div></div>').join('')||'<p class="muted">Belum ada workspace.</p>';
-  setCheck('ckWs', !!activeWs);
   renderHome();
 }
-/** First-run checklist mark: text stays x/o for scripts, the class draws it. */
-function setCheck(id:string, done:boolean){ const el=$(id); el.textContent=done?'x':'o'; el.classList.toggle('done',done); }
 
 function updateHostStatus(status: 'offline' | 'ready' | 'error') {
   const pill = $('hostPill');
@@ -56,7 +53,6 @@ function updateHostStatus(status: 'offline' | 'ready' | 'error') {
   pill.innerHTML = '<span class="dot"></span><span data-i18n="' + tKey + '"></span>';
   (pill.lastElementChild as HTMLElement).textContent = t(tKey);
   pill.className = 'pill ' + (status === 'offline' ? 'pill-warn' : status === 'ready' ? 'pill-ok' : 'pill-error');
-  setCheck('ckHost', status === 'ready');
   if (status === 'offline' || status === 'error') {
     $('banner').classList.remove('hidden');
   } else {
@@ -408,8 +404,6 @@ on('wsList','click',(e:any)=>{const t=e.target.closest('[data-ws]'); if(!t)retur
 on('manageList','click',async(e:any)=>{const o=e.target.closest('[data-open]'); const r=e.target.closest('[data-remove]'); const rn=e.target.closest('[data-rename]'); if(o){await setActiveWorkspace(workspaces[Number(o.dataset.open)])} if(r){const idx=Number(r.dataset.remove); const ws=workspaces[idx]; try{ await bridge.call('workspace.remove', { id: ws.id }); await loadWorkspaces(); toast('Workspace dihapus dari list'); }catch(err){ toast('Gagal hapus: ' + err); }} if(rn){const idx=Number(rn.dataset.rename); const ws=workspaces[idx]; openModal('Rename workspace','<input id="wsName" class="input" value="'+ws.name+'">',async()=>{const newName=(document.getElementById('wsName') as HTMLInputElement).value; try{ await bridge.call('workspace.rename', { id: ws.id, name: newName }); await loadWorkspaces(); toast('Workspace direname'); }catch(err){ toast('Gagal rename: ' + err); }})}});
 on('restartBtn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('restart2Btn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('setupBtn','click',()=>openModal('Setup help','<p>Host: <code>com.broagentai.host</code></p><p>Dev: build host + register sekali, lalu reload extension.</p><p>Config: <code>~/.broagentai/config.jsonc</code> - Log: <code>~/.broagentai/host.log</code></p>',()=>{}));
 on('diagBtn','click',runDiagnostics); on('reloadConfigBtn','click',async()=>{try{await bridge.call('config.get'); toast('Config reloaded')}catch(err:any){toast('Gagal reload config: '+(err?.message||err))}}); on('createConfigBtn','click',createProjectConfig);
-on('dismissCk','click',()=>$('checklist').classList.add('hidden'));
-document.querySelectorAll('[data-ck]').forEach(b=>b.addEventListener('click',()=>{const k=(b as HTMLElement).dataset.ck; if(k==='host')(async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')})(); if(k==='ws')($('wsBtn') as HTMLElement).click(); if(k==='ai')switchTab('agent')}));
 
 // UI settings persistence (localStorage)
 const UI_SETTINGS_KEY = 'broagentai.ui';
