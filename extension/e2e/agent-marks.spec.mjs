@@ -52,13 +52,13 @@ try {
 
   check('agent message is marked', await until(async () => (await agent.getAttribute('data-ba-agent')) === 'result'));
   check('agent message starts collapsed', await collapsed(agent));
-  check('collapsed agent message is at most 44px tall', (await height(agent)) <= 44, String(await height(agent)));
+  check('collapsed agent message is at most 60px tall (label strip + one line)', (await height(agent)) <= 60, String(await height(agent)));
   check("user's own message is not marked or collapsed", (await own.getAttribute('data-ba-agent')) === null && !(await collapsed(own)));
   check('agent message uses a monospace font', /Cascadia|Consolas|monospace/i.test(await font(agent)), await font(agent));
   check("user's own message keeps the page font", !/Cascadia|Consolas/i.test(await font(own)), await font(own));
 
   await agent.click({ position: { x: 20, y: 30 } });
-  check('click expands a collapsed agent message', !(await collapsed(agent)) && (await height(agent)) > 44, String(await height(agent)));
+  check('click expands a collapsed agent message', !(await collapsed(agent)) && (await height(agent)) > 60, String(await height(agent)));
   const h = await height(agent);
   await agent.click({ position: { x: 20, y: Math.min(h - 6, 70) } });
   check('click below the label strip leaves it expanded', !(await collapsed(agent)));

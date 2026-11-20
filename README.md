@@ -4,7 +4,7 @@
 
 > **BroAgentAI** stands for **Bro**wser **Agent** **AI**: an AI agent that lives in your browser.
 
-BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to your browser. You keep chatting with DeepSeek, Gemini, Qwen, ChatGPT or Ptero in their normal web tab (logged in, free tier, whatever you've got), and BroAgentAI lets that AI actually *do stuff* on your machine: read files, search, edit code, run Git, run shell commands, call MCP tools. You stay in control, and you approve anything risky before it happens.
+BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to your browser. You keep chatting with DeepSeek, Gemini, Qwen, ChatGPT, Ptero or TuskSearch AI in their normal web tab (logged in, free tier, whatever you've got), and BroAgentAI lets that AI actually *do stuff* on your machine: read files, search, edit code, run Git, run shell commands, call MCP tools. You stay in control, and you approve anything risky before it happens.
 
 ![BroAgentAI side panel next to a DeepSeek chat, asking for approval before writing README.md](docs/screenshots/hero-approval.png)
 
@@ -16,24 +16,9 @@ BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to yo
 
 ## How it works
 
-```text
- ┌──────────── Browser ─────────────┐
- │  AI chat tab        Side panel   │
- │  (DeepSeek /  ◄──►  (explorer,   │
- │  Gemini/Qwen)       SCM, agent)  │
- └──────────────────────┬───────────┘
-                        │ Native Messaging (stdio, no open ports)
-                        ▼
-              broagentai-bridge (Node.js)
-              files · git · shell · MCP servers
-```
+![BroAgentAI architecture](docs/architecture.svg)
 
-1. You open the side panel and start a session. BroAgentAI types a short "operating instructions" message into your chat tab with the list of tools it can use.
-2. The AI answers with a JSON command like `{"command":"fs.readFile","params":{"path":"README.md"}}`.
-3. The panel spots the command, checks your approval mode, runs it through the local bridge and sends the result back to the chat.
-4. Repeat until the AI says it's done.
-
-The local companion, **broagentai-bridge**, is a small Node.js native-messaging host. The browser starts and stops it for you, so once it's set up there's no terminal or `start.bat` to babysit.
+BroAgentAI connects your browser extension to your local workspace through Native Messaging. The local bridge provides tools for filesystem, Git, shell, terminal, MCP, workspace, watcher and agent operations.
 
 ## Features
 
@@ -51,6 +36,8 @@ Pick an approval mode and every tool call shows up in the activity log. Writes c
 ![The agent finished the task: activity log shows the read, the approved write and the AI's final reply](docs/screenshots/hero-done.png)
 
 Messages the agent types into the chat get a small badge (`BroAgentAI · fs.readFile ✓`), so you can tell them apart from your own. The loop also survives rate limits, page reloads and stalled replies, with a **Resend** button for when a chat gets stuck.
+
+**Ran out of tokens halfway?** Use **Switch chat** in the Agent tab to move the running session to another provider. BroAgentAI reuses a tab of that provider if one is open (or opens one), waits for it to load, and sends the operating instructions plus a summary of where the work stands: the tools already run and the AI's last reply. The new chat picks up from there instead of starting over. The summary doesn't include your original request, so for a long task it helps if the last reply says what's left.
 
 ### 📁 Explorer, search and editor
 
@@ -121,9 +108,14 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 | Gemini | `https://gemini.google.com/app` |
 | Qwen | `https://chat.qwen.ai/` |
 | ChatGPT (experimental) | `https://chatgpt.com/` |
-| Ptero (experimental) | `https://ptero.pro/` (set the mode next to the model picker to **Quick Answer**; in Smart mode Ptero's own server agent grabs the commands) |
+| Ptero (experimental) | `https://ptero.pro/` (the plugin switches Ptero to **Quick Answer** when a session starts; in Smart mode Ptero's own server agent grabs the commands) |
+| TuskSearch AI (experimental) | `https://new.tusksearch.com/ai` (the plugin switches the composer to **Central AI** when a session starts; in Search mode the same box runs a web search. Selectors checked on the live site; the full loop has not been run yet) |
 
-Each provider is just a folder under [`extension/src/providers/`](extension/src/providers) with a `provider.json` of DOM selectors. Adding a new chat site is mostly a matter of finding the right selectors, and the build picks it up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
+"Experimental" means the selectors work on the live site (a full read → write → answer loop passed) but haven't been around long enough to call stable.
+
+Each provider is a built-in web chat plugin: a folder under [`extension/plugins/`](extension/plugins) with a `plugin.json` (name, version, URL patterns, DOM selectors), an icon, and optionally a `style.css` (how BroAgentAI's marks look on that site) and a `plugin.js` (hooks for the site's quirks, e.g. Ptero's mode switch). Adding a new chat site is mostly a matter of finding the right selectors; the build validates every `plugin.json` and picks the folder up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
+
+**Add a chat site without rebuilding:** put a `plugin.json` (and optionally a `style.css` and an icon) in a folder or `.zip`, then **Settings → Plugins → Import**. You get a review screen first, Chrome asks for access to that site only, and the plugin shows up on Home. The same page updates, exports, turns off or removes plugins, and can replace a built-in one with your own version. The format and the safety rules are in [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md). An imported plugin's `plugin.js` runs isolated from the page and from BroAgentAI itself, and only when you turn on Chrome's **Allow User Scripts** for BroAgentAI (`chrome://extensions` → BroAgentAI → Details).
 
 ### 🛡️ Safety stuff
 
@@ -136,8 +128,10 @@ Each provider is just a folder under [`extension/src/providers/`](extension/src/
 
 ### Requirements
 
-- **Node.js 22.6+**
-- **Chrome or Edge** (Chromium-based)
+- **Windows or Linux** (macOS: manual install with `npm run host:install:dev`)
+- **Node.js 22.6+**. The installers download a portable copy into `.runtime/` when it is missing or too old.
+- **Chrome, Edge, Brave or Chromium**. On Linux, use the browser's official .deb/.rpm package: Snap and Flatpak builds run in a sandbox and are not supported.
+- **Linux only:** gcc/g++, make and python3 to compile the terminal backend (node-pty). The installer offers to install them with `sudo`.
 - **Git** on your `PATH` (optional, but you'll want it for source control)
 - An account on at least one of the supported AI chats
 
@@ -151,33 +145,33 @@ git clone https://github.com/fadhly-permata/BroAgentAI.git
 cd BroAgentAI
 ```
 
-```bash
-npm install
-```
+Then run the installer for your OS. On the first run it prepares everything: Node.js (a portable copy if needed), `npm ci`, the build, and the native host registration for every browser it finds.
 
-```bash
-npm run build
-```
+- **Windows:** double-click `install.bat`, or run `powershell -ExecutionPolicy Bypass -File install.ps1`.
+- **Linux:** `bash install.sh`
 
-Then register the native host (one time only):
+Options (Windows / Linux):
 
-- **Windows:** run `install.bat` (or `install.ps1`). It registers the host for both Chrome and Edge.
-- **Any OS:** `npm run host:install:dev`
+| Option | What it does |
+| --- | --- |
+| `-Browser chrome,edge` / `--browser chrome,edge` | Register only these browsers (`chrome`, `edge`, `brave`, `chromium`). |
+| `-Rebuild` / `--rebuild` | Build again, e.g. after `git pull`. |
+| `-PortableNode` / `--portable-node` | Use the portable Node.js even when a suitable one is on `PATH`. |
+| `-Uninstall` / `--uninstall` | Remove the native host registration. |
+| — / `--yes` | Linux: install missing build tools without asking. |
 
-```bash
-npm run host:install:dev
-```
+Prefer doing it by hand? `npm install`, `npm run build`, then `npm run host:install:dev` (one browser per run, `-- --browser edge` for another).
 
 Finally, load the extension:
 
-1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
+1. Open `chrome://extensions` (or `edge://extensions`, `brave://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and pick the `extension/dist` folder. It has to be exactly that folder, because the host registration is tied to it.
 3. Click the BroAgentAI toolbar icon to open the side panel. The pill in the top-right should say **Host ready**.
 
 ### First run
 
 1. **Workspace → Open folder...** and point it at a project.
-2. Open DeepSeek, Gemini, Qwen, ChatGPT or Ptero in a normal tab and log in (Ptero needs no account).
+2. Open DeepSeek, Gemini, Qwen, ChatGPT, Ptero or TuskSearch AI in a normal tab and log in (Ptero needs no account).
 3. Go to the **Agent** tab in the panel, hit **Start**, then just chat with the AI in its tab like you normally would.
 
 > 💡 The UI starts in Bahasa Indonesia. Want English? Go to **Settings → Tampilan & Bahasa (Display & Language) → Language → English**.
@@ -200,7 +194,8 @@ Host config, the workspace list and trust records live in `%APPDATA%\BroAgentAI`
 It's an npm workspaces monorepo:
 
 ```text
-extension/   MV3 extension: side panel, editor tab, content scripts, providers (Vite + CRXJS)
+extension/   MV3 extension: side panel, editor tab, content scripts (Vite + CRXJS)
+             plugins/<id>/ built-in web chat plugins (plugin.json + icon)
 bridge/      broagentai-bridge: native-messaging host (files, git, shell, terminal, MCP)
 shared/      protocol types shared by both
 scripts/     native-host install/uninstall, manifest generation

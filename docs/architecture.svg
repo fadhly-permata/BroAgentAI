@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="759" height="469" viewBox="0 0 759 469" role="img" aria-labelledby="title desc">
+  <title id="title">BroAgentAI Architecture</title>
+  <desc id="desc">BroAgentAI browser extension connects through Native Messaging to broagentai-bridge, which provides Filesystem, Git, Shell, Terminal, MCP, Workspace, Watcher, and Agent tools.</desc>
+  <rect width="759" height="469" fill="#ffffff"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#171717" text-anchor="middle">
+    <rect x="8.5" y="6" width="742.5" height="98" rx="9" fill="#f1f1f1"/>
+    <g transform="translate(380 28)" fill="none" stroke="#171717" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle r="8.2"/><circle r="3.2"/><path d="M-7.1 -4.1h8.2l4.1 7.1M-4.1 7.1l4.1-7.1M-8.2 0h5"/></g>
+    <text x="380" y="69" font-size="16" font-weight="600">BroAgentAI (Browser Extension)</text>
+    <text x="380" y="89" font-size="12.5" fill="#666666">Where you give BroAgentAI tasks</text>
+    <g fill="#666666" font-size="21"><text x="380" y="137">↕</text></g>
+    <text x="410" y="134" text-anchor="start" font-size="13" fill="#666666">Native Messaging - stdio</text>
+    <rect x="8.5" y="160" width="742.5" height="98" rx="9" fill="#eaf5ef"/>
+    <g transform="translate(380 183)" fill="none" stroke="#171717" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="-6.5" y="-6.5" width="13" height="13" rx="1.5"/><path d="M-3.5 -10v3.5M0 -10v3.5M3.5 -10v3.5M-3.5 6.5V10M0 6.5V10M3.5 6.5V10M-10 -3.5h3.5M-10 0h3.5M-10 3.5h3.5M6.5 -3.5H10M6.5 0H10M6.5 3.5H10"/><rect x="-3.5" y="-3.5" width="7" height="7" rx="0.7"/></g>
+    <text x="380" y="223" font-size="16" font-weight="600">broagentai-bridge</text>
+    <text x="380" y="243" font-size="12.5" fill="#666666">Node.js local agent runtime</text>
+    <text x="380" y="281" font-size="21" fill="#666666">↕</text>
+    <g font-size="13.5" font-weight="600">
+      <rect x="8.5" y="292" width="367.5" height="36" rx="9" fill="#f1f1f1"/><rect x="383.5" y="292" width="367.5" height="36" rx="9" fill="#f1f1f1"/>
+      <rect x="8.5" y="336" width="367.5" height="36" rx="9" fill="#f1f1f1"/><rect x="383.5" y="336" width="367.5" height="36" rx="9" fill="#f1f1f1"/>
+      <rect x="8.5" y="380" width="367.5" height="36" rx="9" fill="#f1f1f1"/><rect x="383.5" y="380" width="367.5" height="36" rx="9" fill="#f1f1f1"/>
+      <rect x="8.5" y="424" width="367.5" height="36" rx="9" fill="#f1f1f1"/><rect x="383.5" y="424" width="367.5" height="36" rx="9" fill="#f1f1f1"/>
+      <g dominant-baseline="middle"><text x="192" y="310">Filesystem</text><text x="567" y="310">Git</text><text x="192" y="354">Shell</text><text x="567" y="354">Terminal</text><text x="192" y="398">MCP</text><text x="567" y="398">Workspace</text><text x="192" y="442">Watcher</text><text x="567" y="442">Agent</text></g>
+    </g>
+  </g>
+</svg>

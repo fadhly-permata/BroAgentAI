@@ -98,12 +98,25 @@
       </div>
       <p class="upstream-line"><span id="scmUpstream"></span></p>
       <div id="conflictBanner" class="callout callout-warn hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
-      <div class="commit-box">
-        <textarea id="commitMsg" rows="3" data-i18n-ph="commitPlaceholder" placeholder="feat: ..." aria-label="Commit message"></textarea>
-        <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span data-i18n="commit">Commit</span></button>
-        <p id="commitOut" class="muted"></p>
+      <div class="scm-view-toggle" role="tablist" aria-label="Source control view">
+        <button class="scm-view-btn active" role="tab" aria-selected="true" aria-controls="scmChangesView" data-view="changes" data-i18n="changes">Changes</button>
+        <button class="scm-view-btn" role="tab" aria-selected="false" aria-controls="scmGraphView" data-view="graph" data-i18n="graph">Graph</button>
       </div>
-      <div id="scmGroups" class="scm-groups"></div>
+
+      <div id="scmChangesView" role="tabpanel">
+        <div class="commit-box">
+          <textarea id="commitMsg" rows="3" data-i18n-ph="commitPlaceholder" placeholder="feat: ..." aria-label="Commit message"></textarea>
+          <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span data-i18n="commit">Commit</span></button>
+          <p id="commitOut" class="muted"></p>
+        </div>
+        <div id="scmGroups" class="scm-groups"></div>
+      </div>
+
+      <div id="scmGraphView" class="hidden" role="tabpanel">
+        <div id="scmGraph" class="scm-graph-container">
+          <p class="muted" data-i18n="loadingGraph">Memuat riwayat commit...</p>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -155,7 +168,7 @@
       <img src="../assets/icon.png" alt="BroAgentAI Logo" style="width: 64px; height: 64px; border-radius: 12px; margin-bottom: var(--sp-3);" />
       <h3 style="font-size: 18px; font-weight: 600; color: var(--text-strong); margin-bottom: var(--sp-1);">BroAgentAI</h3>
       <p class="muted" style="margin-bottom: var(--sp-3);">v0.1.0</p>
-      <p style="color: var(--text); line-height: 1.5; max-width: 320px; margin-bottom: var(--sp-4);" data-i18n="aboutDesc">Chrome/Edge side panel that turns your DeepSeek, Gemini, Qwen, ChatGPT or Ptero web chat into a local coding agent: files, Git, shell & MCP tools with approvals. No API key.</p>
+      <p style="color: var(--text); line-height: 1.5; max-width: 320px; margin-bottom: var(--sp-4);" data-i18n="aboutDesc">Chrome/Edge side panel that turns your DeepSeek, Gemini, Qwen, ChatGPT, Ptero or TuskSearch web chat into a local coding agent: files, Git, shell & MCP tools with approvals. No API key.</p>
       
       <div class="card" style="width: 100%; max-width: 320px; text-align: left;">
         <div class="kv">
@@ -186,6 +199,7 @@
     <button class="set-tab" data-set="companion" role="tab" data-i18n="companionHost">Companion</button>
     <button class="set-tab" data-set="workspaces" role="tab" data-i18n="manageWorkspaces">Workspaces</button>
     <button class="set-tab" data-set="mcp" role="tab" data-i18n="mcpServers">MCP</button>
+    <button class="set-tab" data-set="plugins" role="tab" data-i18n="plugins">Plugins</button>
     <button class="set-tab" data-set="agent" role="tab" data-i18n="agentSettings">Agent</button>
   </div>
 
@@ -219,7 +233,12 @@
 
   <div id="set-mcp" class="set-panel">
     <div class="set-head"><h3 data-i18n="mcpServers">MCP Servers</h3><button id="mcpReload" class="mini"><i data-icon="refresh"></i><span data-i18n="reload">Reload</span></button></div>
-    <div id="mcpList"></div><div id="mcpTools"></div><div id="providerList"></div>
+    <div id="mcpList"></div><div id="mcpTools"></div>
+  </div>
+
+  <div id="set-plugins" class="set-panel">
+    <h3 data-i18n="pluginsTitle">Web chat plugins</h3>
+    <div id="pluginsBody"></div>
   </div>
 </section>
 </main></div>

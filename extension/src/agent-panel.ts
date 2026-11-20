@@ -9,12 +9,16 @@
 import { bridge } from './bridge-client.js';
 import { NATIVE_CALL_REMINDER, formatCorrection, formatToolResult, parseReply } from './agent-parser.js';
 import { SEND_ATTEMPTS, retryBackoffMs, sendDelayMs, toolTimeoutMs } from './agent-timing.js';
+import { buildHandoffSnapshot, classifyChatMessage, emptyWorkSummary, formatHandoffContext, normalizeTranscript, noteToolCall, validateHandoffSnapshot, workspaceFromGitStatus, type HandoffSnapshot, type HandoffTurn, type WorkSummary, type WorkspaceState } from './agent-handoff.js';
 import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
+import { reloadIfManifestStale } from './stale-manifest.js';
 
 export interface AgentDeps {
   toast(message: string): void;
+  /** Ask with OK/Cancel; resolves false when the user closes it any other way. */
+  confirm(title: string, bodyHtml: string): Promise<boolean>;
   hasWorkspace(): boolean;
   /** Called after a tool changed files so the explorer / SCM can refresh. */
   onFilesChanged(): void;
@@ -37,6 +41,8 @@ interface Session {
   totalCalls: number;
   /** Approval keys (tool name, or one shell command line) remembered in ask-once mode. */
   allowed: Set<string>;
+  /** R10: the user confirmed Auto approve for this session's custom (user-installed) plugin. */
+  customAutoOk?: boolean;
   /** Last message the agent typed into the chat, for "Resend". */
   lastSent: string | null;
   /** Text of the last reply handled, to drop it if it shows up again after the chat tab reloads. */
@@ -48,6 +54,16 @@ interface Session {
    * own when the user comes back to the chat tab.
    */
   paused: boolean;
+  /**
+   * Conversation from before this chat tab: earlier providers (a switch) or a
+   * resumed .broagentai/handoff.json. The current tab's own part is read from
+   * the page when a snapshot is made.
+   */
+  carried: HandoffTurn[];
+  /** Messages of the current tab as the panel saw them; fallback when the page cannot be read. */
+  recorded: HandoffTurn[];
+  /** Tools that ran OK and the files they read or changed, over the whole task. */
+  work: WorkSummary;
 }
 
 type PhaseKind = 'opening' | 'connecting' | 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'paused' | 'failed' | 'offline';
@@ -61,6 +77,9 @@ const CONNECT_READY_MS = 20_000;
 let switching = false;
 
 const MAX_TOOL_CALLS = 40;
+/** Workspace file the session is saved to, so a later session can resume the task. */
+const HANDOFF_FILE = '.broagentai/handoff.json';
+const MAX_RECORDED = 400;
 const REMINDER_EVERY = 8;
 const MODE_KEY = 'broagentai.agentMode';
 const NOTICE_KEY = 'broagentai.agentNoticeDismissed';
@@ -160,10 +179,31 @@ function renderLog(): void {
   $('cmdLog').scrollTop = $('cmdLog').scrollHeight;
 }
 
+/** A custom (user-installed) plugin is labelled as such wherever the session shows (R10). */
+const providerLabel = (p: ProviderInfo) => (p.source === 'user' ? `${p.label} (custom)` : p.label);
+
+/**
+ * R10: a custom plugin's chat page can write any reply, and Auto approve runs
+ * the commands in it without asking. Ask once per session; declining switches
+ * the session to "Always ask".
+ */
+async function guardCustomAutoApprove(active: Pick<Session, 'provider' | 'customAutoOk'>, stillCurrent: () => boolean = () => session === active): Promise<void> {
+  if (active.provider.source !== 'user' || mode() !== 'auto-approve' || active.customAutoOk) return;
+  const ok = await deps.confirm('Auto approve + plugin custom',
+    `<p><b>${esc(active.provider.label)}</b> adalah plugin <b>custom</b> (bukan bawaan BroAgentAI). Halaman chat yang ditanganinya bisa menulis balasan apa saja, dan <b>Auto approve</b> langsung menjalankan perintah di dalamnya: tulis/hapus file, shell, push.</p>`
+    + `<p>OK = tetap Auto approve untuk sesi ini. Batal = pindah ke <b>Always ask</b>.</p>`);
+  if (!stillCurrent()) return;
+  if (ok) { active.customAutoOk = true; return; }
+  const select = $('modeSel') as HTMLSelectElement;
+  select.value = 'always-ask';
+  select.dispatchEvent(new Event('change'));
+  log({ tool: 'mode', category: active.provider.label, decision: 'always-ask', status: 'info', ms: 0, detail: 'Auto approve tidak dikonfirmasi untuk plugin custom' });
+}
+
 function renderSession(): void {
   const busy = !!session || !!launching;
   $('agentSession').textContent = session
-    ? (session.paused ? `Sesi dijeda - ${session.provider.label}` : `Sesi aktif - ${session.provider.label}`)
+    ? (session.paused ? `Sesi dijeda - ${providerLabel(session.provider)}` : `Sesi aktif - ${providerLabel(session.provider)}`)
     : launching ? 'Memulai sesi...' : 'Belum ada sesi';
   $('agentPill').className = 'pill ' + (session ? (session.paused ? 'pill-warn' : 'pill-ok') : launching ? 'pill-info' : 'pill-warn');
   $('agentStart').classList.toggle('hidden', busy);
@@ -195,14 +235,17 @@ function renderStatus(): void {
   $('agentResend').classList.toggle('hidden', !(stalled && session?.lastSent));
 }
 
-function renderProviders(): void {
-  $('providerList').innerHTML = '<h4>Chat providers</h4>' + providers.map((p) =>
-    `<div class="log-row" data-provider="${esc(p.id)}"><b>${esc(p.label)}</b> - <code>${esc(p.matchPatterns.join(', '))}</code> - ${p.status === 'ready' ? 'ready' : 'experimental (selector belum diverifikasi di situs asli)'}</div>`
-  ).join('');
-}
 
 async function tabMessage(tabId: number, message: unknown): Promise<any> {
   return chrome.tabs.sendMessage(tabId, message);
+}
+
+/** Activate a chat tab's relay; it runs the plugin's prepare hook first. Logs what the hook did. */
+async function activateRelay(tabId: number, provider: ProviderInfo): Promise<void> {
+  const res = await tabMessage(tabId, { type: 'ba.activate' });
+  const prepare = res?.prepare as { ran?: boolean; error?: string } | undefined;
+  if (prepare?.error) log({ tool: 'plugin.prepare', category: provider.label, decision: '-', status: 'error', ms: 0, detail: 'hook prepare gagal, sesi tetap jalan: ' + prepare.error });
+  else if (prepare?.ran) log({ tool: 'plugin.prepare', category: provider.label, decision: '-', status: 'info', ms: 0, detail: 'halaman chat disiapkan oleh plugin ' + provider.label });
 }
 
 /** Find an open tab of a bundled provider; the active tab wins. */
@@ -249,29 +292,128 @@ async function waitForChatReady(tabId: number, timeoutMs: number, launch?: Launc
   return latest;
 }
 
+/** Remember one message of the current chat tab (fallback for when the page cannot be read). */
+function record(active: Session, side: 'user' | 'assistant', text: string): void {
+  const turn = classifyChatMessage(side, text);
+  if (!turn) return;
+  active.recorded.push(turn);
+  if (active.recorded.length > MAX_RECORDED) active.recorded = active.recorded.slice(-MAX_RECORDED);
+}
+
 /**
- * Compact, provider-agnostic summary of a session, used as the first message
- * after moving the chat to another provider. It cannot carry the raw history
- * (the new chat never saw it), so it states where the work stands: the tools
- * already run and the last thing the AI said, so the agent continues instead
- * of starting over.
+ * The whole conversation of the session: what was carried in from earlier
+ * chats, then the current chat tab read from the page (it has the user's own
+ * messages, which the panel never sees). Falls back to what the panel
+ * recorded when the page cannot be read or shows less (virtualized list,
+ * plugin without a userMessage selector, tab closed).
  */
-function buildHandoffPrompt(active: Session): string {
-  const recent = logs.slice(-20).filter((l) => l.tool !== 'relay' && l.tool !== 'session.pause' && l.tool !== 'session.resume');
-  const ran = recent.filter((l) => l.status === 'ok').map((l) => '- ' + l.tool + (l.category && l.category !== '-' ? ' (' + l.category + ')' : ''));
-  const blocked = recent.filter((l) => l.status === 'denied' || l.status === 'error').map((l) => '- ' + l.tool + ': ' + (l.detail || l.decision || l.status));
-  const parts: string[] = [
-    'Kamu melanjutkan sesi BroAgentAI yang dipindah dari ' + active.provider.label + ' ke sini karena token/limit provider lama habis. JANGAN mulai ulang dari nol; lanjutkan pekerjaan yang sudah berjalan.',
-    'Total tool call sejauh ini: ' + active.totalCalls + '.',
-  ];
-  if (ran.length) parts.push('Tool yang sudah berhasil dijalankan:\n' + ran.join('\n'));
-  if (blocked.length) parts.push('Yang tertahan/gagal:\n' + blocked.join('\n'));
-  if (active.lastReplyText) {
-    const tail = active.lastReplyText.length > 1200 ? active.lastReplyText.slice(0, 1200) + '…' : active.lastReplyText;
-    parts.push('Balasan terakhir AI sebelum pindah:\n' + tail);
+async function collectTranscript(active: Session): Promise<HandoffTurn[]> {
+  let current = active.recorded;
+  try {
+    const res = await tabMessage(active.tabId, { type: 'ba.transcript' });
+    if (res?.ok && Array.isArray(res.messages)) {
+      const fromPage = res.messages.flatMap((m: any): HandoffTurn[] => {
+        const turn = classifyChatMessage(m?.side === 'assistant' ? 'assistant' : 'user', String(m?.text ?? ''));
+        return turn ? [turn] : [];
+      });
+      // Use the page only when it still shows everything the panel saw itself
+      // (a virtualized list drops old messages); then it adds the user's own words.
+      if (fromPage.filter((turn: HandoffTurn) => turn.role !== 'user').length >= current.length) current = fromPage;
+    }
+  } catch { /* tab gone or reloading: keep what the panel recorded */ }
+  return normalizeTranscript([...active.carried, ...current]);
+}
+
+/** Branch and changed files of the workspace right now; null outside Git or when the bridge is unreachable. */
+async function currentWorkspace(): Promise<WorkspaceState | null> {
+  try {
+    return workspaceFromGitStatus(await bridge.call('git.status'));
+  } catch {
+    return null;
   }
-  parts.push('Lanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.');
-  return parts.join('\n\n');
+}
+
+function snapshotOf(active: Session, transcript: HandoffTurn[], workspace: WorkspaceState | null): HandoffSnapshot {
+  const lastUser = [...transcript].reverse().find((turn) => turn.role === 'user');
+  return buildHandoffSnapshot({
+    provider: active.provider.label,
+    totalCalls: active.totalCalls,
+    lastSent: active.lastSent,
+    lastReplyText: active.lastReplyText,
+    logs,
+    transcript,
+    workspace,
+    workSummary: { ...active.work, lastTaskDescription: lastUser ? lastUser.text.slice(0, 1000) : active.work.lastTaskDescription },
+  });
+}
+
+/** True when a snapshot holds something to continue from (not just the operating prompt). */
+function worthResuming(snapshot: HandoffSnapshot): boolean {
+  return snapshot.totalCalls > 0 || snapshot.transcript.some((turn) => turn.role === 'user' || turn.role === 'assistant');
+}
+
+/**
+ * First message of a chat that continues a task: the full operating prompt
+ * (tools and rules) with the handoff context at the very end, so it wins over
+ * any generic opening instruction.
+ */
+function handoffMessage(systemPrompt: string, context: string): string {
+  return systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${context}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
+}
+
+let saving: Promise<void> = Promise.resolve();
+
+/**
+ * Write the session to .broagentai/handoff.json in the workspace, so a later
+ * session (another window, profile or day) can pick the task up. Writes are
+ * queued one after another; a failure only warns - it must never break the loop.
+ */
+function saveWorkspaceHandoff(active: Session): Promise<void> {
+  if (!deps.hasWorkspace()) return saving;
+  saving = saving.then(async () => {
+    const snapshot = snapshotOf(active, await collectTranscript(active), await currentWorkspace());
+    if (!worthResuming(snapshot)) return;
+    await bridge.call('fs.mkdir', { path: '.broagentai' }).catch(() => {});
+    await bridge.call('fs.writeFile', { path: HANDOFF_FILE, content: JSON.stringify(snapshot, null, 2) + '\n' });
+  }).catch((err) => { console.warn('Failed to save workspace handoff:', err); });
+  return saving;
+}
+
+async function readWorkspaceHandoff(): Promise<HandoffSnapshot | null> {
+  try {
+    const res: any = await bridge.call('fs.readFile', { path: HANDOFF_FILE });
+    if (typeof res?.content !== 'string' || !res.content.trim()) return null;
+    return validateHandoffSnapshot(JSON.parse(res.content));
+  } catch {
+    return null; // no file, or not a snapshot
+  }
+}
+
+async function deleteWorkspaceHandoff(): Promise<void> {
+  await bridge.call('fs.delete', { path: HANDOFF_FILE }).catch(() => {});
+}
+
+/**
+ * A saved session in this workspace? Ask whether to continue it. Yes returns
+ * the snapshot (its conversation goes into the first prompt); no deletes the
+ * file so the new task starts clean.
+ */
+async function offerWorkspaceResume(launch: Launch): Promise<HandoffSnapshot | null> {
+  const saved = await readWorkspaceHandoff();
+  if (!saved || !worthResuming(saved) || launch.cancelled) return null;
+  const userTurns = saved.transcript.filter((turn) => turn.role === 'user').length;
+  const ok = await deps.confirm('Lanjutkan pekerjaan sebelumnya?',
+    '<p>Ditemukan <code>' + esc(HANDOFF_FILE) + '</code> di workspace ini (' + esc(saved.provider) + ', ' + esc(new Date(saved.createdAt).toLocaleString()) + ').</p>'
+    + '<p>Isinya: ' + saved.transcript.length + ' pesan percakapan (' + userTurns + ' dari kamu), ' + saved.totalCalls + ' tool call.</p>'
+    + '<p><b>OK</b> = lanjutkan pekerjaan itu<br><b>Batal</b> = mulai tugas baru (file dihapus)</p>');
+  if (launch.cancelled) return null;
+  if (!ok) {
+    await deleteWorkspaceHandoff();
+    log({ tool: 'handoff.reset', category: '-', decision: 'user-declined', status: 'info', ms: 0, detail: 'mulai tugas baru; ' + HANDOFF_FILE + ' dihapus' });
+    return null;
+  }
+  log({ tool: 'handoff.resume', category: saved.provider, decision: 'user-approved', status: 'info', ms: 0, detail: 'melanjutkan dari ' + HANDOFF_FILE + ' (' + saved.transcript.length + ' pesan)' });
+  return saved;
 }
 
 /** Fill the switch-provider <select> with every provider except the current one. */
@@ -314,7 +456,11 @@ export async function switchProviderSession(targetId: string): Promise<void> {
 
 async function moveSession(active: Session, target: ProviderInfo): Promise<void> {
   const oldTabId = active.tabId;
-  const handoff = buildHandoffPrompt(active);
+  // Read the old chat before leaving it: the new one never saw that conversation.
+  const transcript = await collectTranscript(active);
+  if (session !== active) return;
+  const handoff = formatHandoffContext(snapshotOf(active, transcript, await currentWorkspace()));
+  if (session !== active) return;
   setPhase('connecting', 'Pindah ke ' + target.label);
 
   // Reuse an open tab of the TARGET provider (never the session's own tab), else open one.
@@ -345,11 +491,13 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   }
 
   // Activate the new relay, retire the old one, then re-point the session.
-  await tabMessage(targetTabId, { type: 'ba.activate' });
+  await activateRelay(targetTabId, target);
   if (session !== active) return;
   try { await tabMessage(oldTabId, { type: 'ba.deactivate' }); } catch { /* old tab gone */ }
   active.tabId = targetTabId;
   active.provider = target;
+  active.carried = transcript;
+  active.recorded = [];
   active.toolCalls = 0;
   active.resumeGuard = null;
   active.paused = false;
@@ -360,7 +508,7 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
     // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
     const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode(), handoff: true });
     // Append handoff context at the very end to override any "reply READY" instruction (recency bias)
-    promptToSend = systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${handoff}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
+    promptToSend = handoffMessage(systemPrompt, handoff);
   } catch (err) {
     console.warn('Failed to get system prompt for handoff, using basic handoff:', err);
   }
@@ -373,10 +521,14 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   renderSession();
   renderSwitchProviders();
 
+  // R10: moving to a custom plugin under Auto approve needs its own OK.
+  active.customAutoOk = false;
+  await guardCustomAutoApprove(active);
   setPhase('sending', 'Mengirim ringkasan ke ' + target.label);
   try {
     await send(promptToSend);
     setPhase('waiting', 'Menunggu balasan AI');
+    void saveWorkspaceHandoff(active);
   } catch (err: any) {
     setPhase('failed', 'Ringkasan gagal terkirim: ' + (err?.message || err));
     deps.toast('Ringkasan handoff gagal terkirim. Coba Resend di tab baru.');
@@ -392,6 +544,7 @@ async function send(text: string): Promise<void> {
   if (!session) return;
   const res = await tabMessage(session.tabId, { type: 'ba.send', text });
   if (!res?.ok) throw new Error(res?.error || 'gagal mengirim ke tab chat');
+  record(session, 'user', text);
 }
 
 const delayMs = () => sendDelayMs(($('agentDelay') as HTMLInputElement).value);
@@ -427,6 +580,7 @@ async function deliver(text: string, pause = true): Promise<void> {
       .catch((err: any) => ({ ok: false, code: 'UNREACHABLE', error: err?.message || String(err) }));
     if (session !== active) return;
     if (res?.ok) {
+      record(active, 'user', text);
       setPhase('waiting', 'Menunggu balasan AI');
       return;
     }
@@ -655,15 +809,33 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
   const tabId = found.tab.id!;
   const health = await waitForChatReady(tabId, CONNECT_READY_MS, launch);
   if (launch.cancelled) return;
-  if (!health) return fail('Tab chat tidak merespons walau sudah dimuat ulang otomatis. Tutup tab itu lalu buka lagi dari Home.');
+  if (!health) {
+    // Usual cause after a rebuild: Chrome still runs the old manifest, so this site gets no relay.
+    if (await reloadIfManifestStale()) return fail('BroAgentAI baru di-build ulang; extension dimuat ulang otomatis. Buka side panel lagi lalu Start.');
+    return fail('Tab chat tidak merespons walau sudah dimuat ulang otomatis. Tutup tab itu lalu buka lagi dari Home.');
+  }
   if (!health?.composer) return fail(`Kolom chat ${found.provider.label} tidak ditemukan. Pastikan sudah login dan halaman chat terbuka.`);
 
   try {
-    setPhase('connecting', 'Mengirim instruksi agent');
-    const { prompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode() });
+    // R10 first: the prompt below states the approval mode, so settle it before building it.
+    const pending: Session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: null, lastReplyText: null, resumeGuard: null, paused: false, carried: [], recorded: [], work: emptyWorkSummary() };
+    await guardCustomAutoApprove(pending, () => !launch.cancelled);
     if (launch.cancelled) return;
-    await tabMessage(tabId, { type: 'ba.activate' });
-    session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: prompt, lastReplyText: null, resumeGuard: null, paused: false };
+    // A saved session in this workspace: continue it (its conversation goes into the first prompt) or start fresh.
+    const resume = await offerWorkspaceResume(launch);
+    if (launch.cancelled) return;
+    setPhase('connecting', resume ? 'Mengirim instruksi + percakapan sebelumnya' : 'Mengirim instruksi agent');
+    // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
+    const { prompt: systemPrompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode(), handoff: !!resume });
+    if (launch.cancelled) return;
+    const prompt = resume ? handoffMessage(systemPrompt, formatHandoffContext(resume)) : systemPrompt;
+    if (resume) {
+      pending.carried = resume.transcript;
+      pending.totalCalls = resume.totalCalls;
+      if (resume.workSummary) pending.work = { ...resume.workSummary };
+    }
+    await activateRelay(tabId, found.provider);
+    session = { ...pending, lastSent: prompt };
     await send(prompt);
     setPhase('waiting', 'Menunggu balasan AI');
     log({ tool: 'session.start', category: found.provider.label, decision: mode(), status: 'info', ms: 0, detail: `${toolCount} tools dikirim ke chat` });
@@ -698,7 +870,10 @@ export async function stopAgentSession(): Promise<void> {
 
 async function stopSession(reason = 'dihentikan', opts: { notifyUser?: boolean } = {}): Promise<void> {
   if (!session) return;
-  const tabId = session.tabId;
+  const stopped = session;
+  const tabId = stopped.tabId;
+  // Keep the conversation for a later session (read before the relay is retired).
+  void saveWorkspaceHandoff(stopped);
   session = null;
   phase = null;
   phaseBeforePause = null;
@@ -751,12 +926,14 @@ async function handleReply(reply: ProviderReply): Promise<void> {
     return;
   }
   active.lastReplyText = reply.text;
+  record(active, 'assistant', reply.text);
   const parsed = parseReply(reply);
 
   if (parsed.kind === 'final') {
     active.toolCalls = 0;
     log({ tool: 'assistant', category: '-', decision: '-', status: 'info', ms: 0, detail: parsed.text.slice(0, 200) });
     setPhase('idle', 'Selesai - menunggu pesanmu di chat');
+    void saveWorkspaceHandoff(active);
     return;
   }
   if (parsed.kind === 'error') {
@@ -817,6 +994,7 @@ async function handleReply(reply: ProviderReply): Promise<void> {
   try {
     const result: any = await bridge.call('agent.callTool', { command, params, mode: currentMode, approved }, toolTimeoutMs(params));
     log({ tool: command, category: check.category, decision, status: 'ok', ms: Math.round(performance.now() - started) });
+    noteToolCall(active.work, command, check.category, params);
     message = formatToolResult(command, true, result.text, result.truncated);
     if (check.category !== 'read') deps.onFilesChanged();
   } catch (err: any) {
@@ -830,6 +1008,7 @@ async function handleReply(reply: ProviderReply): Promise<void> {
     message += '\n\n[BroAgentAI reminder - automatic, do not reply to it] One fenced JSON command per reply; plain prose when done.';
   }
   await deliver(message);
+  if (session === active) void saveWorkspaceHandoff(active);
 }
 
 export function initAgent(dependencies: AgentDeps): void {
@@ -926,6 +1105,7 @@ export function initAgent(dependencies: AgentDeps): void {
     // Leaving ask-once (or tightening the mode) must not carry old approvals along.
     session?.allowed.clear();
     showHint();
+    if (session && select.value === 'auto-approve') void guardCustomAutoApprove(session);
     if (session) log({ tool: 'mode', category: '-', decision: select.value, status: 'info', ms: 0, detail: 'berlaku untuk perintah berikutnya' });
     deps.toast('Approval mode: ' + select.options[select.selectedIndex].text);
   });
@@ -933,7 +1113,11 @@ export function initAgent(dependencies: AgentDeps): void {
 
   renderLog();
   renderSession();
-  renderProviders();
+  renderSwitchProviders();
+}
+
+/** Re-render the provider controls after web chat plugins changed (installed, removed, toggled). */
+export function refreshProviderControls(): void {
   renderSwitchProviders();
 }
 

@@ -9,6 +9,8 @@ export interface DiffViewOptions {
   staged: boolean;
   diff: string;
   truncated: boolean;
+  /** Tag shown next to the file name; defaults to "Staged" / "Working Tree". */
+  label?: string;
   onClose?(): void;
   onOpenFile?(path: string): void;
 }
@@ -95,7 +97,7 @@ export function openDiffView(opts: DiffViewOptions): void {
   el.setAttribute('aria-label', 'Diff ' + opts.path);
   el.innerHTML = `<div class="dv-head">
     <div class="dv-file" title="${esc(opts.path)}"><span class="ba-tree-icon">${fileIcon(name)}</span><span class="dv-name">${esc(name)}</span>${dir ? `<span class="dv-dir">${esc(dir)}</span>` : ''}</div>
-    <span class="dv-tag ${opts.staged ? 'staged' : ''}">${opts.staged ? 'Staged' : 'Working Tree'}</span>
+    <span class="dv-tag ${opts.staged ? 'staged' : ''}">${esc(opts.label ?? (opts.staged ? 'Staged' : 'Working Tree'))}</span>
     <span class="dv-stats"><span class="a">+${parsed.added}</span><span class="d">-${parsed.removed}</span></span>
     <div class="dv-tools">
       <button class="dv-btn" data-m="unified" title="Unified">Unified</button>

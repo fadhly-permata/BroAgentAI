@@ -3,9 +3,12 @@ import { renderExplorer, resetExplorerState, ExplorerOptions } from './explorer.
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
-import { initAgent, showAgent, launchAgentSession, stopAgentSession, agentSessionState, onAgentSessionChange } from './agent-panel.js';
+import { initAgent, showAgent, launchAgentSession, stopAgentSession, agentSessionState, onAgentSessionChange, refreshProviderControls } from './agent-panel.js';
 import { initHome, renderHome } from './home-panel.js';
+import { initPlugins, renderPlugins } from './plugins-panel.js';
+import { refreshProviders, watchProviders } from './providers/registry.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
+import { reloadIfManifestStale } from './stale-manifest.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
 import { createCodeView, type CodeView } from './code-view.js';
 import { showExplorerMenu } from './context-menu.js';
@@ -234,8 +237,12 @@ function switchTab(t:string){
   if(t==='terminal') showTerminal(); 
 }
 let modalCb:(()=>void)|null=null;
-function openModal(title:string,body:string,cb:()=>void){ $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
-function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null }
+/** Called once when the modal closes (OK, Cancel, X, Escape or a newer modal); used by confirmModal. */
+let modalOnClose:(()=>void)|null=null;
+function openModal(title:string,body:string,cb:()=>void){ const prev=modalOnClose; modalOnClose=null; prev?.(); $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
+function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null; const f=modalOnClose; modalOnClose=null; f?.() }
+/** OK resolves true; anything that closes the modal otherwise resolves false. */
+function confirmModal(title:string,body:string):Promise<boolean>{ return new Promise((resolve)=>{ let decided=false; openModal(title,body,()=>{ decided=true; resolve(true) }); modalOnClose=()=>{ if(!decided) resolve(false) } }) }
 async function doSearch(){
   const query = ($('searchInput') as HTMLInputElement).value.trim();
   if (!query) {
@@ -465,6 +472,7 @@ on('langSel','change',(e)=>{
   document.documentElement.lang = v;
   translatePage(v);
   renderWs(); // dynamic text is not covered by data-i18n
+  void renderPlugins();
 });
 on('themeSel','change',(e)=>{
   const v = (e.target as HTMLSelectElement).value as Theme; 
@@ -490,11 +498,19 @@ on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !con
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
+// After a rebuild this page already runs the new code, but Chrome still holds the old
+// manifest (content scripts, site access) until the extension reloads: do that once.
+void reloadIfManifestStale();
 
 initHome({ getWorkspaces: ()=>workspaces, getActive: ()=>activeWs, setActive: setActiveWorkspace, openFolder, switchTab, toast, sessionState: agentSessionState, launchSession: launchAgentSession, stopSession: stopAgentSession });
 onAgentSessionChange(renderHome);
-initAgent({ toast, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ renderTree(); refreshScm(); } });
+initAgent({ toast, confirm: confirmModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ renderTree(); refreshScm(); } });
 initMcp({ toast, openModal, hasWorkspace: ()=>!!activeWs });
+initPlugins({ toast, openModal });
+// Web chat plugins: merge the user's installed ones, and follow installs/updates/toggles.
+const onProvidersChanged = () => { renderHome(); refreshProviderControls(); void renderPlugins(); };
+void refreshProviders().then(onProvidersChanged);
+watchProviders(onProvidersChanged);
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });
 initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); }, openFile: (path)=>{ openFile(path); } });
 

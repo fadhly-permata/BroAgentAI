@@ -1,6 +1,7 @@
-// Provider plugin contract. A provider is DATA (provider.json): URL patterns
-// plus DOM selectors. The shared DOM adapter interprets the selectors, so a
-// provider can never run its own code or reach files, Git or MCP.
+// Provider contract. A provider comes from a web chat plugin's plugin.json
+// (extension/plugins/<id>/, see src/plugins/manifest.ts): URL patterns plus DOM
+// selectors. The shared DOM adapter interprets the selectors, so a provider can
+// never reach files, Git or MCP.
 
 export interface ProviderSelectors {
   /** Prompt input: a <textarea>/<input> or a contenteditable element. */
@@ -65,6 +66,17 @@ export interface ProviderInfo {
    */
   status: 'ready' | 'experimental';
   selectors: ProviderSelectors;
+  /** Plugin version (semver) and author, from plugin.json. */
+  version?: string;
+  author?: string;
+  /** URL of the plugin's icon, when it ships one. */
+  icon?: string;
+  /** Text of the plugin's style.css: how BroAgentAI's marks look on this site. */
+  style?: string;
+  /** Built-in (bundled, trusted) or installed by the user (custom). */
+  source?: 'builtin' | 'user';
+  /** The plugin ships plugin.js hooks. */
+  hasScript?: boolean;
 }
 
 export interface ProviderReply {
@@ -83,4 +95,10 @@ export interface ProviderHealth {
   provider: string;
   composer: boolean;
   messages: number;
+}
+
+/** One message read from the chat page, for the handoff transcript. */
+export interface ConversationMessage {
+  side: 'user' | 'assistant';
+  text: string;
 }
