@@ -14,6 +14,7 @@ import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
 import { reloadIfManifestStale } from './stale-manifest.js';
+import { errorRetryDelay, isErrorReply, MAX_ERROR_RETRIES } from './reply-errors.js';
 
 export interface AgentDeps {
   toast(message: string): void;
@@ -45,6 +46,14 @@ interface Session {
   customAutoOk?: boolean;
   /** Last message the agent typed into the chat, for "Resend". */
   lastSent: string | null;
+  /**
+   * The agent's last message has not been answered yet. A failed generation
+   * is only resent automatically when it failed on the agent's own message;
+   * one that failed on the user's message is the user's to resend.
+   */
+  awaitingReply?: boolean;
+  /** Automatic resends after failed generations in a row (see reply-errors.ts). */
+  errorRetries?: number;
   /** Text of the last reply handled, to drop it if it shows up again after the chat tab reloads. */
   lastReplyText: string | null;
   resumeGuard: string | null;
@@ -544,6 +553,7 @@ async function send(text: string): Promise<void> {
   if (!session) return;
   const res = await tabMessage(session.tabId, { type: 'ba.send', text });
   if (!res?.ok) throw new Error(res?.error || 'gagal mengirim ke tab chat');
+  session.awaitingReply = true;
   record(session, 'user', text);
 }
 
@@ -580,6 +590,7 @@ async function deliver(text: string, pause = true): Promise<void> {
       .catch((err: any) => ({ ok: false, code: 'UNREACHABLE', error: err?.message || String(err) }));
     if (session !== active) return;
     if (res?.ok) {
+      active.awaitingReply = true;
       record(active, 'user', text);
       setPhase('waiting', 'Menunggu balasan AI');
       return;
@@ -913,6 +924,38 @@ function askApproval(check: any, params: Record<string, unknown>, remember: bool
   });
 }
 
+/**
+ * The chat site failed to generate a reply and showed its own error text. That
+ * is not the AI's answer: resend the agent's last message a couple of times,
+ * then leave it to the user (Resend button) instead of ending the turn silently.
+ */
+async function handleErrorReply(active: Session, text: string): Promise<void> {
+  const label = providerLabel(active.provider);
+  const shown = text.trim().slice(0, 160);
+  if (!active.awaitingReply || !active.lastSent) {
+    log({ tool: 'assistant', category: label, decision: '-', status: 'error', ms: 0, detail: `${label} gagal membalas pesanmu: "${shown}". Kirim ulang pesanmu di tab chat.` });
+    setPhase('idle', `${label} gagal membalas - kirim ulang pesanmu di chat`);
+    deps.toast(`${label} gagal membalas. Kirim ulang pesanmu di tab chat.`);
+    return;
+  }
+  const attempt = (active.errorRetries ?? 0) + 1;
+  const wait = errorRetryDelay(attempt);
+  if (wait === null) {
+    active.errorRetries = 0;
+    log({ tool: 'assistant', category: label, decision: `${MAX_ERROR_RETRIES}x dicoba`, status: 'error', ms: 0, detail: `${label} tetap gagal membalas: "${shown}". Klik "Kirim ulang" atau tulis di tab chat.` });
+    setPhase('failed', `${label} gagal membalas`);
+    deps.toast(`${label} gagal membalas setelah ${MAX_ERROR_RETRIES}x coba ulang. Klik Kirim ulang.`);
+    notify('BroAgentAI - ' + label + ' gagal membalas', 'Pesan agent sudah dikirim ulang ' + MAX_ERROR_RETRIES + 'x. Klik Kirim ulang di side panel.');
+    void saveWorkspaceHandoff(active);
+    return;
+  }
+  active.errorRetries = attempt;
+  log({ tool: 'assistant', category: label, decision: `retry ${attempt}/${MAX_ERROR_RETRIES}`, status: 'error', ms: 0, detail: `${label} gagal membalas: "${shown}"; pesan terakhir dikirim ulang dalam ${Math.round(wait / 1000)}s` });
+  setPhase('retry', `${label} gagal membalas, kirim ulang (${attempt}/${MAX_ERROR_RETRIES})`, wait);
+  if (!(await waitFor(active, wait))) return;
+  await deliver(active.lastSent, false);
+}
+
 async function handleReply(reply: ProviderReply): Promise<void> {
   if (!session) return;
   const active = session;
@@ -926,6 +969,9 @@ async function handleReply(reply: ProviderReply): Promise<void> {
     return;
   }
   active.lastReplyText = reply.text;
+  if (isErrorReply(reply.text, active.provider.errorReplies)) return handleErrorReply(active, reply.text);
+  active.errorRetries = 0;
+  active.awaitingReply = false;
   record(active, 'assistant', reply.text);
   const parsed = parseReply(reply);
 
