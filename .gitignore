@@ -42,6 +42,7 @@ bridge/broagentai-host.sh
 # Playwright e2e artifacts
 extension/e2e/.pw-profile/
 extension/e2e/.pw-diagnose-profile/
+extension/e2e/.pw-*/
 extension/e2e/shots/
 extension/e2e/run.done
 

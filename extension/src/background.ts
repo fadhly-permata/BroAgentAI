@@ -1,6 +1,10 @@
 import { bridge } from './bridge-client';
 import { syncPluginRegistrations } from './plugins/sync.ts';
 import { onPluginStateChange } from './plugins/store.ts';
+import { reloadIfManifestStale } from './stale-manifest.ts';
+
+// A rebuilt unpacked install keeps its old manifest until reloaded; pick up the new one.
+void reloadIfManifestStale();
 
 // User web chat plugins: their sites get the relay through dynamic content
 // scripts, which an extension reload/update clears (specs/09 R15). Re-apply on

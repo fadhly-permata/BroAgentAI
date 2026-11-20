@@ -13,6 +13,7 @@ import { buildHandoffSnapshot, classifyChatMessage, emptyWorkSummary, formatHand
 import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
+import { reloadIfManifestStale } from './stale-manifest.js';
 
 export interface AgentDeps {
   toast(message: string): void;
@@ -808,7 +809,11 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
   const tabId = found.tab.id!;
   const health = await waitForChatReady(tabId, CONNECT_READY_MS, launch);
   if (launch.cancelled) return;
-  if (!health) return fail('Tab chat tidak merespons walau sudah dimuat ulang otomatis. Tutup tab itu lalu buka lagi dari Home.');
+  if (!health) {
+    // Usual cause after a rebuild: Chrome still runs the old manifest, so this site gets no relay.
+    if (await reloadIfManifestStale()) return fail('BroAgentAI baru di-build ulang; extension dimuat ulang otomatis. Buka side panel lagi lalu Start.');
+    return fail('Tab chat tidak merespons walau sudah dimuat ulang otomatis. Tutup tab itu lalu buka lagi dari Home.');
+  }
   if (!health?.composer) return fail(`Kolom chat ${found.provider.label} tidak ditemukan. Pastikan sudah login dan halaman chat terbuka.`);
 
   try {

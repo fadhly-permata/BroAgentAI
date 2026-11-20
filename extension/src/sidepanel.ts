@@ -8,6 +8,7 @@ import { initHome, renderHome } from './home-panel.js';
 import { initPlugins, renderPlugins } from './plugins-panel.js';
 import { refreshProviders, watchProviders } from './providers/registry.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
+import { reloadIfManifestStale } from './stale-manifest.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
 import { createCodeView, type CodeView } from './code-view.js';
 import { showExplorerMenu } from './context-menu.js';
@@ -503,6 +504,9 @@ on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !con
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
+// After a rebuild this page already runs the new code, but Chrome still holds the old
+// manifest (content scripts, site access) until the extension reloads: do that once.
+void reloadIfManifestStale();
 
 initHome({ getWorkspaces: ()=>workspaces, getActive: ()=>activeWs, setActive: setActiveWorkspace, openFolder, switchTab, toast, sessionState: agentSessionState, launchSession: launchAgentSession, stopSession: stopAgentSession });
 onAgentSessionChange(renderHome);
