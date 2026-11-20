@@ -102,3 +102,21 @@ test('toProviderInfo maps the manifest to the provider the panel uses', () => {
     style: '[data-ba-agent] { color: red }',
   });
 });
+
+test('errorReplies: valid patterns pass and reach ProviderInfo', () => {
+  const res = validatePluginManifest(minimal({ errorReplies: ['^Something went wrong', 'rate limit'] }));
+  assert.equal(res.ok, true);
+  if (res.ok) assert.deepEqual(toProviderInfo(res.plugin).errorReplies, ['^Something went wrong', 'rate limit']);
+});
+
+test('errorReplies: bad regex, catch-all pattern, wrong type and too many are refused', () => {
+  const errorsOf = (value: unknown) => {
+    const res = validatePluginManifest(minimal({ errorReplies: value }));
+    return res.ok ? [] : res.errors;
+  };
+  assert.match(errorsOf(['(unclosed']).join(' '), /not a valid regular expression/);
+  assert.match(errorsOf(['.*']).join(' '), /matches an empty reply/);
+  assert.match(errorsOf(['']).join(' '), /must be text/);
+  assert.match(errorsOf('oops').join(' '), /at most 10 patterns/);
+  assert.match(errorsOf(Array.from({ length: 11 }, (_, i) => `err${i}`)).join(' '), /at most 10 patterns/);
+});

@@ -73,6 +73,8 @@ export interface ProviderInfo {
   icon?: string;
   /** Text of the plugin's style.css: how BroAgentAI's marks look on this site. */
   style?: string;
+  /** Patterns (case-insensitive regex sources) for the site's failure text; see PluginManifest.errorReplies. */
+  errorReplies?: string[];
   /** Built-in (bundled, trusted) or installed by the user (custom). */
   source?: 'builtin' | 'user';
   /** The plugin ships plugin.js hooks. */
