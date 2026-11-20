@@ -101,6 +101,7 @@ Every hook is optional. A missing hook, a hook that throws, or a hook that times
 | gemini | Quill composer, `exclude` chips | none | yes |
 | ptero | `#chat-*` ids | `prepare` (close welcome popup, set Quick Answer) | optional |
 | qwen | `markdownSource`, `codeLine` (Monaco) | none | yes |
+| tusksearch | Angular ids/classes (`#main-search-textarea`, `markdown.ai-response`) | `prepare` (select Central AI instead of Search) | none |
 
 ## 4. Architecture
 
