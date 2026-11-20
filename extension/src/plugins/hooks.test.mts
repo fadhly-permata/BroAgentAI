@@ -55,3 +55,21 @@ test('the built-in Ptero plugin closes the welcome dialog and selects Quick Answ
   assert.deepEqual(await runPrepare('ptero', api), { ran: true });
   assert.deepEqual(api.calls, ['click button /Everything fine/i', 'select #chat-mode-select=quick', 'sleep']);
 });
+
+test('the built-in TuskSearch plugin selects Central AI, and leaves an active Central AI alone', async () => {
+  (globalThis as Record<string, unknown>).BroAgentAI = { registerPlugin };
+  const source = readFileSync(fileURLToPath(new URL('../../plugins/tusksearch/plugin.js', import.meta.url)), 'utf8');
+  new Function(source)();
+
+  // Search mode active: the inactive Central AI button is clicked, then the page gets a moment.
+  const searchMode = fakeApi();
+  assert.deepEqual(await runPrepare('tusksearch', searchMode), { ran: true });
+  assert.deepEqual(searchMode.calls, ['click .search-mode-button:not(.active) /Central AI/i', 'sleep']);
+
+  // Central AI already active: nothing matches the click, so no wait either.
+  const chatMode = { ...fakeApi(), calls: [] as string[] };
+  chatMode.click = (selector, options) => { chatMode.calls.push(`click ${selector} ${options?.text ?? ''}`); return false; };
+  chatMode.sleep = async () => { chatMode.calls.push('sleep'); };
+  assert.deepEqual(await runPrepare('tusksearch', chatMode), { ran: true });
+  assert.deepEqual(chatMode.calls, ['click .search-mode-button:not(.active) /Central AI/i']);
+});
