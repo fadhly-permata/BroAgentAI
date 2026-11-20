@@ -13,6 +13,7 @@ import { execFile } from "node:child_process";
 import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
+import { addCoAuthorTrailers } from "./co-authors.ts";
 import { confinePath } from "./fs.ts";
 import { ErrorCode } from "./rpc.ts";
 import { WorkspaceError } from "./workspace.ts";
@@ -421,8 +422,11 @@ export interface GitCommitResult {
   status: GitStatusResult;
 }
 
-/** `git.commit`: commit the index. Requires a message and staged changes. */
-export async function gitCommit(store: WorkspaceStore, message: unknown): Promise<GitCommitResult> {
+/**
+ * `git.commit`: commit the index. Requires a message and staged changes.
+ * `coAuthors` ("Name <email>", from the merged config) become Co-authored-by trailers.
+ */
+export async function gitCommit(store: WorkspaceStore, message: unknown, coAuthors: readonly string[] = []): Promise<GitCommitResult> {
   const { root } = await requireRepo(store);
   if (typeof message !== "string" || message.trim() === "") {
     throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "commit message must not be empty");
@@ -434,7 +438,7 @@ export async function gitCommit(store: WorkspaceStore, message: unknown): Promis
   if (!status.files.some((file) => file.staged)) {
     throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "nothing staged to commit");
   }
-  await git(root, ["commit", "-m", message.trim()]);
+  await git(root, ["commit", "-m", addCoAuthorTrailers(message.trim(), coAuthors)]);
   const hash = (await git(root, ["rev-parse", "--short", "HEAD"])).trim();
   return { hash, summary: message.trim().split("\n")[0], status: await gitStatus(store) };
 }

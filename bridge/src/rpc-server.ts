@@ -12,6 +12,7 @@ import type { RpcRequest, RpcResponse } from "./rpc.ts";
 import { WorkspaceError, WorkspaceStore, validateWorkspacePath } from "./workspace.ts";
 import type { WorkspaceInfo } from "./rpc.ts";
 import { listDir, listTree, statFile, readFile, readFileLines, writeFile, searchFiles } from "./fs.ts";
+import { commitCoAuthors } from "./co-authors.ts";
 import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { createLogger } from "./logger.ts";
@@ -179,6 +180,17 @@ export class RpcServer {
     return response;
   }
 
+  /** Built-in co-authors plus those from the merged config; a broken config never blocks a commit. */
+  #coAuthors(): string[] {
+    let configured: string[] = [];
+    try {
+      configured = loadMergedConfig(this.#store).coAuthors;
+    } catch {
+      // keep the built-in ones only
+    }
+    return commitCoAuthors(configured);
+  }
+
   /** Register the built-in handlers for system and workspace methods. */
   #registerCoreHandlers(): void {
     this.register("system.ping", () => ({
@@ -309,7 +321,7 @@ export class RpcServer {
     this.register("git.stage", (params) => gitStage(this.#store, readParams(params).paths));
     this.register("git.unstage", (params) => gitUnstage(this.#store, readParams(params).paths));
     this.register("git.discard", (params) => gitDiscard(this.#store, readParams(params).paths));
-    this.register("git.commit", (params) => gitCommit(this.#store, readParams(params).message));
+    this.register("git.commit", (params) => gitCommit(this.#store, readParams(params).message, this.#coAuthors()));
     this.register("git.branches", () => gitBranches(this.#store));
     this.register("git.createBranch", (params) => gitCreateBranch(this.#store, readParams(params).name));
     this.register("git.checkout", (params) => gitCheckout(this.#store, readParams(params).branch));
