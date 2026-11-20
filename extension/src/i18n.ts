@@ -284,13 +284,25 @@ export const translations = {
   }
 };
 
+/** The theme setting last applied; 'system' keeps following the OS. */
+let currentTheme: Theme = 'system';
+let followingOs = false;
+
+/**
+ * Set data-theme on the page. With 'system' it also follows later OS changes
+ * (light <-> dark, e.g. an automatic switch at sunset) without a reload: the
+ * media query's change event re-applies it while the setting stays 'system'.
+ */
 export function applyTheme(theme: Theme) {
+  currentTheme = theme;
   const root = document.documentElement;
-  if (theme === 'system') {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-  } else {
-    root.setAttribute('data-theme', theme);
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  root.setAttribute('data-theme', theme === 'system' ? (media.matches ? 'dark' : 'light') : theme);
+  if (!followingOs) {
+    followingOs = true;
+    media.addEventListener('change', (event) => {
+      if (currentTheme === 'system') root.setAttribute('data-theme', event.matches ? 'dark' : 'light');
+    });
   }
 }
 
