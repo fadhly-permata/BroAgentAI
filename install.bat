@@ -1,48 +1,12 @@
 @echo off
 SETLOCAL
-REM BroAgentAI native host installer (Windows).
-REM Builds when needed, then registers com.broagentai.host for Chrome and Edge.
-REM All logic lives in scripts\native-host.mjs so there is one installer to maintain.
-
-echo ==========================================
-echo BroAgentAI Native Host Installer
-echo ==========================================
+REM BroAgentAI installer (Windows). Double-click friendly wrapper around install.ps1,
+REM which prepares Node.js, npm dependencies and the build, then registers
+REM com.broagentai.host for the detected browsers.
+REM Arguments are passed through, e.g.:  install.bat -Uninstall   or   install.bat -Rebuild
 
 cd /d "%~dp0"
-
-where node >nul 2>nul
-if errorlevel 1 (
-    echo [X] Node.js tidak ditemukan di PATH. Install Node.js 22.6+ lalu jalankan ulang.
-    goto :fail
-)
-
-if not exist "bridge\dist\index.js" goto :build
-if not exist "extension\dist\manifest.json" goto :build
-goto :install
-
-:build
-echo [!] Build belum ada. Menjalankan npm run build...
-call npm run build
-if errorlevel 1 (
-    echo [X] Build gagal.
-    goto :fail
-)
-
-:install
-call node scripts\native-host.mjs install --browser chrome
-if errorlevel 1 goto :fail
-call node scripts\native-host.mjs install --browser edge
-if errorlevel 1 goto :fail
-
-echo ==========================================
-echo [OK] Instalasi dan registrasi berhasil.
-echo 1. Buka chrome://extensions, aktifkan Developer mode.
-echo 2. Load unpacked: %~dp0extension\dist
-echo 3. Kalau sudah ter-load, klik Reload pada kartu BroAgentAI.
-echo ==========================================
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+set "RC=%ERRORLEVEL%"
 if not "%BROAGENTAI_NO_PAUSE%"=="1" pause
-exit /b 0
-
-:fail
-if not "%BROAGENTAI_NO_PAUSE%"=="1" pause
-exit /b 1
+exit /b %RC%

@@ -77,6 +77,8 @@ A `.zip` holds the files at its root or inside one top-level folder; nothing els
 
 `selectors` keeps every field of today's `ProviderSelectors` (`codeLine`, `codeBlock`, `markdownSource`, `messageKeyAttr`, ...), so a selector-only plugin behaves exactly like a current `provider.json`.
 
+Optional `errorReplies`: up to 10 case-insensitive regular expressions (max 300 characters each, none may match an empty string) for the site's own failure text, e.g. `["^Something went wrong generating (that|this|the) response"]`. A reply of at most 500 characters that matches is a failed generation, not an answer: when it failed on the agent's own message the panel resends that message (twice, after 3 s and 8 s) and then shows Resend; when it failed on the user's message the panel only says so.
+
 ### 3.3 `plugin.js` hooks
 
 ```js
@@ -101,6 +103,7 @@ Every hook is optional. A missing hook, a hook that throws, or a hook that times
 | gemini | Quill composer, `exclude` chips | none | yes |
 | ptero | `#chat-*` ids | `prepare` (close welcome popup, set Quick Answer) | optional |
 | qwen | `markdownSource`, `codeLine` (Monaco) | none | yes |
+| tusksearch | Angular ids/classes (`#main-search-textarea`, `markdown.ai-response`) | `prepare` (select Central AI instead of Search) | none |
 
 ## 4. Architecture
 

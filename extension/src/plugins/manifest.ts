@@ -24,13 +24,20 @@ export interface PluginManifest {
   icon?: string;
   /** Free text: how and when the selectors were checked on the live site. */
   verified?: string;
+  /**
+   * Regular expressions (case-insensitive) for the site's own failure text,
+   * e.g. "^Something went wrong generating". A short reply that matches is a
+   * failed generation: the panel sends the last message again instead of
+   * treating it as the AI's answer.
+   */
+  errorReplies?: string[];
 }
 
 export type ManifestResult =
   | { ok: true; plugin: PluginManifest; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
-const TOP_LEVEL_KEYS = new Set(['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'selectors', 'script', 'style', 'icon', 'verified']);
+const TOP_LEVEL_KEYS = new Set(['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'selectors', 'script', 'style', 'icon', 'verified', 'errorReplies']);
 const SELECTOR_KEYS = new Set<keyof ProviderSelectors>(['composer', 'submit', 'assistantMessage', 'userMessage', 'generating', 'messageKeyAttr', 'codeLine', 'codeBlock', 'markdownSource', 'exclude']);
 const REQUIRED_SELECTORS: (keyof ProviderSelectors)[] = ['composer', 'assistantMessage'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -38,6 +45,8 @@ const VERSION_RE = /^\d+\.\d+\.\d+$/;
 const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MAX_MATCHES = 10;
 const MAX_TEXT = 2000;
+const MAX_ERROR_REPLIES = 10;
+const MAX_ERROR_REPLY_LENGTH = 300;
 
 /** Convert a Chrome match pattern (scheme://host/path with *) to a RegExp. */
 export function matchPatternToRegExp(pattern: string): RegExp {
@@ -108,12 +117,33 @@ export function validatePluginManifest(raw: unknown): ManifestResult {
     }
   }
 
+  if (m.errorReplies !== undefined) {
+    const list = m.errorReplies;
+    if (!Array.isArray(list) || list.length > MAX_ERROR_REPLIES) errors.push(`errorReplies must be a list of at most ${MAX_ERROR_REPLIES} patterns`);
+    else for (const source of list) {
+      const problem = errorReplyProblem(source);
+      if (problem) errors.push(problem);
+    }
+  }
+
   for (const key of ['script', 'style', 'icon'] as const) {
     if (m[key] !== undefined && (typeof m[key] !== 'string' || !FILE_RE.test(m[key] as string))) errors.push(`${key} must be a file name next to plugin.json`);
   }
 
   if (errors.length > 0) return { ok: false, errors, warnings };
   return { ok: true, plugin: raw as PluginManifest, warnings };
+}
+
+/** Why one errorReplies entry is refused, or null when it is fine. */
+export function errorReplyProblem(source: unknown): string | null {
+  if (typeof source !== 'string' || source.trim() === '' || source.length > MAX_ERROR_REPLY_LENGTH) {
+    return `errorReplies entries must be text (max ${MAX_ERROR_REPLY_LENGTH} characters)`;
+  }
+  let re: RegExp;
+  try { re = new RegExp(source, 'i'); } catch { return `errorReplies "${source}" is not a valid regular expression`; }
+  // A pattern that matches the empty string matches every reply.
+  if (re.test('')) return `errorReplies "${source}" matches an empty reply, so it would match every reply`;
+  return null;
 }
 
 /** The provider the panel, Home cards and relay work with. `files` holds the plugin's loaded icon URL and style.css text. */
@@ -130,5 +160,6 @@ export function toProviderInfo(plugin: PluginManifest, files: { icon?: string; s
     author: plugin.author,
     icon: files.icon,
     style: files.style,
+    ...(plugin.errorReplies ? { errorReplies: [...plugin.errorReplies] } : {}),
   };
 }

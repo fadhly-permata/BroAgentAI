@@ -134,7 +134,7 @@ function addTree(absDir, zipDir, filter = () => true) {
 
 addTree(join(ROOT, "extension", "dist"), "extension/dist");
 addTree(join(ROOT, "bridge", "dist"), "bridge/dist", (abs) => !abs.endsWith(".d.ts"));
-for (const rel of ["bridge/package.json", "bridge/README.md", "scripts/native-host.mjs", "install.bat", "install.ps1", "README.md", "LICENSE", "CHANGELOG.md"]) {
+for (const rel of ["bridge/package.json", "bridge/README.md", "scripts/native-host.mjs", "install.bat", "install.ps1", "install.sh", "README.md", "LICENSE", "CHANGELOG.md"]) {
   addFile(join(ROOT, rel), rel);
 }
 addFile(notes, "RELEASE_NOTES.md");
@@ -193,7 +193,8 @@ const entries = [...files.entries()]
   .map(([zp, abs]) => ({
     name: `${prefix}/${zp}`,
     data: readFileSync(abs),
-    mode: statSync(abs).mode & 0o111 ? 0o100755 : 0o100644,
+    // Windows has no exec bit, so shell scripts are marked executable explicitly.
+    mode: zp.endsWith(".sh") || statSync(abs).mode & 0o111 ? 0o100755 : 0o100644,
   }));
 entries.push({ name: `${prefix}/package.json`, data: Buffer.from(JSON.stringify(bundlePackageJson, null, 2) + "\n") });
 writeFileSync(join(OUT, bundleName), zip(entries));

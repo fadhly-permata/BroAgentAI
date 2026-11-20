@@ -1,21 +1,24 @@
 // Install / uninstall the com.broagentai.host native-messaging manifest.
 // Usage:
-//   node scripts/native-host.mjs install [--extension-id <id>] [--browser chrome|chromium|edge|firefox]
+//   node scripts/native-host.mjs install [--extension-id <id>] [--browser chrome|chromium|edge|brave|firefox]
 //                                        [--manifest-dir <dir>] [--launcher <file>] [--env KEY=VALUE]... [--dry-run]
-//   node scripts/native-host.mjs uninstall [--browser ...] [--manifest-dir <dir>] [--launcher <file>]
+//   node scripts/native-host.mjs uninstall [--browser ...] [--manifest-dir <dir>] [--launcher <file>] [--dry-run]
 //
 // Extension id: --extension-id, or BROAGENTAI_EXTENSION_ID, or (default) the id
 // Chromium derives for the unpacked extension loaded from extension/dist.
 //
-// Windows specifics handled here:
-//   - the manifest cannot carry arguments, so a small .cmd launcher runs
-//     `node bridge/dist/index.js`. It lives OUTSIDE bridge/dist because the
-//     bridge build cleans that folder.
-//   - browsers find the manifest through an HKCU registry key, which is added
-//     on install and removed on uninstall.
+// The manifest cannot carry arguments, so a small launcher runs
+// `node bridge/dist/index.js` with the absolute path of the Node.js that runs
+// this script (browsers start hosts with a minimal PATH). The launcher lives
+// OUTSIDE bridge/dist because the bridge build cleans that folder. One launcher
+// serves every browser, so uninstall keeps it while another browser uses it.
+//   - Windows: bridge/broagentai-host.cmd. Browsers find the manifest through
+//     an HKCU registry key, which is added on install and removed on uninstall.
+//   - Linux / macOS: bridge/broagentai-host.sh (mode 0755). Browsers find the
+//     manifest by its place in their per-user NativeMessagingHosts folder.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,13 +27,14 @@ const HOST_NAME = "com.broagentai.host";
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BRIDGE_ENTRY = join(ROOT, "bridge", "dist", "index.js");
 const EXTENSION_DIST = join(ROOT, "extension", "dist");
-const BROWSERS = ["chrome", "chromium", "edge", "firefox"];
+const BROWSERS = ["chrome", "chromium", "edge", "brave", "firefox"];
 const IS_WINDOWS = process.platform === "win32";
 
 const REGISTRY_ROOT = {
   chrome: "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts",
   chromium: "HKCU\\Software\\Chromium\\NativeMessagingHosts",
   edge: "HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts",
+  brave: "HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts",
   firefox: "HKCU\\Software\\Mozilla\\NativeMessagingHosts",
 };
 
@@ -41,8 +45,8 @@ function fail(message) {
 
 function usage() {
   fail(
-    "Usage: node scripts/native-host.mjs install [--extension-id <id>] [--browser chrome|chromium|edge|firefox] [--manifest-dir <dir>] [--launcher <file>] [--env KEY=VALUE] [--dry-run]\n" +
-    "       node scripts/native-host.mjs uninstall [--browser chrome|chromium|edge|firefox] [--manifest-dir <dir>] [--launcher <file>]"
+    "Usage: node scripts/native-host.mjs install [--extension-id <id>] [--browser chrome|chromium|edge|brave|firefox] [--manifest-dir <dir>] [--launcher <file>] [--env KEY=VALUE] [--dry-run]\n" +
+    "       node scripts/native-host.mjs uninstall [--browser chrome|chromium|edge|brave|firefox] [--manifest-dir <dir>] [--launcher <file>] [--dry-run]"
   );
 }
 
@@ -75,6 +79,10 @@ export function unpackedExtensionId(absolutePath) {
   return [...hex].map((digit) => String.fromCharCode(97 + parseInt(digit, 16))).join("");
 }
 
+/**
+ * Per-user folder the host manifest goes to. On Linux and macOS the browser
+ * finds it there; on Windows the registry key points at it.
+ */
 function hostDir(browser) {
   const home = homedir();
   if (process.platform === "darwin") {
@@ -82,6 +90,7 @@ function hostDir(browser) {
     if (browser === "firefox") return join(base, "Mozilla", "NativeMessagingHosts");
     if (browser === "chromium") return join(base, "Chromium", "NativeMessagingHosts");
     if (browser === "edge") return join(base, "Microsoft Edge", "NativeMessagingHosts");
+    if (browser === "brave") return join(base, "BraveSoftware", "Brave-Browser", "NativeMessagingHosts");
     return join(base, "Google", "Chrome", "NativeMessagingHosts");
   }
   if (IS_WINDOWS) {
@@ -89,12 +98,22 @@ function hostDir(browser) {
     if (browser === "firefox") return join(base, "Mozilla", "NativeMessagingHosts");
     if (browser === "chromium") return join(base, "Chromium", "NativeMessagingHosts");
     if (browser === "edge") return join(base, "Microsoft", "Edge", "NativeMessagingHosts");
+    if (browser === "brave") return join(base, "BraveSoftware", "Brave-Browser", "NativeMessagingHosts");
     return join(base, "Google", "Chrome", "NativeMessagingHosts");
   }
+  // Linux: Chromium-based browsers keep their profile under $XDG_CONFIG_HOME
+  // (default ~/.config) and read per-user hosts from a folder next to it.
   if (browser === "firefox") return join(home, ".mozilla", "native-messaging-hosts");
-  if (browser === "chromium") return join(home, ".config", "chromium", "NativeMessagingHosts");
-  if (browser === "edge") return join(home, ".config", "microsoft-edge", "NativeMessagingHosts");
-  return join(home, ".config", "google-chrome", "NativeMessagingHosts");
+  const config = process.env.XDG_CONFIG_HOME || join(home, ".config");
+  if (browser === "chromium") return join(config, "chromium", "NativeMessagingHosts");
+  if (browser === "edge") return join(config, "microsoft-edge", "NativeMessagingHosts");
+  if (browser === "brave") return join(config, "BraveSoftware", "Brave-Browser", "NativeMessagingHosts");
+  return join(config, "google-chrome", "NativeMessagingHosts");
+}
+
+/** Quote one word for POSIX sh: everything inside single quotes is literal. */
+function shQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
 function launcherContent(env) {
@@ -102,8 +121,24 @@ function launcherContent(env) {
     const sets = Object.entries(env).map(([key, value]) => `set "${key}=${value}"`);
     return ["@echo off", ...sets, `"${process.execPath}" "${BRIDGE_ENTRY}" %*`, ""].join("\r\n");
   }
-  const exports = Object.entries(env).map(([key, value]) => `export ${key}='${value.replace(/'/g, "'\\''")}'`);
-  return ["#!/bin/sh", ...exports, `exec "${process.execPath}" "${BRIDGE_ENTRY}" "$@"`, ""].join("\n");
+  for (const key of Object.keys(env)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) fail(`Invalid environment variable name: ${key}`);
+  }
+  const exports = Object.entries(env).map(([key, value]) => `export ${key}=${shQuote(value)}`);
+  return ["#!/bin/sh", ...exports, `exec ${shQuote(process.execPath)} ${shQuote(BRIDGE_ENTRY)} "$@"`, ""].join("\n");
+}
+
+/** Browsers other than `except` whose default manifest still points at `launcher`. */
+function otherUsers(launcher, except) {
+  return BROWSERS.filter((browser) => {
+    if (browser === except) return false;
+    try {
+      const m = JSON.parse(readFileSync(join(hostDir(browser), `${HOST_NAME}.json`), "utf8"));
+      return typeof m.path === "string" && resolve(m.path) === launcher;
+    } catch {
+      return false; // no manifest for that browser
+    }
+  });
 }
 
 function manifest({ browser, extensionId, launcher }) {
@@ -134,11 +169,22 @@ function main() {
   const registryKey = `${REGISTRY_ROOT[opts.browser]}\\${HOST_NAME}`;
 
   if (cmd === "uninstall") {
-    if (opts.dryRun) { console.log(`Would remove ${file} and ${launcher}`); return; }
+    // One launcher serves every browser: keep it while another browser still uses it.
+    const users = otherUsers(launcher, opts.browser);
+    const kept = users.length > 0 ? `${launcher} (still used by ${users.join(", ")})` : null;
+    if (opts.dryRun) {
+      console.log(`Would remove ${file}`);
+      console.log(kept ? `Would keep ${kept}` : `Would remove ${launcher}`);
+      if (IS_WINDOWS) console.log(`Would remove registry key ${registryKey}`);
+      return;
+    }
     rmSync(file, { force: true });
-    rmSync(launcher, { force: true });
     console.log(`Removed ${file}`);
-    console.log(`Removed ${launcher}`);
+    if (kept) console.log(`Kept ${kept}`);
+    else {
+      rmSync(launcher, { force: true });
+      console.log(`Removed ${launcher}`);
+    }
     if (IS_WINDOWS) {
       try { reg(["delete", registryKey, "/f"]); console.log(`Removed registry key ${registryKey}`); }
       catch { /* key was not present */ }

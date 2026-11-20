@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
-import { parsePorcelainV2 } from "./git.ts";
+import { parseGitLog, parseNameStatusZ, parsePorcelainV2 } from "./git.ts";
 
 let hasGit = true;
 try { execFileSync("git", ["--version"], { stdio: "ignore" }); } catch { hasGit = false; }
@@ -269,4 +269,73 @@ repoTest("git.status reports an in-progress merge with conflicts", async () => {
   assert.equal(file(status, "a.txt").conflicted, true);
   assert.equal((await call("git.commit", { message: "x" })).error?.code, -32017);
   assert.equal((await call("git.discard", { paths: ["a.txt"] })).error?.code, -32017);
+});
+
+test("parseGitLog splits records, decorations and parents", () => {
+  const rec = (...f: string[]) => f.join("\x00") + "\x1e";
+  const out = rec("a".repeat(40), "aaaaaaa", "Ann", "ann@example.com", "2026-01-02T03:04:05+07:00", "feat: x, y", "HEAD -> main, origin/main, tag: v1", "b".repeat(40) + " " + "c".repeat(40))
+    + "\n" + rec("b".repeat(40), "bbbbbbb", "Bob", "bob@example.com", "2026-01-01T00:00:00Z", "root", "", "") + "\n";
+  const commits = parseGitLog(out);
+  assert.equal(commits.length, 2);
+  assert.equal(commits[0].message, "feat: x, y");
+  assert.deepEqual(commits[0].refs, ["HEAD -> main", "origin/main", "tag: v1"]);
+  assert.deepEqual(commits[0].parents, ["b".repeat(40), "c".repeat(40)]);
+  assert.deepEqual(commits[1].refs, []);
+  assert.deepEqual(commits[1].parents, []);
+});
+
+repoTest("git.log returns history with refs; maxCount is validated", async () => {
+  const { ws, ok, call } = await repo();
+  writeFileSync(join(ws, "a.txt"), "a2\n");
+  sh(ws, "commit", "-q", "-am", "second");
+  const { commits } = await ok("git.log");
+  assert.equal(commits.length, 2);
+  assert.equal(commits[0].message, "second");
+  assert.ok(commits[0].refs.includes("HEAD -> main"));
+  assert.equal(commits[0].parents[0], commits[1].hash);
+  assert.equal((await ok("git.log", { maxCount: 1 })).commits.length, 1);
+  assert.ok((await call("git.log", { maxCount: 0 })).error);
+});
+
+repoTest("git.log on a repository without commits is empty", async () => {
+  const ws = mkdtempSync(join(tmpdir(), "ba-git-empty-"));
+  sh(ws, "init", "-q", "-b", "main");
+  const s = new RpcServer({ store: new WorkspaceStore({ configDir: mkdtempSync(join(tmpdir(), "ba-git-cfg-")) }) });
+  await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
+  const res = await s.handle({ id: 1, method: "git.log", params: {} });
+  assert.equal(res.error, undefined, res.error?.message);
+  assert.deepEqual((res.result as any).commits, []);
+});
+
+test("parseNameStatusZ handles renames and plain records", () => {
+  const out = ["M", "a.txt", "R100", "old.txt", "new.txt", "A", "dir/c.txt", ""].join("\0");
+  assert.deepEqual(parseNameStatusZ(out), [
+    { path: "a.txt", status: "M" },
+    { path: "new.txt", origPath: "old.txt", status: "R" },
+    { path: "dir/c.txt", status: "A" },
+  ]);
+});
+
+repoTest("git.commitFiles and git.commitDiff describe one commit", async () => {
+  const { ws, ok, call } = await repo();
+  const root = (await ok("git.log")).commits[0];
+  const rootFiles = await ok("git.commitFiles", { hash: root.hash });
+  assert.deepEqual(rootFiles.files.map((f: any) => f.path).sort(), ["a.txt", "b.txt", "dir/c.txt"]);
+  assert.ok(rootFiles.files.every((f: any) => f.status === "A"));
+
+  writeFileSync(join(ws, "a.txt"), "a2\n");
+  rmSync(join(ws, "b.txt"));
+  sh(ws, "commit", "-q", "-am", "edit");
+  const head = (await ok("git.log")).commits[0];
+  const files = await ok("git.commitFiles", { hash: head.shortHash });
+  assert.deepEqual(files.files, [{ path: "a.txt", status: "M" }, { path: "b.txt", status: "D" }]);
+
+  const diff = await ok("git.commitDiff", { hash: head.hash, path: "a.txt" });
+  assert.match(diff.diff, /-a1\n\+a2/);
+  const rootDiff = await ok("git.commitDiff", { hash: root.hash, path: "dir/c.txt" });
+  assert.match(rootDiff.diff, /\+c1/);
+
+  assert.ok((await call("git.commitFiles", { hash: "--all" })).error);
+  assert.ok((await call("git.commitFiles", { hash: "deadbeef" })).error);
+  assert.ok((await call("git.commitDiff", { hash: head.hash, path: "../outside.txt" })).error);
 });

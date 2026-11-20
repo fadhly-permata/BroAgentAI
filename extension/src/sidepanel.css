@@ -785,6 +785,53 @@ button.pill:hover { filter: brightness(1.15); }
 .scm-empty { padding: 2px var(--sp-3) 2px 38px; font-size: var(--fs-sm); color: var(--text-muted); }
 .scm-note { padding: var(--sp-1) var(--sp-3); }
 
+/* Changes / Graph sub-view toggle */
+#scmChangesView { display: flex; flex-direction: column; gap: var(--sp-2); }
+#scmChangesView.hidden, #scmGraphView.hidden { display: none; }
+.scm-view-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.scm-view-btn {
+  flex: 1; height: var(--row-h); padding: 0 var(--sp-2);
+  border: 0; border-radius: 0; background: transparent;
+  font-size: var(--fs-sm); color: var(--text-muted);
+}
+.scm-view-btn + .scm-view-btn { border-left: 1px solid var(--border); }
+.scm-view-btn:hover { background: var(--hover); color: var(--text); }
+.scm-view-btn.active { background: var(--hover); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* Commit graph */
+.scm-graph-container { margin: 0 calc(-1 * var(--sp-3)); }
+.scm-graph-rows { display: flex; flex-direction: column; }
+.scm-graph-row {
+  height: 22px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  font-size: var(--font-size); white-space: nowrap; cursor: default;
+}
+.scm-graph-row:hover, .scm-graph-row.open { background: var(--hover); }
+.scm-graph-row { cursor: pointer; }
+.scm-graph-lanes { flex: none; display: block; overflow: visible; }
+.scm-graph-lanes path, .scm-graph-spacer path { fill: none; stroke-width: 1.6; stroke-linecap: butt; }
+.scm-graph-msg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; }
+.scm-graph-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.scm-graph-row.is-head .scm-graph-subject { font-weight: 600; }
+.scm-graph-author { flex: none; max-width: 35%; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); color: var(--text-muted); }
+.scm-ref {
+  flex: none; max-width: 140px; overflow: hidden; text-overflow: ellipsis;
+  padding: 0 5px; line-height: 16px; border-radius: 8px;
+  font-size: var(--fs-xs); border: 1px solid var(--border); color: var(--text-muted);
+}
+.scm-ref-head { border-color: var(--accent); color: var(--text); }
+.scm-ref-tag { border-color: var(--git-modified); color: var(--git-modified); }
+.scm-ref-remote { font-style: italic; }
+.scm-graph-more { margin: var(--sp-2) var(--sp-3); }
+.scm-graph-files { display: flex; align-items: stretch; padding-left: var(--sp-2); }
+.scm-graph-spacer { flex: none; position: relative; }
+.scm-graph-spacer svg { position: absolute; left: 0; top: -1px; height: calc(100% + 2px); overflow: visible; }
+.scm-graph-files-list { flex: 1; min-width: 0; padding: 2px 0 4px 6px; }
+.scm-graph-files-head { padding: 0 var(--sp-3) 2px var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scm-commit-file { padding-left: var(--sp-2); cursor: pointer; }
+.scm-graph-files .scm-empty { padding-left: var(--sp-2); }
+
 /* ----- Terminal -------------------------------------------------------- */
 .term-bar {
   height: 26px; flex: none;

@@ -28,7 +28,7 @@ const errorsOf = (raw: unknown) => {
 
 test('every built-in plugin is valid, named after its folder, with its icon present', () => {
   const folders = readdirSync(pluginsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  assert.deepEqual(folders.sort(), ['chatgpt', 'deepseek', 'gemini', 'ptero', 'qwen']);
+  assert.deepEqual(folders.sort(), ['chatgpt', 'deepseek', 'gemini', 'ptero', 'qwen', 'tusksearch']);
   for (const folder of folders) {
     const raw = JSON.parse(readFileSync(join(pluginsDir, folder, 'plugin.json'), 'utf8'));
     const result = validatePluginManifest(raw);
@@ -101,4 +101,22 @@ test('toProviderInfo maps the manifest to the provider the panel uses', () => {
     icon: '/assets/icon-abc.png',
     style: '[data-ba-agent] { color: red }',
   });
+});
+
+test('errorReplies: valid patterns pass and reach ProviderInfo', () => {
+  const res = validatePluginManifest(minimal({ errorReplies: ['^Something went wrong', 'rate limit'] }));
+  assert.equal(res.ok, true);
+  if (res.ok) assert.deepEqual(toProviderInfo(res.plugin).errorReplies, ['^Something went wrong', 'rate limit']);
+});
+
+test('errorReplies: bad regex, catch-all pattern, wrong type and too many are refused', () => {
+  const errorsOf = (value: unknown) => {
+    const res = validatePluginManifest(minimal({ errorReplies: value }));
+    return res.ok ? [] : res.errors;
+  };
+  assert.match(errorsOf(['(unclosed']).join(' '), /not a valid regular expression/);
+  assert.match(errorsOf(['.*']).join(' '), /matches an empty reply/);
+  assert.match(errorsOf(['']).join(' '), /must be text/);
+  assert.match(errorsOf('oops').join(' '), /at most 10 patterns/);
+  assert.match(errorsOf(Array.from({ length: 11 }, (_, i) => `err${i}`)).join(' '), /at most 10 patterns/);
 });
