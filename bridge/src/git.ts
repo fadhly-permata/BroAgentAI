@@ -599,3 +599,149 @@ export async function gitTestRemote(store: WorkspaceStore, remote: unknown): Pro
   await git(root, ["ls-remote", "--heads", name], GIT_REMOTE_TIMEOUT_MS);
   return { remote: name, reachable: true };
 }
+
+// ---------------------------------------------------------------- commit history
+
+/** Default and maximum number of commits returned by `git.log`. */
+export const DEFAULT_LOG_COUNT = 50;
+export const MAX_LOG_COUNT = 500;
+
+export interface GitCommit {
+  hash: string;
+  shortHash: string;
+  author: string;
+  authorEmail: string;
+  /** ISO-8601 author date. */
+  date: string;
+  /** Subject line only. */
+  message: string;
+  /** Decorations, e.g. "HEAD -> main", "origin/main", "tag: v1.0". */
+  refs: string[];
+  /** Full parent hashes (empty for a root commit, 2+ for a merge). */
+  parents: string[];
+}
+
+const LOG_FORMAT = "%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%D%x00%P%x1e";
+
+/** Parse `git log` output produced with {@link LOG_FORMAT} (records end with RS, fields split by NUL). */
+export function parseGitLog(out: string): GitCommit[] {
+  const commits: GitCommit[] = [];
+  for (const raw of out.split("\x1e")) {
+    const record = raw.replace(/^\r?\n/, "");
+    if (record.trim() === "") continue;
+    const [hash, shortHash, author, authorEmail, date, message, refs, parents] = record.split("\x00");
+    if (!hash) continue;
+    commits.push({
+      hash,
+      shortHash: shortHash ?? hash.slice(0, 7),
+      author: author ?? "",
+      authorEmail: authorEmail ?? "",
+      date: date ?? "",
+      message: message ?? "",
+      refs: refs ? refs.split(",").map((r) => r.trim()).filter((r) => r !== "") : [],
+      parents: parents ? parents.trim().split(" ").filter((p) => p !== "") : [],
+    });
+  }
+  return commits;
+}
+
+/** `git.log`: recent commit history across all refs, newest first, for graph rendering. */
+export async function gitLog(store: WorkspaceStore, maxCount?: unknown): Promise<{ commits: GitCommit[] }> {
+  const { root } = await requireRepo(store);
+  let count = DEFAULT_LOG_COUNT;
+  if (maxCount !== undefined && maxCount !== null) {
+    const n = Number(maxCount);
+    if (!Number.isInteger(n) || n < 1) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "maxCount must be a positive integer");
+    count = Math.min(n, MAX_LOG_COUNT);
+  }
+  // An unborn repository (no commits yet) has nothing to show.
+  if ((await runGit(root, ["rev-parse", "--verify", "--quiet", "HEAD"], GIT_TIMEOUT_MS)).code !== 0) {
+    const anyRef = await git(root, ["for-each-ref", "--count=1", "--format=%(refname)"]);
+    if (anyRef.trim() === "") return { commits: [] };
+  }
+  const out = await git(root, ["log", "--all", "--topo-order", "-n", String(count), `--format=${LOG_FORMAT}`]);
+  return { commits: parseGitLog(out) };
+}
+
+// ---------------------------------------------------------------- commit details
+
+/** One file touched by a commit (compared with its first parent). */
+export interface GitCommitFile {
+  path: string;
+  /** Original path for renames/copies. */
+  origPath?: string;
+  /** A M D R C T (score digits stripped). */
+  status: string;
+}
+
+export interface GitCommitFilesResult {
+  hash: string;
+  parents: string[];
+  files: GitCommitFile[];
+  truncated: boolean;
+}
+
+export interface GitCommitDiffResult {
+  hash: string;
+  path: string;
+  diff: string;
+  truncated: boolean;
+}
+
+const COMMIT_REF = /^[0-9a-f]{4,64}$/i;
+
+/** Resolve a caller-supplied commit hash to its full hash and parents. */
+async function requireCommit(root: string, hash: unknown): Promise<{ hash: string; parents: string[] }> {
+  if (typeof hash !== "string" || !COMMIT_REF.test(hash)) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "hash must be a hexadecimal commit id");
+  }
+  const run = await runGit(root, ["rev-list", "--parents", "-n", "1", `${hash}^{commit}`, "--"], GIT_TIMEOUT_MS);
+  if (run.code !== 0) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, `unknown commit: ${hash}`);
+  const [full, ...parents] = run.stdout.trim().split(" ");
+  return { hash: full, parents };
+}
+
+/** Parse `--name-status -z` output: STATUS NUL path [NUL path2 for R/C] NUL ... */
+export function parseNameStatusZ(out: string): GitCommitFile[] {
+  const tokens = out.split("\0");
+  const files: GitCommitFile[] = [];
+  for (let i = 0; i < tokens.length; ) {
+    const raw = tokens[i++];
+    if (!raw) continue;
+    const status = raw.charAt(0);
+    if (status === "R" || status === "C") {
+      const origPath = tokens[i++];
+      const path = tokens[i++];
+      if (path) files.push({ path, origPath, status });
+    } else {
+      const path = tokens[i++];
+      if (path) files.push({ path, status });
+    }
+  }
+  return files;
+}
+
+/** `git.commitFiles`: files a commit changed relative to its first parent (root commits: all files). */
+export async function gitCommitFiles(store: WorkspaceStore, hash: unknown): Promise<GitCommitFilesResult> {
+  const { root } = await requireRepo(store);
+  const commit = await requireCommit(root, hash);
+  const args = commit.parents.length === 0
+    ? ["diff-tree", "-r", "--root", "--no-commit-id", "--name-status", "-z", "-M", commit.hash]
+    : ["diff", "--name-status", "-z", "-M", "--no-color", "--no-ext-diff", commit.parents[0], commit.hash];
+  const files = parseNameStatusZ(await git(root, args));
+  const truncated = files.length > MAX_STATUS_FILES;
+  return { hash: commit.hash, parents: commit.parents, files: truncated ? files.slice(0, MAX_STATUS_FILES) : files, truncated };
+}
+
+/** `git.commitDiff`: one file's diff in a commit, against the commit's first parent. */
+export async function gitCommitDiff(store: WorkspaceStore, hash: unknown, path: unknown, origPath?: unknown): Promise<GitCommitDiffResult> {
+  const { root } = await requireRepo(store);
+  const commit = await requireCommit(root, hash);
+  const paths = normalizePaths(root, origPath ? [path, origPath] : [path]);
+  const args = commit.parents.length === 0
+    ? ["diff-tree", "-p", "-M", "--root", "--no-commit-id", "--no-color", "--no-ext-diff", commit.hash, "--", ...paths]
+    : ["diff", "-M", "--no-color", "--no-ext-diff", commit.parents[0], commit.hash, "--", ...paths];
+  const diff = await git(root, args);
+  const truncated = Buffer.byteLength(diff, "utf8") > MAX_DIFF_BYTES;
+  return { hash: commit.hash, path: paths[0], diff: truncated ? diff.slice(0, MAX_DIFF_BYTES) : diff, truncated };
+}

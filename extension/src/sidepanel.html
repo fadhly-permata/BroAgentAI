@@ -103,12 +103,25 @@
       </div>
       <p class="upstream-line"><span id="scmUpstream"></span></p>
       <div id="conflictBanner" class="callout callout-warn hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
-      <div class="commit-box">
-        <textarea id="commitMsg" rows="3" data-i18n-ph="commitPlaceholder" placeholder="feat: ..." aria-label="Commit message"></textarea>
-        <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span data-i18n="commit">Commit</span></button>
-        <p id="commitOut" class="muted"></p>
+      <div class="scm-view-toggle" role="tablist" aria-label="Source control view">
+        <button class="scm-view-btn active" role="tab" aria-selected="true" aria-controls="scmChangesView" data-view="changes" data-i18n="changes">Changes</button>
+        <button class="scm-view-btn" role="tab" aria-selected="false" aria-controls="scmGraphView" data-view="graph" data-i18n="graph">Graph</button>
       </div>
-      <div id="scmGroups" class="scm-groups"></div>
+
+      <div id="scmChangesView" role="tabpanel">
+        <div class="commit-box">
+          <textarea id="commitMsg" rows="3" data-i18n-ph="commitPlaceholder" placeholder="feat: ..." aria-label="Commit message"></textarea>
+          <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span data-i18n="commit">Commit</span></button>
+          <p id="commitOut" class="muted"></p>
+        </div>
+        <div id="scmGroups" class="scm-groups"></div>
+      </div>
+
+      <div id="scmGraphView" class="hidden" role="tabpanel">
+        <div id="scmGraph" class="scm-graph-container">
+          <p class="muted" data-i18n="loadingGraph">Memuat riwayat commit...</p>
+        </div>
+      </div>
     </div>
   </div>
 </section>

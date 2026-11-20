@@ -24,7 +24,7 @@ import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
 import {
-  gitAbort, gitBranches, gitCheckout, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitPull, gitPush,
+  gitAbort, gitBranches, gitCheckout, gitCommit, gitCommitDiff, gitCommitFiles, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitLog, gitPull, gitPush,
   gitStage, gitStatus, gitTestRemote, gitUnstage,
 } from "./git.ts";
 import { SessionStore } from "./session-store.ts";
@@ -319,6 +319,12 @@ export class RpcServer {
     this.register("git.push", () => gitPush(this.#store));
     this.register("git.abort", () => gitAbort(this.#store));
     this.register("git.testRemote", (params) => gitTestRemote(this.#store, readParams(params).remote));
+    this.register("git.log", (params) => gitLog(this.#store, params == null ? undefined : readParams(params).maxCount));
+    this.register("git.commitFiles", (params) => gitCommitFiles(this.#store, readParams(params).hash));
+    this.register("git.commitDiff", (params) => {
+      const p = readParams(params);
+      return gitCommitDiff(this.#store, p.hash, p.path, p.origPath);
+    });
 
     // Terminal: a real PTY in the active workspace. Output arrives as events.
     this.register("term.create", (params) => {
