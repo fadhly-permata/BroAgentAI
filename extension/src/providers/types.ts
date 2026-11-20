@@ -96,3 +96,9 @@ export interface ProviderHealth {
   composer: boolean;
   messages: number;
 }
+
+/** One message read from the chat page, for the handoff transcript. */
+export interface ConversationMessage {
+  side: 'user' | 'assistant';
+  text: string;
+}

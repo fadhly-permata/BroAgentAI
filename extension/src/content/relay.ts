@@ -147,6 +147,16 @@ function startRelay(provider: ProviderInfo): void {
       sendResponse({ ok: true, paused });
       return;
     }
+    if (message.type === 'ba.transcript') {
+      // Read-only: the conversation on the page, for the handoff snapshot.
+      // Allowed while paused or inactive - it types nothing and reports nothing.
+      try {
+        sendResponse({ ok: true, messages: adapter.readConversation() });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
     if (message.type === 'ba.deactivate') {
       stop();
       sendResponse({ ok: true });

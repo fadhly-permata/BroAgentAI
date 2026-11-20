@@ -1,5 +1,5 @@
 // Shared DOM adapter: drives a chat page using only the selectors from a plugin's plugin.json.
-import type { ProviderHealth, ProviderInfo, ProviderReply } from './types.js';
+import type { ConversationMessage, ProviderHealth, ProviderInfo, ProviderReply } from './types.js';
 import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, cutText, fencedBlocks, joinLines, spliceCode } from './reply-text.js';
 
 function visible(el: Element | null): el is HTMLElement {
@@ -62,9 +62,40 @@ export class DomAdapter {
     const messages = this.#messages();
     const last = messages[messages.length - 1];
     if (!last) return { count: 0, key: null, text: '', codeBlocks: [] };
+    return { count: messages.length, ...this.#readMessage(last) };
+  }
+
+  /**
+   * Every message on the page, user and assistant, in document order. User
+   * bubbles come from the plugin's userMessage selector, else from the
+   * messageKeyAttr wrappers that hold no assistant reply; with neither, only
+   * the assistant side is read. Pages that virtualize the list only return
+   * what is currently in the DOM.
+   */
+  readConversation(): ConversationMessage[] {
+    const assistant = this.#messages();
+    const { userMessage, messageKeyAttr } = this.provider.selectors;
+    // Without a userMessage selector, a page that wraps every message in an
+    // element carrying the ordering key (DeepSeek) still tells them apart:
+    // a wrapper with no assistant reply inside is a user message.
+    const userSelector = userMessage || (messageKeyAttr ? `[${messageKeyAttr}]` : '');
+    const user = userSelector ? outermost([...document.querySelectorAll<HTMLElement>(userSelector)]) : [];
+    const tagged = [
+      ...assistant.map((el) => ({ el, side: 'assistant' as const })),
+      ...user.filter((el) => !assistant.some((a) => a.contains(el) || el.contains(a))).map((el) => ({ el, side: 'user' as const })),
+    ];
+    tagged.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    return tagged.map(({ el, side }) => ({
+      side,
+      text: side === 'assistant' ? this.#readMessage(el).text : (el.innerText ?? el.textContent ?? ''),
+    }));
+  }
+
+  /** Text and code blocks of one assistant message element. */
+  #readMessage(last: HTMLElement): Omit<ProviderReply, 'count'> {
     const key = this.#keyOf(last);
     const source = this.#markdownOf(last);
-    if (source !== null) return { count: messages.length, key, text: source, codeBlocks: fencedBlocks(source) };
+    if (source !== null) return { key, text: source, codeBlocks: fencedBlocks(source) };
 
     const { codeBlock, codeLine, exclude } = this.provider.selectors;
     const blocks = codeBlock ? outermost([...last.querySelectorAll<HTMLElement>(codeBlock)]) : this.#preBlocks(last);
@@ -79,7 +110,7 @@ export class DomAdapter {
         code: codeBlocks[i],
       })));
     }
-    return { count: messages.length, key, text, codeBlocks };
+    return { key, text, codeBlocks };
   }
 
   /**

@@ -9,7 +9,7 @@
 import { bridge } from './bridge-client.js';
 import { NATIVE_CALL_REMINDER, formatCorrection, formatToolResult, parseReply } from './agent-parser.js';
 import { SEND_ATTEMPTS, retryBackoffMs, sendDelayMs, toolTimeoutMs } from './agent-timing.js';
-import { buildHandoffSnapshot, formatHandoffContext } from './agent-handoff.js';
+import { buildHandoffSnapshot, classifyChatMessage, emptyWorkSummary, formatHandoffContext, normalizeTranscript, noteToolCall, validateHandoffSnapshot, workspaceFromGitStatus, type HandoffSnapshot, type HandoffTurn, type WorkSummary, type WorkspaceState } from './agent-handoff.js';
 import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
@@ -53,6 +53,16 @@ interface Session {
    * own when the user comes back to the chat tab.
    */
   paused: boolean;
+  /**
+   * Conversation from before this chat tab: earlier providers (a switch) or a
+   * resumed .broagentai/handoff.json. The current tab's own part is read from
+   * the page when a snapshot is made.
+   */
+  carried: HandoffTurn[];
+  /** Messages of the current tab as the panel saw them; fallback when the page cannot be read. */
+  recorded: HandoffTurn[];
+  /** Tools that ran OK and the files they read or changed, over the whole task. */
+  work: WorkSummary;
 }
 
 type PhaseKind = 'opening' | 'connecting' | 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'paused' | 'failed' | 'offline';
@@ -66,6 +76,9 @@ const CONNECT_READY_MS = 20_000;
 let switching = false;
 
 const MAX_TOOL_CALLS = 40;
+/** Workspace file the session is saved to, so a later session can resume the task. */
+const HANDOFF_FILE = '.broagentai/handoff.json';
+const MAX_RECORDED = 400;
 const REMINDER_EVERY = 8;
 const MODE_KEY = 'broagentai.agentMode';
 const NOTICE_KEY = 'broagentai.agentNoticeDismissed';
@@ -278,22 +291,128 @@ async function waitForChatReady(tabId: number, timeoutMs: number, launch?: Launc
   return latest;
 }
 
+/** Remember one message of the current chat tab (fallback for when the page cannot be read). */
+function record(active: Session, side: 'user' | 'assistant', text: string): void {
+  const turn = classifyChatMessage(side, text);
+  if (!turn) return;
+  active.recorded.push(turn);
+  if (active.recorded.length > MAX_RECORDED) active.recorded = active.recorded.slice(-MAX_RECORDED);
+}
+
 /**
- * Compact, provider-agnostic summary of a session, used as the first message
- * after moving the chat to another provider. It cannot carry the raw history
- * (the new chat never saw it), so it states where the work stands: the tools
- * already run and the last thing the AI said, so the agent continues instead
- * of starting over.
+ * The whole conversation of the session: what was carried in from earlier
+ * chats, then the current chat tab read from the page (it has the user's own
+ * messages, which the panel never sees). Falls back to what the panel
+ * recorded when the page cannot be read or shows less (virtualized list,
+ * plugin without a userMessage selector, tab closed).
  */
-function buildHandoffPrompt(active: Session): string {
-  const snapshot = buildHandoffSnapshot({
+async function collectTranscript(active: Session): Promise<HandoffTurn[]> {
+  let current = active.recorded;
+  try {
+    const res = await tabMessage(active.tabId, { type: 'ba.transcript' });
+    if (res?.ok && Array.isArray(res.messages)) {
+      const fromPage = res.messages.flatMap((m: any): HandoffTurn[] => {
+        const turn = classifyChatMessage(m?.side === 'assistant' ? 'assistant' : 'user', String(m?.text ?? ''));
+        return turn ? [turn] : [];
+      });
+      // Use the page only when it still shows everything the panel saw itself
+      // (a virtualized list drops old messages); then it adds the user's own words.
+      if (fromPage.filter((turn: HandoffTurn) => turn.role !== 'user').length >= current.length) current = fromPage;
+    }
+  } catch { /* tab gone or reloading: keep what the panel recorded */ }
+  return normalizeTranscript([...active.carried, ...current]);
+}
+
+/** Branch and changed files of the workspace right now; null outside Git or when the bridge is unreachable. */
+async function currentWorkspace(): Promise<WorkspaceState | null> {
+  try {
+    return workspaceFromGitStatus(await bridge.call('git.status'));
+  } catch {
+    return null;
+  }
+}
+
+function snapshotOf(active: Session, transcript: HandoffTurn[], workspace: WorkspaceState | null): HandoffSnapshot {
+  const lastUser = [...transcript].reverse().find((turn) => turn.role === 'user');
+  return buildHandoffSnapshot({
     provider: active.provider.label,
     totalCalls: active.totalCalls,
     lastSent: active.lastSent,
     lastReplyText: active.lastReplyText,
     logs,
+    transcript,
+    workspace,
+    workSummary: { ...active.work, lastTaskDescription: lastUser ? lastUser.text.slice(0, 1000) : active.work.lastTaskDescription },
   });
-  return formatHandoffContext(snapshot);
+}
+
+/** True when a snapshot holds something to continue from (not just the operating prompt). */
+function worthResuming(snapshot: HandoffSnapshot): boolean {
+  return snapshot.totalCalls > 0 || snapshot.transcript.some((turn) => turn.role === 'user' || turn.role === 'assistant');
+}
+
+/**
+ * First message of a chat that continues a task: the full operating prompt
+ * (tools and rules) with the handoff context at the very end, so it wins over
+ * any generic opening instruction.
+ */
+function handoffMessage(systemPrompt: string, context: string): string {
+  return systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${context}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
+}
+
+let saving: Promise<void> = Promise.resolve();
+
+/**
+ * Write the session to .broagentai/handoff.json in the workspace, so a later
+ * session (another window, profile or day) can pick the task up. Writes are
+ * queued one after another; a failure only warns - it must never break the loop.
+ */
+function saveWorkspaceHandoff(active: Session): Promise<void> {
+  if (!deps.hasWorkspace()) return saving;
+  saving = saving.then(async () => {
+    const snapshot = snapshotOf(active, await collectTranscript(active), await currentWorkspace());
+    if (!worthResuming(snapshot)) return;
+    await bridge.call('fs.mkdir', { path: '.broagentai' }).catch(() => {});
+    await bridge.call('fs.writeFile', { path: HANDOFF_FILE, content: JSON.stringify(snapshot, null, 2) + '\n' });
+  }).catch((err) => { console.warn('Failed to save workspace handoff:', err); });
+  return saving;
+}
+
+async function readWorkspaceHandoff(): Promise<HandoffSnapshot | null> {
+  try {
+    const res: any = await bridge.call('fs.readFile', { path: HANDOFF_FILE });
+    if (typeof res?.content !== 'string' || !res.content.trim()) return null;
+    return validateHandoffSnapshot(JSON.parse(res.content));
+  } catch {
+    return null; // no file, or not a snapshot
+  }
+}
+
+async function deleteWorkspaceHandoff(): Promise<void> {
+  await bridge.call('fs.delete', { path: HANDOFF_FILE }).catch(() => {});
+}
+
+/**
+ * A saved session in this workspace? Ask whether to continue it. Yes returns
+ * the snapshot (its conversation goes into the first prompt); no deletes the
+ * file so the new task starts clean.
+ */
+async function offerWorkspaceResume(launch: Launch): Promise<HandoffSnapshot | null> {
+  const saved = await readWorkspaceHandoff();
+  if (!saved || !worthResuming(saved) || launch.cancelled) return null;
+  const userTurns = saved.transcript.filter((turn) => turn.role === 'user').length;
+  const ok = await deps.confirm('Lanjutkan pekerjaan sebelumnya?',
+    '<p>Ditemukan <code>' + esc(HANDOFF_FILE) + '</code> di workspace ini (' + esc(saved.provider) + ', ' + esc(new Date(saved.createdAt).toLocaleString()) + ').</p>'
+    + '<p>Isinya: ' + saved.transcript.length + ' pesan percakapan (' + userTurns + ' dari kamu), ' + saved.totalCalls + ' tool call.</p>'
+    + '<p><b>OK</b> = lanjutkan pekerjaan itu<br><b>Batal</b> = mulai tugas baru (file dihapus)</p>');
+  if (launch.cancelled) return null;
+  if (!ok) {
+    await deleteWorkspaceHandoff();
+    log({ tool: 'handoff.reset', category: '-', decision: 'user-declined', status: 'info', ms: 0, detail: 'mulai tugas baru; ' + HANDOFF_FILE + ' dihapus' });
+    return null;
+  }
+  log({ tool: 'handoff.resume', category: saved.provider, decision: 'user-approved', status: 'info', ms: 0, detail: 'melanjutkan dari ' + HANDOFF_FILE + ' (' + saved.transcript.length + ' pesan)' });
+  return saved;
 }
 
 /** Fill the switch-provider <select> with every provider except the current one. */
@@ -336,7 +455,11 @@ export async function switchProviderSession(targetId: string): Promise<void> {
 
 async function moveSession(active: Session, target: ProviderInfo): Promise<void> {
   const oldTabId = active.tabId;
-  const handoff = buildHandoffPrompt(active);
+  // Read the old chat before leaving it: the new one never saw that conversation.
+  const transcript = await collectTranscript(active);
+  if (session !== active) return;
+  const handoff = formatHandoffContext(snapshotOf(active, transcript, await currentWorkspace()));
+  if (session !== active) return;
   setPhase('connecting', 'Pindah ke ' + target.label);
 
   // Reuse an open tab of the TARGET provider (never the session's own tab), else open one.
@@ -372,6 +495,8 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   try { await tabMessage(oldTabId, { type: 'ba.deactivate' }); } catch { /* old tab gone */ }
   active.tabId = targetTabId;
   active.provider = target;
+  active.carried = transcript;
+  active.recorded = [];
   active.toolCalls = 0;
   active.resumeGuard = null;
   active.paused = false;
@@ -382,7 +507,7 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
     // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
     const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode(), handoff: true });
     // Append handoff context at the very end to override any "reply READY" instruction (recency bias)
-    promptToSend = systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${handoff}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
+    promptToSend = handoffMessage(systemPrompt, handoff);
   } catch (err) {
     console.warn('Failed to get system prompt for handoff, using basic handoff:', err);
   }
@@ -402,6 +527,7 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   try {
     await send(promptToSend);
     setPhase('waiting', 'Menunggu balasan AI');
+    void saveWorkspaceHandoff(active);
   } catch (err: any) {
     setPhase('failed', 'Ringkasan gagal terkirim: ' + (err?.message || err));
     deps.toast('Ringkasan handoff gagal terkirim. Coba Resend di tab baru.');
@@ -417,6 +543,7 @@ async function send(text: string): Promise<void> {
   if (!session) return;
   const res = await tabMessage(session.tabId, { type: 'ba.send', text });
   if (!res?.ok) throw new Error(res?.error || 'gagal mengirim ke tab chat');
+  record(session, 'user', text);
 }
 
 const delayMs = () => sendDelayMs(($('agentDelay') as HTMLInputElement).value);
@@ -452,6 +579,7 @@ async function deliver(text: string, pause = true): Promise<void> {
       .catch((err: any) => ({ ok: false, code: 'UNREACHABLE', error: err?.message || String(err) }));
     if (session !== active) return;
     if (res?.ok) {
+      record(active, 'user', text);
       setPhase('waiting', 'Menunggu balasan AI');
       return;
     }
@@ -685,12 +813,22 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
 
   try {
     // R10 first: the prompt below states the approval mode, so settle it before building it.
-    const pending: Session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: null, lastReplyText: null, resumeGuard: null, paused: false };
+    const pending: Session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: null, lastReplyText: null, resumeGuard: null, paused: false, carried: [], recorded: [], work: emptyWorkSummary() };
     await guardCustomAutoApprove(pending, () => !launch.cancelled);
     if (launch.cancelled) return;
-    setPhase('connecting', 'Mengirim instruksi agent');
-    const { prompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode() });
+    // A saved session in this workspace: continue it (its conversation goes into the first prompt) or start fresh.
+    const resume = await offerWorkspaceResume(launch);
     if (launch.cancelled) return;
+    setPhase('connecting', resume ? 'Mengirim instruksi + percakapan sebelumnya' : 'Mengirim instruksi agent');
+    // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
+    const { prompt: systemPrompt, toolCount }: any = await bridge.call('agent.prompt', { mode: mode(), handoff: !!resume });
+    if (launch.cancelled) return;
+    const prompt = resume ? handoffMessage(systemPrompt, formatHandoffContext(resume)) : systemPrompt;
+    if (resume) {
+      pending.carried = resume.transcript;
+      pending.totalCalls = resume.totalCalls;
+      if (resume.workSummary) pending.work = { ...resume.workSummary };
+    }
     await activateRelay(tabId, found.provider);
     session = { ...pending, lastSent: prompt };
     await send(prompt);
@@ -727,7 +865,10 @@ export async function stopAgentSession(): Promise<void> {
 
 async function stopSession(reason = 'dihentikan', opts: { notifyUser?: boolean } = {}): Promise<void> {
   if (!session) return;
-  const tabId = session.tabId;
+  const stopped = session;
+  const tabId = stopped.tabId;
+  // Keep the conversation for a later session (read before the relay is retired).
+  void saveWorkspaceHandoff(stopped);
   session = null;
   phase = null;
   phaseBeforePause = null;
@@ -780,12 +921,14 @@ async function handleReply(reply: ProviderReply): Promise<void> {
     return;
   }
   active.lastReplyText = reply.text;
+  record(active, 'assistant', reply.text);
   const parsed = parseReply(reply);
 
   if (parsed.kind === 'final') {
     active.toolCalls = 0;
     log({ tool: 'assistant', category: '-', decision: '-', status: 'info', ms: 0, detail: parsed.text.slice(0, 200) });
     setPhase('idle', 'Selesai - menunggu pesanmu di chat');
+    void saveWorkspaceHandoff(active);
     return;
   }
   if (parsed.kind === 'error') {
@@ -846,6 +989,7 @@ async function handleReply(reply: ProviderReply): Promise<void> {
   try {
     const result: any = await bridge.call('agent.callTool', { command, params, mode: currentMode, approved }, toolTimeoutMs(params));
     log({ tool: command, category: check.category, decision, status: 'ok', ms: Math.round(performance.now() - started) });
+    noteToolCall(active.work, command, check.category, params);
     message = formatToolResult(command, true, result.text, result.truncated);
     if (check.category !== 'read') deps.onFilesChanged();
   } catch (err: any) {
@@ -859,6 +1003,7 @@ async function handleReply(reply: ProviderReply): Promise<void> {
     message += '\n\n[BroAgentAI reminder - automatic, do not reply to it] One fenced JSON command per reply; plain prose when done.';
   }
   await deliver(message);
+  if (session === active) void saveWorkspaceHandoff(active);
 }
 
 export function initAgent(dependencies: AgentDeps): void {

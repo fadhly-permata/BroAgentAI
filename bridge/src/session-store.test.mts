@@ -99,3 +99,30 @@ test("SessionStore on a missing folder lists nothing and loads null", () => {
   assert.deepEqual(store.list(), []);
   assert.equal(store.load("x"), null);
 });
+
+test("the chat transcript is kept, bounded and cleaned; old snapshots load with []", async () => {
+  const { call, cleanup } = fixture();
+  try {
+    await call("session.save", {
+      id: "task-t",
+      snapshot: snapshot({
+        transcript: [
+          { role: "user", text: "  tambah fitur export CSV  " },
+          { role: "assistant", text: "oke" },
+          { role: "robot", text: "dropped: unknown role" },
+          { role: "tool", text: "x".repeat(10_000) },
+          { role: "user", text: "   " },
+        ],
+      }),
+    });
+    const loaded = await call("session.load", { id: "task-t" });
+    assert.equal(loaded.transcript.length, 3);
+    assert.deepEqual(loaded.transcript[0], { role: "user", text: "tambah fitur export CSV" });
+    assert.ok(loaded.transcript[2].text.length <= 4_000, "tool output capped");
+
+    await call("session.save", { id: "task-old", snapshot: snapshot() });
+    assert.deepEqual((await call("session.load", { id: "task-old" })).transcript, []);
+  } finally {
+    cleanup();
+  }
+});

@@ -9,9 +9,9 @@
  *
  * Storage: one JSON file per Session ID under `<configDir>/sessions/`. Session
  * IDs are restricted to a safe character set so a caller can never address a
- * path outside that folder. Snapshots carry no secrets (only tool names, log
- * summaries and the last AI reply), but they are still bounded on write and
- * validated on read.
+ * path outside that folder. Snapshots hold log summaries and the chat
+ * conversation (which can quote file contents), so they stay local and are
+ * bounded on write and validated on read.
  */
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -23,6 +23,10 @@ const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_LOGS = 100;
 const MAX_TEXT = 12_000;
 const MAX_DETAIL = 2_000;
+const MAX_TURNS = 300;
+const MAX_TURN_TEXT = 8_000;
+const MAX_TOOL_TURN_TEXT = 4_000;
+const TURN_ROLES = ["user", "assistant", "tool", "agent"] as const;
 
 /** One activity row, mirroring the extension's HandoffLogEntry. */
 export interface SessionLogEntry {
@@ -35,6 +39,12 @@ export interface SessionLogEntry {
   detail?: string;
 }
 
+/** One chat message, mirroring the extension's HandoffTurn. */
+export interface SessionTurn {
+  role: (typeof TURN_ROLES)[number];
+  text: string;
+}
+
 /** A persisted handoff snapshot. */
 export interface SessionSnapshot {
   version: 1;
@@ -44,6 +54,8 @@ export interface SessionSnapshot {
   lastSent: string | null;
   lastReplyText: string | null;
   logs: SessionLogEntry[];
+  /** The chat conversation, oldest first ([] for snapshots written before it existed). */
+  transcript: SessionTurn[];
 }
 
 /** A saved session as listed by {@link SessionStore.list}. */
@@ -78,6 +90,20 @@ function normalizeLog(item: unknown): SessionLogEntry | null {
   };
 }
 
+function normalizeTurn(item: unknown): SessionTurn | null {
+  if (!item || typeof item !== "object") return null;
+  const turn = item as Record<string, unknown>;
+  const role = turn.role as SessionTurn["role"];
+  if (!TURN_ROLES.includes(role) || typeof turn.text !== "string") return null;
+  const body = turn.text.trim();
+  if (!body) return null;
+  const max = role === "tool" ? MAX_TOOL_TURN_TEXT : MAX_TURN_TEXT;
+  if (body.length <= max) return { role, text: body };
+  // Same cut as the extension's clip(): never longer than max, so re-saving is a no-op.
+  const note = "\n... (dipotong dari " + body.length + " karakter)";
+  return { role, text: body.slice(0, Math.max(0, max - note.length)) + note };
+}
+
 /** Validate and normalize an untrusted snapshot; throws on a wrong top-level shape. */
 export function normalizeSnapshot(value: unknown): SessionSnapshot {
   if (!value || typeof value !== "object") {
@@ -99,6 +125,12 @@ export function normalizeSnapshot(value: unknown): SessionSnapshot {
     lastSent: typeof raw.lastSent === "string" ? text(raw.lastSent) : null,
     lastReplyText: typeof raw.lastReplyText === "string" ? text(raw.lastReplyText) : null,
     logs,
+    transcript: Array.isArray(raw.transcript)
+      ? raw.transcript.slice(-MAX_TURNS).flatMap((item): SessionTurn[] => {
+          const turn = normalizeTurn(item);
+          return turn ? [turn] : [];
+        })
+      : [],
   };
 }
 
