@@ -187,6 +187,19 @@ BroAgentAI reads a few files from your workspace (all optional):
 | `broagentai.json(c)` | MCP servers for this project (untrusted until you review them). |
 | `broagentai.local.json(c)` | Your personal, machine-only overrides and MCP servers. Keep it out of git. |
 
+### Co-authors on commits
+
+Every commit made through BroAgentAI (the Git panel's Commit button and the agent's `git.commit`) credits BroAgentAI's author with a `Co-authored-by` trailer (the list is `BUILT_IN_CO_AUTHORS` in `bridge/src/co-authors.ts`). You can add more co-authors as `"Name <email>"` under `coAuthors`:
+
+```json
+{ "coAuthors": ["Your Name <12345+your-login@users.noreply.github.com>"] }
+```
+
+- `~/.broagentai/config.json`: every workspace.
+- `broagentai.jsonc` (project) or `.broagentai/config.json` (local): this workspace only; replaces the list from the layer below, and `[]` removes the added ones (the built-in co-authors stay).
+
+GitHub credits a co-author by email. For a GitHub account, use its noreply address `<id>+<login>@users.noreply.github.com` (the id is in `https://api.github.com/users/<login>`). Entries that are not `Name <email>` are skipped, and a co-author the message already names is not added twice.
+
 Host config, the workspace list and trust records live in `%APPDATA%\BroAgentAI` (Windows), `~/Library/Application Support/BroAgentAI` (macOS) or `$XDG_CONFIG_HOME/broagentai` (Linux). Set `BROAGENTAI_CONFIG_DIR` to put them somewhere else.
 
 ## Development

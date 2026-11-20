@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
+import { normalizeCoAuthors } from "./co-authors.ts";
 import { readJsoncFile } from "./jsonc.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 
@@ -32,6 +33,8 @@ export interface ProjectConfig {
   toolOverrides?: ToolApproval[];
   ignore?: string[];
   maxFileBytes?: number;
+  /** Co-authored-by entries ("Name <email>") for commits; replaces the global list. */
+  coAuthors?: string[];
   [key: string]: unknown;
 }
 
@@ -40,6 +43,8 @@ export interface GlobalConfig {
   defaultApproval?: ApprovalMode;
   defaultIgnore?: string[];
   defaultMaxFileBytes?: number;
+  /** Co-authored-by entries ("Name <email>") added to every commit made through BroAgentAI. */
+  coAuthors?: string[];
   [key: string]: unknown;
 }
 
@@ -47,6 +52,8 @@ export interface GlobalConfig {
 export interface LocalConfig {
   approval?: ApprovalMode;
   toolOverrides?: ToolApproval[];
+  /** Co-authored-by entries; replaces the project/global list ([] turns them off here). */
+  coAuthors?: string[];
   [key: string]: unknown;
 }
 
@@ -56,6 +63,8 @@ export interface MergedConfig {
   toolOverrides: ToolApproval[];
   ignore: string[];
   maxFileBytes: number;
+  /** Co-authored-by entries for commits; the most specific layer that sets coAuthors wins. */
+  coAuthors: string[];
   sources: {
     global?: string;
     project?: string;
@@ -139,6 +148,7 @@ export function mergeConfig(
     toolOverrides: [],
     ignore: [...storeSettings.ignore],
     maxFileBytes: storeSettings.maxFileBytes,
+    coAuthors: [],
     sources: {},
   };
 
@@ -152,6 +162,9 @@ export function mergeConfig(
     }
     if (global.defaultMaxFileBytes) {
       merged.maxFileBytes = global.defaultMaxFileBytes;
+    }
+    if (global.coAuthors !== undefined) {
+      merged.coAuthors = normalizeCoAuthors(global.coAuthors);
     }
     merged.sources.global = "~/.broagentai/config.json";
   }
@@ -170,6 +183,9 @@ export function mergeConfig(
     if (project.maxFileBytes) {
       merged.maxFileBytes = project.maxFileBytes;
     }
+    if (project.coAuthors !== undefined) {
+      merged.coAuthors = normalizeCoAuthors(project.coAuthors);
+    }
     merged.sources.project = "<workspace>/broagentai.jsonc";
   }
 
@@ -181,6 +197,9 @@ export function mergeConfig(
     if (local.toolOverrides) {
       // Local overrides take precedence, so we prepend them
       merged.toolOverrides = [...local.toolOverrides, ...merged.toolOverrides];
+    }
+    if (local.coAuthors !== undefined) {
+      merged.coAuthors = normalizeCoAuthors(local.coAuthors);
     }
     merged.sources.local = "<workspace>/.broagentai/config.json";
   }

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
 import { parseGitLog, parseNameStatusZ, parsePorcelainV2 } from "./git.ts";
+import { BUILT_IN_CO_AUTHORS } from "./co-authors.ts";
 
 let hasGit = true;
 try { execFileSync("git", ["--version"], { stdio: "ignore" }); } catch { hasGit = false; }
@@ -338,4 +339,24 @@ repoTest("git.commitFiles and git.commitDiff describe one commit", async () => {
   assert.ok((await call("git.commitFiles", { hash: "--all" })).error);
   assert.ok((await call("git.commitFiles", { hash: "deadbeef" })).error);
   assert.ok((await call("git.commitDiff", { hash: head.hash, path: "../outside.txt" })).error);
+});
+
+repoTest("git.commit always credits the built-in co-authors, plus configured ones", async () => {
+  const { ws, ok } = await repo();
+  const builtIn = BUILT_IN_CO_AUTHORS.map((entry) => `Co-authored-by: ${entry}`).join("\n");
+  const extra = "Someone Else <1+someone@users.noreply.github.com>";
+  // A configured duplicate of a built-in co-author is not repeated; malformed entries are skipped.
+  writeFileSync(join(ws, "broagentai.jsonc"), JSON.stringify({ coAuthors: [BUILT_IN_CO_AUTHORS[0], extra, "not valid"] }));
+  writeFileSync(join(ws, "a.txt"), "a2\n");
+  await ok("git.stage", { paths: ["a.txt", "broagentai.jsonc"] });
+  await ok("git.commit", { message: "feat: change a" });
+  assert.equal(sh(ws, "log", "-1", "--format=%B").trim(), `feat: change a\n\n${builtIn}\nCo-authored-by: ${extra}`);
+
+  // A local [] drops the configured extras only; the built-in co-authors stay.
+  mkdirSync(join(ws, ".broagentai"), { recursive: true });
+  writeFileSync(join(ws, ".broagentai", "config.json"), JSON.stringify({ coAuthors: [] }));
+  writeFileSync(join(ws, "b.txt"), "b2\n");
+  await ok("git.stage", { paths: ["b.txt"] });
+  await ok("git.commit", { message: "fix: change b" });
+  assert.equal(sh(ws, "log", "-1", "--format=%B").trim(), `fix: change b\n\n${builtIn}`);
 });
