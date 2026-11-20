@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.1 (plan, not implemented) |
+| Status | Draft v0.2 (plan; P0 spike done, see `spikes/webchat-plugins-p0/FINDINGS.md`) |
 | Date | 2026-11-19 |
 | Related | `05-ADR.md` (ADR-018, ADR-020), `07-PLUGIN-MCP.md` §4, `08-BACKLOG.md` |
 | Supersedes | `07-PLUGIN-MCP.md` §4.3–4.5 once ADR-020 is accepted |
@@ -80,7 +80,7 @@ A `.zip` holds the files at its root or inside one top-level folder; nothing els
 ### 3.3 `plugin.js` hooks
 
 ```js
-BroAgentAI.registerPlugin({
+BroAgentAI.registerPlugin('my-chat', {   // first argument: the id from plugin.json
   async prepare(api) {},            // before the first prompt in a tab (close popups, pick a mode)
   findComposer(api) {},             // -> Element | null (default: selectors.composer)
   isGenerating(api) {},             // -> boolean (default: selectors.generating)
@@ -90,7 +90,7 @@ BroAgentAI.registerPlugin({
 });
 ```
 
-Every hook is optional. A missing hook, a hook that throws, or a hook that times out falls back to the generic adapter. `api` exposes only page helpers: `$`, `$$`, `click`, `setSelect`, `sleep`, `reactProp(el, names)` (served by the core MAIN-world helper, see §4.3). It exposes nothing that reaches the extension, the bridge, or other tabs.
+Every hook is optional. A missing hook, a hook that throws, or a hook that times out falls back to the generic adapter. **Implemented so far (P2): `prepare`** (10 s timeout). The others are added when a plugin needs them; unknown hook names are ignored with a warning, so a newer plugin still loads on an older runtime. `api` exposes only page helpers: `$`, `$$`, `click`, `setSelect`, `sleep`, `reactProp(el, names)` (served by the core MAIN-world helper, see §4.3). It exposes nothing that reaches the extension, the bridge, or other tabs.
 
 ### 3.4 Built-in plugins after conversion
 
@@ -108,8 +108,8 @@ Every hook is optional. A missing hook, a hook that throws, or a hook that times
 
 | Piece | World | Built-in plugins | User plugins |
 | --- | --- | --- | --- |
-| Relay + generic adapter | content script (isolated) | static `content_scripts` in the manifest | `chrome.scripting.registerContentScripts`, matches = plugin `matches` |
-| Plugin CSS | page document | bundled CSS, injected by the relay | `registerContentScripts` `css` for the plugin's matches |
+| Relay + generic adapter | content script (isolated) | static `content_scripts` in the manifest | `chrome.scripting.registerContentScripts` with `src/content/relay-dynamic.js`, a second, self-contained IIFE build of the relay (`vite.relay.config.ts`): the manifest relay goes through a CRXJS loader whose chunks are only web-accessible on built-in sites. Only patterns the manifest does not cover; a flag in the relay keeps one relay per page. |
+| Plugin CSS | page document | injected by the relay (agent-marks) | same: the relay reads `style.css` from the registry, so no separate CSS registration |
 | Plugin hooks (`plugin.js`) | — | compiled into the relay bundle at build time (no user-scripts toggle needed) | `chrome.userScripts.register`, one `worldId` per plugin |
 | React-props reader | MAIN | existing `page-source.iife.ts` | same core helper, reached through `api.reactProp` |
 
@@ -161,11 +161,11 @@ Home provider cards and the switch-provider list show only enabled plugins.
 
 | Phase | Scope | Exit criteria |
 | --- | --- | --- |
-| **P0 Spike** | Prove the unknowns on Chrome 157 with the user's own profile: user-scripts toggle detection, `worldId` per plugin, the sender field that identifies a user-script world, dynamic content scripts after an extension reload, `registerContentScripts` with `css`, DOM-event bridge between isolated and user-script worlds, `permissions.request` from the side panel. | Written findings; every "verify" item in §6 confirmed or the design adjusted. |
-| **P1 Format + registry** | `plugin.json` schema + validator, async registry, convert the five providers to `extension/plugins/`, keep behaviour identical. | Typecheck + tests pass; all five providers pass the live loop again; no user-visible change. |
-| **P2 Built-in hooks + CSS** | Hook bridge, compiled built-in hooks (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), neutral base CSS in `agent-marks.ts`, per-plugin `style.css`, `findBubble`. Move the ChatGPT `codeBlock` logic out of the core. | Ptero works without manual mode change; DeepSeek quota shows in the panel; marks look right on all five sites. |
-| **P3 User plugins (no script)** | Import from folder or `.zip`, validate/review, permissions, dynamic registration, Settings → Plugins tab (list, enable/disable, update with diff, remove, reset built-in, export `.zip`), Home cards from the registry, conflict handling. | A selector + CSS plugin for a new site installs from a folder and from a `.zip` and runs a full loop without a rebuild; an exported `.zip` re-imports as an update. |
-| **P4 User plugin scripts** | `userScripts` registration per world, toggle detection and guidance, messaging checks, timeouts, fallback, custom-plugin safety rules. | A user plugin with `plugin.js` hooks runs a full loop; toggle off → falls back to selectors with a clear notice. |
+| **P0 Spike** | Prove the unknowns on Chrome 157 with the user's own profile: user-scripts toggle detection, `worldId` per plugin, the sender field that identifies a user-script world, dynamic content scripts after an extension reload, `registerContentScripts` with `css`, DOM-event bridge between isolated and user-script worlds, `permissions.request` from the side panel. | **Done 2026-11-19:** `spikes/webchat-plugins-p0/FINDINGS.md`; R4, R11, R14, R15 adjusted. Browser-restart persistence not tested (covered by R15 re-sync). |
+| **P1 Format + registry** | `plugin.json` schema + validator, registry reading built-in plugins (it becomes async and storage-backed in P3, when user plugins join), convert the five providers to `extension/plugins/`, keep behaviour identical. | Typecheck + tests pass; all five providers pass the live loop again; no user-visible change. |
+| **P2 Built-in hooks + CSS** (done except DeepSeek, see 9.2 in the backlog) | Hook bridge, compiled built-in hooks (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), neutral base CSS in `agent-marks.ts`, per-plugin `style.css`, `findBubble`. Move the ChatGPT `codeBlock` logic out of the core. | Ptero works without manual mode change; DeepSeek quota shows in the panel; marks look right on all five sites. |
+| **P3 User plugins (no script)** (done 2026-11-19) | Import from folder or `.zip`, validate/review, permissions, dynamic registration, Settings → Plugins tab (list, enable/disable, update with diff, remove, reset built-in, export `.zip`), Home cards from the registry, conflict handling. | A selector + CSS plugin for a new site installs from a folder and from a `.zip` and runs a full loop without a rebuild; an exported `.zip` re-imports as an update. |
+| **P4 User plugin scripts** (done 2026-11-19) | `userScripts` registration per world, toggle detection and guidance, messaging checks, timeouts, fallback, custom-plugin safety rules. | A user plugin with `plugin.js` hooks runs a full loop; toggle off → falls back to selectors with a clear notice. |
 | **P5 Hardening + docs** | Plugin template, README "Write a plugin" guide, e2e with a fake chat plugin, ADR-020 accepted, `07-PLUGIN-MCP.md` §4 updated. | Docs reviewed; e2e green. |
 
 ## 6. Risks and countermeasures
@@ -177,7 +177,7 @@ Home provider cards and the switch-provider list show only enabled plugins.
 | R1 | Plugin A's script or CSS affects site B | Behaviour/look broken on another chat | Chrome injects only on URLs matching the plugin's `matches`; each tab is its own document. Covered by an e2e with two plugins on two fake domains. | P3 |
 | R2 | Two plugins claim the same domain | Both inject; selectors/CSS fight | One active plugin per domain. Import detects overlapping `matches` and asks: replace the active one, or cancel. Built-in vs user override is explicit ("Replace built-in ChatGPT?"). | P3 |
 | R3 | Two scripts on the same page share globals | Hooks overwrite each other or the runtime | One `userScripts` world per plugin (`worldId` = plugin id); the hook runtime lives inside that world. | P4 |
-| R4 | A plugin sends messages pretending to be another plugin | Wrong plugin's data trusted | The service worker accepts user-script messages only when the sender tab URL matches that plugin's `matches` and (if Chrome exposes it) the sender world id equals the plugin id. **Verify the world-id field in P0.** | P0/P4 |
+| R4 | A plugin sends messages pretending to be another plugin | Wrong plugin's data trusted | **Removed at the root (P4):** plugin worlds are configured with `messaging: false`, so plugin code cannot message the extension at all; hooks only exchange plain data with the relay through DOM attributes/events. (P0 showed the sender carries no user-script world id, which is why messaging was dropped instead of a token scheme.) | P4 |
 
 ### 6.2 Permissions and domains
 
@@ -194,7 +194,7 @@ Home provider cards and the switch-provider list show only enabled plugins.
 | --- | --- | --- | --- | --- |
 | R9 | Plugin CSS restyles the chat site itself (hides buttons, fakes UI) | Confusing or deceptive page | Lint at import: selectors outside `[data-ba-*]` produce a warning shown on the review screen; CSS size cap. CSS can only affect that plugin's own domain (R1). | P3 |
 | R10 | Malicious `plugin.js` forges an assistant reply containing a command | Command executed on the user's machine | Plugins cannot call the bridge; commands still go through the parser and approvals. Sessions on a **custom** plugin are labelled "custom plugin" in the session pill; switching to **Auto approve** with a custom plugin needs an explicit confirmation each session. | P4 |
-| R11 | Malicious `plugin.js` reads the chat (which contains tool results, i.e. file contents) and sends it elsewhere | Code/data leak | Cannot be fully prevented: page-world JS can always reach the network through the page. Mitigations: local-file install only (no URL), full source shown before install, `configureWorld` CSP as strict as Chrome allows (verify in P0), "custom" label, README warning. Documented as residual risk. | P0/P4 |
+| R11 | Malicious `plugin.js` reads the chat (which contains tool results, i.e. file contents) and sends it elsewhere | Code/data leak | Plugin worlds get a strict CSP by default (`connect-src 'none'`, no eval); P0 confirmed it blocks `fetch` from the plugin world. A plugin can still add elements to the page (e.g. an image to another host), which only the page's own CSP governs, so the risk is not zero. Further mitigations: local-file install only (no URL), full source shown before install, "custom" label, README warning. Documented as residual risk. | P4 |
 | R12 | Plugin hook returns huge or hostile data | Panel slowdown, injection into UI | Relay validates hook results (type, size caps); the panel renders plugin strings as text, never HTML. | P2 |
 | R13 | A plugin is installed from a repository the user just opened | Workspace content running in the browser | Workspace folders are never scanned for plugins; install is always an explicit Import. | P3 |
 
@@ -202,8 +202,8 @@ Home provider cards and the switch-provider list show only enabled plugins.
 
 | # | Risk | Impact | Countermeasure | Phase |
 | --- | --- | --- | --- | --- |
-| R14 | User-scripts toggle off, or Chrome older than 138 | `plugin.js` never runs | Detect availability by calling a `userScripts` method in try/catch; plugin row shows "script disabled — enable Allow User Scripts" with steps; the plugin still runs on selectors + CSS. Built-in hooks never depend on the toggle (compiled into the relay). | P4 |
-| R15 | Dynamic content scripts lost after extension update/reload | User plugins stop working | On `runtime.onInstalled` and `onStartup`, re-sync registrations from storage idempotently (unregister unknown ids, register missing ones). **Verify persistence behaviour in P0.** | P0/P3 |
+| R14 | User-scripts toggle off, or Chrome older than 138 | `plugin.js` never runs | P0: with the toggle off, `chrome.userScripts` is `undefined`. Detect with `typeof chrome.userScripts?.getScripts === "function"`, re-checked whenever the Plugins page opens; the page shows "script disabled — enable Allow User Scripts" with steps; the plugin still runs on selectors + CSS. Built-in hooks never depend on the toggle (compiled into the relay). | P4 |
+| R15 | Dynamic registrations lost after extension update/reload | User plugins stop working | **Confirmed in P0:** an extension reload/update clears dynamic content scripts, user scripts **and** world configurations; host permissions are kept. On `runtime.onInstalled` and `runtime.onStartup`, re-apply everything from storage idempotently (worlds first, then scripts); no new permission prompt is needed. | P3 |
 | R16 | Tabs opened before install/enable have no relay | "Chat tab not found" | Existing `ensureRelay` reloads the tab once; the plugin row also offers "Reload open tabs". | P3 |
 | R17 | User-script world cannot read the page's React props | ChatGPT/Qwen code reading breaks for user plugins | Keep `page-source.iife.ts` as the only MAIN-world code; plugins reach it through `api.reactProp`, never by running in MAIN themselves. | P2 |
 | R18 | `chrome.storage.local` quota | Import fails with many plugins | Size caps per file (plugin.json 32 KB, plugin.js 256 KB, style.css 64 KB, icon 64 KB); clear error when storage is full. | P3 |

@@ -1,9 +1,19 @@
-// Content-script relay, injected only on bundled provider URLs.
+// Content-script relay, injected on the pages of the enabled web chat plugins:
+// statically for built-in plugins (manifest), dynamically for user plugins
+// (registered by the service worker, see plugins/sync.ts).
 // It does two things and nothing else: type a prompt into the chat composer
 // when the side panel asks, and report each finished assistant reply. It has
 // no access to files, Git or MCP; those live behind the panel and the bridge.
+// Order matters: plugin-global exposes BroAgentAI.registerPlugin before
+// plugin-scripts evaluates the built-in plugin.js files that call it.
+import './plugin-global.js';
+import './plugin-scripts.js';
 import { DomAdapter, NOT_ACCEPTED } from '../providers/dom-adapter.js';
-import { providerForUrl } from '../providers/registry.js';
+import { providerForUrl, refreshProviders } from '../providers/registry.js';
+import type { ProviderInfo } from '../providers/types.js';
+import { PREPARE_TIMEOUT_MS, runPrepare } from '../plugins/hooks.js';
+import { callUserHook } from '../plugins/user-world.ts';
+import { createHookApi } from '../plugins/hook-api.js';
 import { startAgentMarks } from './agent-marks.js';
 import { ReplyTracker } from './reply-tracker.js';
 
@@ -13,10 +23,36 @@ const STABLE_MS = 1200;
 /** Stop polling after deliveries kept failing this long (the side panel is gone). */
 const GIVE_UP_MS = 60_000;
 
-const provider = providerForUrl(location.href);
 const loadedAt = Date.now();
 
-if (provider) {
+// A page can get the relay twice (the static content script of a built-in plugin
+// and the dynamic one of a user plugin whose patterns overlap it). Both run in
+// this extension's isolated world, so a flag there keeps only the first.
+const RELAY_FLAG = Symbol.for('broagentai.relay');
+const relayGlobal = globalThis as unknown as Record<symbol, boolean>;
+if (!relayGlobal[RELAY_FLAG]) {
+  relayGlobal[RELAY_FLAG] = true;
+  // User plugins live in chrome.storage; merge them before picking this page's plugin.
+  void refreshProviders().then(() => {
+    const provider = providerForUrl(location.href);
+    if (provider) startRelay(provider);
+  });
+}
+
+/**
+ * Run the page plugin's prepare hook. Built-in hooks are bundled into this
+ * relay; a user plugin's plugin.js runs in its own world and is reached through
+ * the DOM bridge (plugins/user-world.ts). A user plugin that overrides a
+ * built-in replaces it completely, so the built-in hook does not run then.
+ */
+function prepareFor(provider: ProviderInfo): Promise<{ ran: boolean; error?: string }> {
+  if (provider.source === 'user') {
+    return provider.hasScript ? callUserHook(provider.id, 'prepare', PREPARE_TIMEOUT_MS) : Promise.resolve({ ran: false });
+  }
+  return runPrepare(provider.id, createHookApi());
+}
+
+function startRelay(provider: ProviderInfo): void {
   // Agent-typed messages get their own look, session or not (they persist in the chat history).
   startAgentMarks(provider);
   const adapter = new DomAdapter(provider);
@@ -82,15 +118,20 @@ if (provider) {
       return;
     }
     if (message.type === 'ba.activate') {
-      // Replies already on the page belong to the past; only new ones are reported.
-      tracker.reset(adapter.readLatestReply());
-      failingSince = 0;
-      active = true;
-      paused = false;
-      window.clearInterval(timer);
-      timer = window.setInterval(poll, POLL_MS);
-      sendResponse({ ok: true });
-      return;
+      // The plugin's prepare hook first (close popups, pick a mode), so the
+      // operating prompt lands in a page that is ready for it. Never throws;
+      // a failed or slow hook is reported and the session goes on.
+      void prepareFor(provider).then((prepare) => {
+        // Replies already on the page belong to the past; only new ones are reported.
+        tracker.reset(adapter.readLatestReply());
+        failingSince = 0;
+        active = true;
+        paused = false;
+        window.clearInterval(timer);
+        timer = window.setInterval(poll, POLL_MS);
+        sendResponse({ ok: true, prepare });
+      });
+      return true;
     }
     if (message.type === 'ba.pause') {
       // Hold: keep the tracker state, just stop reporting. The latest reply is
@@ -104,6 +145,16 @@ if (provider) {
       paused = false;
       failingSince = 0;
       sendResponse({ ok: true, paused });
+      return;
+    }
+    if (message.type === 'ba.transcript') {
+      // Read-only: the conversation on the page, for the handoff snapshot.
+      // Allowed while paused or inactive - it types nothing and reports nothing.
+      try {
+        sendResponse({ ok: true, messages: adapter.readConversation() });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
     if (message.type === 'ba.deactivate') {

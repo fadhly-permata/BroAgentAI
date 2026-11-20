@@ -21,23 +21,37 @@ const STYLE_ID = 'ba-agent-style';
 /** How far up from the marker text a message bubble may sit. */
 const MAX_CLIMB = 8;
 const SCAN_DELAY_MS = 300;
-/** Collapsed height, and the top strip of an expanded message that collapses it. */
-const COLLAPSED_PX = 44;
+/**
+ * Label strip at the top of every agent message (the badge sits in it, so it
+ * never covers the text) and the collapsed height: the strip plus one line.
+ * A click inside the strip of an expanded message collapses it.
+ */
 const HEADER_PX = 28;
+const COLLAPSED_PX = 60;
 const TITLE_COLLAPSED = 'Sent automatically by BroAgentAI, not typed by you. Click to expand.';
 const TITLE_EXPANDED = 'Sent automatically by BroAgentAI, not typed by you. Click the top bar to collapse.';
 
 const MONO = `'Cascadia Code', 'JetBrains Mono', Consolas, 'SFMono-Regular', Menlo, monospace`;
 
+/**
+ * Base look, shared by every site. It keeps the page's own bubble shape and
+ * side padding (no border-radius here) and only adds: a tint, an accent bar, a
+ * label strip on top, monospace text and the collapsed height. Site-specific
+ * fixes live in each web chat plugin's style.css (extension/plugins/<id>/).
+ */
 const CSS = `
 [${ATTR}] {
   position: relative !important;
+  box-sizing: border-box !important;
+  min-width: min(100%, 300px) !important;
+  padding-top: ${HEADER_PX}px !important;
   background-color: rgba(0, 122, 204, 0.12) !important;
   box-shadow: inset 3px 0 0 #007acc !important;
-  border-radius: 8px;
 }
-/* Machine-written text: monospace and a size smaller than the user's own messages. */
-[${ATTR}], [${ATTR}] * {
+/* Machine-written text: monospace and a size smaller than the user's own messages.
+   Icons are left alone: icon fonts draw glyphs from ligature text ("expand_more"),
+   which a text font would print as letters. */
+[${ATTR}], [${ATTR}] *:not(mat-icon):not([class*="icon"]):not([class*="symbol"]) {
   font-family: ${MONO} !important;
   font-size: 12px !important;
   line-height: 1.55 !important;
@@ -46,15 +60,14 @@ const CSS = `
   max-height: ${COLLAPSED_PX}px !important;
   overflow: hidden !important;
   cursor: pointer;
-  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
-  mask-image: linear-gradient(to bottom, #000 62%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 75%, transparent);
+  mask-image: linear-gradient(to bottom, #000 75%, transparent);
 }
 [${ATTR}][${COLLAPSED_ATTR}]:hover { background-color: rgba(0, 122, 204, 0.2) !important; }
 [${ATTR}]::after {
   content: '\\25BE  ' attr(${LABEL_ATTR});
-  /* Inside the top-right corner: bubbles often clip overflow, and every agent
-     message starts with a short first line, so this corner is free. */
-  position: absolute; top: 6px; right: 8px; z-index: 1;
+  /* In the label strip (padding-top), so it never covers the message text. */
+  position: absolute; top: 6px; right: 10px; z-index: 1;
   padding: 1px 7px;
   border-radius: 9px;
   background: #007acc; color: #ffffff;
@@ -113,6 +126,10 @@ function bubbleFor(textNode: Text, provider: ProviderInfo): HTMLElement | null {
   const start = textNode.parentElement;
   if (!start) return null;
   if (start.closest(assistantMessage) || start.closest(composer) || start.closest('[contenteditable="true"], textarea, script, style')) return null;
+  // On pages whose chat rows carry a message key, a message lives inside such a
+  // row. Copies of the text elsewhere (DeepSeek's off-screen conversation
+  // outline, for one) are not messages.
+  if (messageKeyAttr && !start.closest(`[${messageKeyAttr}]`)) return null;
   if (userMessage) return start.closest<HTMLElement>(userMessage);
 
   const marker = (textNode.data.trimStart().split('\n')[0] ?? '').slice(0, 40);
@@ -187,12 +204,16 @@ function onClick(e: MouseEvent): void {
   setCollapsed(bubble, !collapsed);
 }
 
-/** Start marking agent messages on this chat page; runs for the page's lifetime. */
+/**
+ * Start marking agent messages on this chat page; runs for the page's lifetime.
+ * The provider's own style.css (provider.style) is added after the base CSS, so
+ * it can override it for this site only.
+ */
 export function startAgentMarks(provider: ProviderInfo): void {
   if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = CSS;
+    style.textContent = CSS + (provider.style ? `\n/* ${provider.id} plugin style.css */\n${provider.style}` : '');
     (document.head ?? document.documentElement).appendChild(style);
     document.addEventListener('click', onClick, true);
   }

@@ -1,0 +1,23 @@
+{
+  "apiVersion": 1,
+  "id": "deepseek",
+  "name": "DeepSeek",
+  "version": "1.0.1",
+  "author": "BroAgentAI",
+  "description": "DeepSeek web chat",
+  "homepage": "https://chat.deepseek.com/",
+  "matches": [
+    "https://chat.deepseek.com/*"
+  ],
+  "status": "ready",
+  "icon": "icon.svg",
+  "verified": "2026-11-18: composer selector updated to be robust against localization and background tab rendering. 2026-11-19 (signed in, second account): composer, three replies with message keys, idle generating = false, a send through the real DomAdapter + ReplyTracker (generating seen, reply delivered once with a higher key, no re-delivery); the code-block banner (.md-code-block-banner-wrap: language, Copy, Download) is excluded from the reply text",
+  "selectors": {
+    "composer": "textarea[placeholder*=\"DeepSeek\" i], textarea[name=\"search\"], textarea#chat-input, textarea",
+    "submit": "",
+    "assistantMessage": ".ds-assistant-message-main-content",
+    "generating": "div[role='button'].ds-button--filled.ds-button--circle:not(.ds-button--disabled):not(.ds-button--warning)",
+    "messageKeyAttr": "data-virtual-list-item-key",
+    "exclude": ".md-code-block-banner-wrap"
+  }
+}

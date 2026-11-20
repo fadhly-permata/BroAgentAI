@@ -118,14 +118,19 @@ Target: Konfigurasi dimuat, resource (AGENTS.md, rules) ditemukan, filesystem tr
 
 ## Fase 8: Advanced Agent Features (Future)
 - [ ] 8.1. Cross-Context Session Resume (Opsi B): Menyimpan state sesi (handoff) ke bridge agar bisa di-resume di jendela baru, incognito, atau profil berbeda. Memerlukan mekanisme Session ID, persistensi state yang aman, dan handshake antar konteks ekstensi.
+  - [x] 8.1a. Persistensi snapshot handoff di bridge: `session.save/load/clear/list` (`bridge/src/session-store.ts`), Session ID dibatasi ke `[A-Za-z0-9_-]{1,64}` (tak bisa keluar folder), snapshot divalidasi saat tulis & baca, disimpan di `<configDir>/sessions/<id>.json`.
+  - [ ] 8.1b. Handshake antar konteks ekstensi (panel meminta snapshot via `session.load` lalu mengirimnya sebagai pesan pertama) + UI resume.
 
 ## Fase 9: Web Chat Plugins (rencana, lihat `09-WEBCHAT-PLUGINS.md`)
-- [ ] 9.0. Spike P0: buktikan toggle userScripts, `worldId`, field world pengirim pesan, persistensi content script dinamis, CSS lewat `registerContentScripts`, bridge event antar world, `permissions.request` dari side panel.
-- [ ] 9.1. P1: format `plugin.json` + validator, registry async, 5 provider jadi plugin bawaan tanpa perubahan perilaku.
-- [ ] 9.2. P2: bridge hook + hook bawaan (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), CSS dasar netral + `style.css` per plugin.
-- [ ] 9.3. P3: import plugin tanpa rebuild dari folder atau `.zip` (selector + CSS), update dengan diff, izin domain, penanganan konflik domain.
-- [ ] 9.3a. Halaman Settings → Plugins (spec §4.6), satu-satunya tempat ngatur plugin (tanpa mode developer): tombol Import + status toggle User Scripts; tiap baris plugin dengan label + saklar on/off; aksi Update, Export `.zip`, Remove, Reset to built-in, Re-grant access, Reload open tabs, Health check; layar review yang sama buat install & update.
-- [ ] 9.4. P4: `plugin.js` user lewat `chrome.userScripts`, deteksi toggle, fallback, aturan keamanan plugin custom.
+- [x] 9.0. Spike P0 (hasil: `spikes/webchat-plugins-p0/FINDINGS.md`): buktikan toggle userScripts, `worldId`, field world pengirim pesan, persistensi content script dinamis, CSS lewat `registerContentScripts`, bridge event antar world, `permissions.request` dari side panel.
+- [x] 9.1. P1: format `plugin.json` + validator (`src/plugins/manifest.ts`), registry baca plugin bawaan (async + storage nyusul di P3), 5 provider jadi plugin bawaan di `extension/plugins/` tanpa perubahan perilaku (data provider + manifest hasil build identik).
+- [x] 9.2. P2: runtime hook (`src/plugins/hooks.ts`, `BroAgentAI.registerPlugin(id, hooks)`, hook `prepare` dengan timeout 10 s), `plugin.js` bawaan dibundel ke relay, CSS dasar netral (strip label, bentuk bubble site nggak ditimpa, ikon nggak kena font paksa) + `style.css` per plugin (Gemini, Ptero). Ptero `prepare` otomatis nutup popup + pilih Quick Answer. Dicek live di ChatGPT, Gemini, Ptero, Qwen.
+  - ChatGPT `readCode`/`findComposer` nggak dibikin: selector `codeBlock` + perbaikan `visible()` di core udah nanganin.
+- [x] 9.2a. DeepSeek dites di profile Chrome kedua (akun lain): selector + kirim/terima sekali tanpa dobel, `exclude` header code block (`.md-code-block-banner-wrap`), tanda agent cuma di baris pesan (outline percakapan DeepSeek nggak ikut ketandain).
+- [ ] 9.2b. DeepSeek `detectError` ("Usage limit reached" → panel nyaranin pindah provider). Ketahan: kondisi error kuota nggak bisa dipancing buat dites.
+- [x] 9.3. P3 (dicek live dengan plugin duck.ai: import folder + .zip, full loop agent, update, rollback, export, hapus): import plugin tanpa rebuild dari folder atau `.zip` (selector + CSS), update dengan diff, izin domain, penanganan konflik domain.
+- [x] 9.3a. Halaman Settings → Plugins (spec §4.6), satu-satunya tempat ngatur plugin (tanpa mode developer): tombol Import + status toggle User Scripts; tiap baris plugin dengan label + saklar on/off; aksi Update, Export `.zip`, Remove, Reset to built-in, Re-grant access, Reload open tabs, Health check; layar review yang sama buat install & update.
+- [x] 9.4. P4 (dicek live: plugin.js duck.ai jalan di world sendiri, prepare jalan sebelum prompt, konfirmasi Auto approve untuk plugin custom): `plugin.js` user lewat `chrome.userScripts`, deteksi toggle, fallback, aturan keamanan plugin custom.
 - [ ] 9.5. P5: template plugin, panduan README, e2e isolasi plugin, ADR-020 diterima.
 
 ---

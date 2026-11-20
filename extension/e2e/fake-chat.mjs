@@ -1,7 +1,7 @@
 // fake-chat.mjs - a scripted stand-in for a provider chat page.
 //
 // The page is served (via Playwright routing) at the DeepSeek URL and uses the
-// DOM shape the bundled deepseek provider.json expects, so the REAL content
+// DOM shape the bundled deepseek plugin (plugins/deepseek/plugin.json) expects, so the REAL content
 // script is injected and the REAL relay / parser / approval loop runs. Only
 // the "AI" is fake: it answers from the fixed rules below, streaming its
 // reply in two steps like a real chat does.
@@ -11,7 +11,7 @@
 // a bare <pre> (no <code>) inside .md-code-block next to a language label and
 // Copy/Download buttons, and a round send button that is disabled when idle and
 // becomes an enabled Stop button while the reply streams. The live site can
-// still change; re-check provider.json when the health check fails.
+// still change; re-check plugins/deepseek/plugin.json when the health check fails.
 export const FAKE_CHAT_URL = 'https://chat.deepseek.com/';
 
 const html = String.raw`<!doctype html>

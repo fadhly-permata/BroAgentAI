@@ -8,12 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **plugin.js of imported plugins runs.** Each custom plugin's hooks run through `chrome.userScripts` in a world of their own, with a CSP that blocks network and eval and no access to the extension: hooks only reach the page and talk to the relay through the DOM. They need Chrome's "Allow User Scripts" for BroAgentAI; the Plugins page shows whether each plugin's script is on, off or not registered yet, with the steps to turn it on, and registers the scripts itself when the service worker predates the toggle. Sessions on a custom plugin are labelled "(custom)", and Auto approve with a custom plugin needs a confirmation once per session (declining switches to Always ask).
+- **Web chat plugins without rebuilding** (Settings → Plugins). Import a plugin folder or `.zip`, review it (sites, warnings, the code it brings; for an update the version change and a diff), and Chrome asks for access to its sites only. Each plugin can be turned on/off, updated or rolled back in place, exported as `.zip`, removed (an override goes back to the built-in), re-granted access, checked on an open chat tab, and its open tabs reloaded. One plugin per site: installing or turning on a plugin turns off the one that claimed the same site. Plugins live in `chrome.storage.local`; the service worker registers the relay on their sites (`relay-dynamic.js`) and re-applies that after every extension reload. Hostile `.zip` files (`../` paths, symlinks, zip bombs, too many files or bytes) are refused before anything is inflated.
 - **ChatGPT and Ptero providers** (experimental). ChatGPT works signed in and logged out; Ptero needs its **Quick Answer** mode, because in Smart mode its server-side agent runs the commands itself. Official favicons on the Home cards.
 - **`codeBlock` provider selector.** Providers whose code blocks are not a `<pre>` (ChatGPT's CodeMirror only draws on-screen lines) read each block's full code from the page's React props, then from `codeLine` lines.
 - **Side panel rail on the window edge.** The activity rail now sits on the right, next to the browser edge, and follows the panel to the left when Chrome docks it there (`chrome.sidePanel.getLayout()`). About sits right above Settings.
 - **Plan for runtime-installable web chat plugins** (docs only): `specs/09-WEBCHAT-PLUGINS.md`, ADR-020 (Proposed), backlog Fase 9.
 
 - **Live refresh.** The bridge now watches the active workspace (`bridge/src/watcher.ts`) and emits debounced `fs.changed` / `git.changed` events. The Explorer and Source Control panels redraw on their own when files change on disk, after a commit or branch switch made outside the panel, or when a terminal command touches the repo. Expanded folders survive the redraw.
+
+### Changed
+
+- **Agent messages look right on every chat site.** The badge sits in a label strip above the text instead of covering it, the page keeps its own bubble shape, and icons inside a bubble keep their icon font (Gemini's expand arrow no longer turns into the letters "expand"). Site-specific fixes live in each plugin's `style.css` (Gemini, Ptero).
+- **DeepSeek replies are read without the code-block banner** (language, Copy, Download), and agent marks no longer land on the off-screen conversation outline: on pages whose chat rows carry a message key, only messages inside those rows are marked.
+- **Ptero switches itself to Quick Answer.** Its plugin's `prepare` hook closes the welcome dialog and selects Quick Answer when a session starts or moves to Ptero, so its server-side agent no longer grabs the commands.
+- **Providers are built-in web chat plugins.** Each lives in `extension/plugins/<id>/` with a `plugin.json` (`apiVersion`, `name`, `version`, `author`, `matches`, `selectors`, ...) and its icon; `src/plugins/manifest.ts` validates them (concrete https hosts only, supported `apiVersion`, required selectors) and the build fails on an invalid plugin or a URL pattern claimed twice. Behaviour is unchanged: same selectors, same host permissions.
 
 ### Fixed
 

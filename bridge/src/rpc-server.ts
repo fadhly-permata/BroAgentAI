@@ -27,6 +27,7 @@ import {
   gitAbort, gitBranches, gitCheckout, gitCommit, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitPull, gitPush,
   gitStage, gitStatus, gitTestRemote, gitUnstage,
 } from "./git.ts";
+import { SessionStore } from "./session-store.ts";
 
 /** Protocol version negotiated between extension and host. */
 export const PROTOCOL_VERSION = 1;
@@ -65,6 +66,7 @@ export class RpcServer {
   readonly #handlers = new Map<string, RpcHandler>();
 
   readonly #emit: EmitEvent;
+  readonly #sessions: SessionStore;
   readonly #terminals: TerminalManager;
   readonly #mcp: McpManager;
   /** Only present when a sink is wired: tests build servers without events. */
@@ -74,6 +76,7 @@ export class RpcServer {
     this.#store = options.store ?? new WorkspaceStore();
     this.#hostVersion = options.hostVersion ?? HOST_VERSION;
     this.#emit = options.emit ?? (() => {});
+    this.#sessions = new SessionStore(this.#store.configDir);
     this.#terminals = new TerminalManager(this.#store, this.#emit);
     this.#mcp = new McpManager(this.#store, this.#emit);
     this.#watcher = options.emit ? new WorkspaceWatcher(this.#store, this.#emit) : null;
@@ -366,6 +369,21 @@ export class RpcServer {
       const p = readParams(params);
       return callTool(this, p.command, p.params, p.mode, p.approved);
     });
+    // Cross-context session resume (spec 8.1): persist a handoff snapshot by Session ID
+    // so the same task can resume in another window/profile. See session-store.ts.
+    this.register("session.save", (params) => {
+      const p = readParams(params);
+      return this.#sessions.save(p.id, p.snapshot);
+    });
+    this.register("session.load", (params) => {
+      const p = readParams(params);
+      return this.#sessions.load(p.id);
+    });
+    this.register("session.clear", (params) => {
+      const p = readParams(params);
+      return { cleared: this.#sessions.clear(p.id) };
+    });
+    this.register("session.list", () => ({ sessions: this.#sessions.list() }));
 
     this.register("config.get", () => {
       return loadMergedConfig(this.#store);

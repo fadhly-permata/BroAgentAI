@@ -1,0 +1,7 @@
+/* Gemini: how BroAgentAI's agent messages look on gemini.google.com.
+   Loaded after the shared base CSS (src/content/agent-marks.ts). */
+
+/* Gemini adds its own expand/collapse toggle to long user messages. Agent
+   messages already collapse through BroAgentAI's label strip, so the second
+   toggle only crowds the bubble. */
+[data-ba-agent] .luminous-toggle-container { display: none !important; }

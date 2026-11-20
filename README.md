@@ -16,24 +16,9 @@ BroAgentAI is a Chrome / Edge extension that adds a VS Code-ish side panel to yo
 
 ## How it works
 
-```text
- ┌──────────── Browser ─────────────┐
- │  AI chat tab        Side panel   │
- │  (DeepSeek,   ◄──►  (explorer,   │
- │  ChatGPT, …)        SCM, agent)  │
- └──────────────────────┬───────────┘
-                        │ Native Messaging (stdio, no open ports)
-                        ▼
-              broagentai-bridge (Node.js)
-              files · git · shell · MCP servers
-```
+![BroAgentAI architecture](docs/architecture.svg)
 
-1. You open the side panel and start a session. BroAgentAI types a short "operating instructions" message into your chat tab with the list of tools it can use.
-2. The AI answers with a JSON command like `{"command":"fs.readFile","params":{"path":"README.md"}}`.
-3. The panel spots the command, checks your approval mode, runs it through the local bridge and sends the result back to the chat.
-4. Repeat until the AI says it's done.
-
-The local companion, **broagentai-bridge**, is a small Node.js native-messaging host. The browser starts and stops it for you, so once it's set up there's no terminal or `start.bat` to babysit.
+BroAgentAI connects your browser extension to your local workspace through Native Messaging. The local bridge provides tools for filesystem, Git, shell, terminal, MCP, workspace, watcher and agent operations.
 
 ## Features
 
@@ -123,13 +108,13 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 | Gemini | `https://gemini.google.com/app` |
 | Qwen | `https://chat.qwen.ai/` |
 | ChatGPT (experimental) | `https://chatgpt.com/` |
-| Ptero (experimental) | `https://ptero.pro/` (set the mode next to the model picker to **Quick Answer**; in Smart mode Ptero's own server agent grabs the commands) |
+| Ptero (experimental) | `https://ptero.pro/` (the plugin switches Ptero to **Quick Answer** when a session starts; in Smart mode Ptero's own server agent grabs the commands) |
 
 "Experimental" means the selectors work on the live site (a full read → write → answer loop passed) but haven't been around long enough to call stable.
 
-Each provider is just a folder under [`extension/src/providers/`](extension/src/providers) with a `provider.json` of DOM selectors. Adding a new chat site is mostly a matter of finding the right selectors, and the build picks it up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
+Each provider is a built-in web chat plugin: a folder under [`extension/plugins/`](extension/plugins) with a `plugin.json` (name, version, URL patterns, DOM selectors), an icon, and optionally a `style.css` (how BroAgentAI's marks look on that site) and a `plugin.js` (hooks for the site's quirks, e.g. Ptero's mode switch). Adding a new chat site is mostly a matter of finding the right selectors; the build validates every `plugin.json` and picks the folder up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
 
-Coming up: **web chat plugins you can install without rebuilding**, each with its own selectors, per-site styling and small scripts for a site's quirks, managed from a Plugins page in Settings. It's planned, not built yet. See [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md).
+**Add a chat site without rebuilding:** put a `plugin.json` (and optionally a `style.css` and an icon) in a folder or `.zip`, then **Settings → Plugins → Import**. You get a review screen first, Chrome asks for access to that site only, and the plugin shows up on Home. The same page updates, exports, turns off or removes plugins, and can replace a built-in one with your own version. The format and the safety rules are in [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md). An imported plugin's `plugin.js` runs isolated from the page and from BroAgentAI itself, and only when you turn on Chrome's **Allow User Scripts** for BroAgentAI (`chrome://extensions` → BroAgentAI → Details).
 
 ### 🛡️ Safety stuff
 
@@ -206,7 +191,8 @@ Host config, the workspace list and trust records live in `%APPDATA%\BroAgentAI`
 It's an npm workspaces monorepo:
 
 ```text
-extension/   MV3 extension: side panel, editor tab, content scripts, providers (Vite + CRXJS)
+extension/   MV3 extension: side panel, editor tab, content scripts (Vite + CRXJS)
+             plugins/<id>/ built-in web chat plugins (plugin.json + icon)
 bridge/      broagentai-bridge: native-messaging host (files, git, shell, terminal, MCP)
 shared/      protocol types shared by both
 scripts/     native-host install/uninstall, manifest generation

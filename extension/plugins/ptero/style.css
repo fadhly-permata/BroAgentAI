@@ -1,0 +1,17 @@
+/* Ptero: how BroAgentAI's agent messages look on ptero.pro.
+   Loaded after the shared base CSS (src/content/agent-marks.ts). */
+
+/* Ptero paints user bubbles with "#chat-ai-chat-app:not([data-theme=dark])
+   .chat-msg.user .chat-msg-content { background-color: ... !important }", which
+   beats the base tint; this selector is one id more specific. */
+#chat-ai-chat-app #chat-messages .chat-msg.user .chat-msg-content[data-ba-agent] {
+  background-color: rgba(0, 122, 204, 0.12) !important;
+}
+#chat-ai-chat-app #chat-messages .chat-msg.user .chat-msg-content[data-ba-agent][data-ba-collapsed]:hover {
+  background-color: rgba(0, 122, 204, 0.2) !important;
+}
+
+/* Ptero renders user messages as Markdown, so "# BroAgentAI operating
+   instructions" becomes a heading whose top margin pushes the preview line
+   below the collapsed height. */
+[data-ba-agent] .chat-msg-text > :first-child { margin-top: 0 !important; }

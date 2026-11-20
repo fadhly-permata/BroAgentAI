@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc --noEmit && vite build && vite build --config vite.relay.config.ts",
     "typecheck": "tsc --noEmit",
     "e2e": "node e2e/sidepanel.spec.mjs",
     "e2e:native": "node e2e/native-host.spec.mjs",
