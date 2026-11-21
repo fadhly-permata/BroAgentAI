@@ -84,3 +84,12 @@ test('refChips classifies decorations', () => {
     { label: 'dev', kind: 'branch' },
   ]);
 });
+
+test('refChips keeps slashed local branches local when the remotes are known', () => {
+  assert.deepEqual(refChips(['HEAD -> feat/ui', 'origin/main', 'fix/x', 'upstream/dev'], ['origin', 'upstream']), [
+    { label: 'feat/ui', kind: 'head' },
+    { label: 'origin/main', kind: 'remote' },
+    { label: 'fix/x', kind: 'branch' },
+    { label: 'upstream/dev', kind: 'remote' },
+  ]);
+});

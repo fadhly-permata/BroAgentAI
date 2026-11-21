@@ -23,6 +23,8 @@ const NAMES = [
   'check', 'chevron-right', 'chevron-down', 'ellipsis', 'play', 'debug-stop', 'debug-restart',
   'warning', 'error', 'pulse', 'git-branch', 'folder', 'folder-opened', 'file', 'window', 'regex',
   'case-sensitive', 'circle-filled', 'loading',
+  // Source Control
+  'repo', 'repo-fetch', 'repo-pull', 'repo-push', 'cloud-upload', 'cloud', 'sync', 'target', 'tag', 'git-commit',
 ];
 
 const out = [];

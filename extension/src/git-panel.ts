@@ -6,6 +6,7 @@ import { formatBadgeCount } from './badge-format.js';
 import { openDiffView } from './diff-view.js';
 import { layoutGraph, refChips } from './git-graph.js';
 import type { GraphEdge, GraphRow } from './git-graph.js';
+import { t } from './i18n.js';
 
 interface GitFile {
   path: string;
@@ -54,6 +55,8 @@ export interface ScmDeps {
   toast(message: string): void;
   openModal(title: string, bodyHtml: string, onOk: () => void): void;
   hasWorkspace(): boolean;
+  /** Display name of the active workspace (the Repositories row). */
+  workspaceName?(): string;
   /** Called after an action changed files on disk (discard, branch switch). */
   onFilesChanged(): void;
   /** Open a workspace file in the editor (from the diff view's "Open" button). */
@@ -71,10 +74,10 @@ const collapsed = new Set<GroupKind>();
 
 type GroupKind = 'conflict' | 'staged' | 'changes' | 'untracked';
 const GROUPS: { kind: GroupKind; title: string; pick: (f: GitFile) => boolean }[] = [
-  { kind: 'conflict', title: 'Merge changes', pick: (f) => f.conflicted },
-  { kind: 'staged', title: 'Staged changes', pick: (f) => f.staged },
-  { kind: 'changes', title: 'Changes', pick: (f) => f.unstaged },
-  { kind: 'untracked', title: 'Untracked', pick: (f) => f.untracked },
+  { kind: 'conflict', title: 'mergeChanges', pick: (f) => f.conflicted },
+  { kind: 'staged', title: 'stagedChanges', pick: (f) => f.staged },
+  { kind: 'changes', title: 'changes', pick: (f) => f.unstaged },
+  { kind: 'untracked', title: 'untracked', pick: (f) => f.untracked },
 ];
 
 function letter(kind: GroupKind, f: GitFile): string {
@@ -118,17 +121,48 @@ function renderGroups(): void {
     const fold = collapsed.has(group.kind) ? ' collapsed' : '';
     return `<div class="scm-group${fold}" data-scm-group="${group.kind}">`
       + `<div class="scm-group-head" data-act="toggle-group" data-group="${group.kind}" role="button" aria-expanded="${!fold}">`
-      + `<span class="twist">${icon('chevron-right')}</span><span class="scm-group-title">${group.title}</span>`
+      + `<span class="twist">${icon('chevron-right')}</span><span class="scm-group-title">${escapeHtml(t(group.title))}</span>`
       + `<span class="scm-actions">${bulk}</span><span class="count-badge">${items.length}</span></div>`
       + `<div class="scm-rows">${rows || '<p class="scm-empty">Tidak ada perubahan.</p>'}</div></div>`;
   }).join('');
   $('scmGroups').innerHTML = html + (status?.truncated ? '<p class="muted scm-note">Daftar dipotong (terlalu banyak perubahan).</p>' : '');
 }
 
+/**
+ * The big button under the message box does what VS Code's SCM action button does:
+ * Commit while there are changes, Publish Branch for a clean branch without an
+ * upstream, Sync Changes when the branch is ahead of or behind its upstream.
+ */
+type ActionMode = 'commit' | 'publish' | 'sync';
+function actionMode(): ActionMode {
+  if (!status?.isRepo || status.files.length > 0 || status.operation || status.detached) return 'commit';
+  if (status.remotes.length === 0) return 'commit';
+  if (!status.upstream) return 'publish';
+  return status.ahead > 0 || status.behind > 0 ? 'sync' : 'commit';
+}
+
 function renderCommitButton(): void {
   const staged = (status?.files ?? []).some((f) => f.staged);
   const message = ($('commitMsg') as HTMLTextAreaElement).value.trim();
-  ($('commitBtn') as HTMLButtonElement).disabled = !(status?.isRepo && staged && message);
+  const canCommit = !!(status?.isRepo && staged && message);
+  const mode = actionMode();
+  const btn = $('commitBtn') as HTMLButtonElement;
+  btn.dataset.mode = mode;
+  const glyph = mode === 'publish' ? 'cloud-upload' : mode === 'sync' ? 'sync' : 'check';
+  const label = mode === 'publish' ? t('publishBranch')
+    : mode === 'sync' ? `${t('syncChanges')} ${status!.behind}\u2193 ${status!.ahead}\u2191` : t('commit');
+  btn.innerHTML = `${icon(glyph)}<span id="commitLabel">${escapeHtml(label)}</span>`;
+  btn.disabled = mode === 'commit' ? !canCommit : false;
+  ($('commitHeadBtn') as HTMLButtonElement).disabled = !canCommit;
+  ($('commitMsg') as HTMLTextAreaElement).placeholder = status?.branch
+    ? t('commitOn').replace('{0}', status.branch) : t('commitPlaceholder');
+}
+
+/** Grow the message box with its text, like VS Code's SCM input (up to 10 lines). */
+function fitCommitBox(): void {
+  const box = $('commitMsg') as HTMLTextAreaElement;
+  box.style.height = 'auto';
+  box.style.height = Math.min(box.scrollHeight + 2, 10 * 18 + 10) + 'px';
 }
 
 function renderBadge(): void {
@@ -246,17 +280,23 @@ function renderGraph(): void {
   const known = new Set(currentCommits.map((c) => c.hash));
   for (const hash of expanded.keys()) if (!known.has(hash)) expanded.delete(hash);
   const html = currentCommits.map((commit, i) => {
-    const chips = refChips(commit.refs);
+    const chips = refChips(commit.refs, status?.remotes);
     const isHead = chips.some((c) => c.kind === 'head');
     const open = expanded.has(commit.hash);
-    const chipsHtml = chips.map((c) => `<span class="scm-ref scm-ref-${c.kind}">${escapeHtml(c.label)}</span>`).join('');
+    // Ref badges like VS Code's graph: local refs take their lane color, remotes purple, tags grey.
+    const chipsHtml = chips.map((c) => {
+      const glyph = c.kind === 'head' ? 'target' : c.kind === 'remote' ? 'cloud' : c.kind === 'tag' ? 'tag' : 'git-branch';
+      const color = c.kind === 'head' || c.kind === 'branch' ? ` style="--ref-color:${laneColor(rows[i].color)}"` : '';
+      return `<span class="scm-ref scm-ref-${c.kind}"${color} title="${escapeHtml(c.label)}">${icon(glyph)}<span>${escapeHtml(c.label)}</span></span>`;
+    }).join('');
     const date = formatCommitDate(commit.date);
     const tip = `${commit.shortHash} · ${commit.author} <${commit.authorEmail}>\n${date}\n\n${commit.message}`;
     const row = `<div class="scm-graph-row${isHead ? ' is-head' : ''}${open ? ' open' : ''}" role="button" tabindex="0" aria-expanded="${open}"`
       + ` data-act="toggle-commit" data-hash="${escapeHtml(commit.hash)}" title="${escapeHtml(tip)}">`
       + graphSvg(rows[i], lanes, isHead)
-      + `<span class="scm-graph-msg">${chipsHtml}<span class="scm-graph-subject">${escapeHtml(commit.message)}</span></span>`
-      + `<span class="scm-graph-author">${escapeHtml(commit.author)}</span></div>`;
+      + `<span class="scm-graph-msg"><span class="scm-graph-subject">${escapeHtml(commit.message)}</span>`
+      + `<span class="scm-graph-author">${escapeHtml(commit.author)}</span></span>`
+      + (chipsHtml ? `<span class="scm-graph-refs">${chipsHtml}</span>` : '') + `</div>`;
     if (!open) return row;
     return row + `<div class="scm-graph-files">${laneSpacer(rows[i], lanes)}`
       + `<div class="scm-graph-files-list"><div class="scm-graph-files-head">${escapeHtml(commit.shortHash)} · ${escapeHtml(commit.author)} · ${escapeHtml(date)}</div>`
@@ -330,20 +370,17 @@ async function loadGraph(): Promise<void> {
   }
 }
 
-const graphVisible = () => !$('scmGraphView').classList.contains('hidden');
+/** Folded panes (Repositories / Changes / Graph); kept across refreshes. */
+const foldedPanes = new Set<string>();
+const graphVisible = () => !foldedPanes.has('graph');
 
-function showScmView(view: 'changes' | 'graph'): void {
-  document.querySelectorAll<HTMLElement>('.scm-view-btn').forEach((btn) => {
-    const on = btn.dataset.view === view;
-    btn.classList.toggle('active', on);
-    btn.setAttribute('aria-selected', String(on));
-  });
-  $('scmChangesView').classList.toggle('hidden', view !== 'changes');
-  $('scmGraphView').classList.toggle('hidden', view !== 'graph');
-  if (view === 'graph') {
-    if (currentCommits.length === 0) $('scmGraph').innerHTML = '<p class="scm-empty">Memuat riwayat commit...</p>';
-    loadGraph();
-  }
+function togglePane(pane: HTMLElement): void {
+  const name = pane.dataset.pane || '';
+  if (foldedPanes.has(name)) foldedPanes.delete(name); else foldedPanes.add(name);
+  const folded = foldedPanes.has(name);
+  pane.classList.toggle('collapsed', folded);
+  pane.querySelector('.pane-head')?.setAttribute('aria-expanded', String(!folded));
+  if (name === 'graph' && !folded) loadGraph();
 }
 
 /** Reload Git state for the active workspace and repaint the panel. */
@@ -368,9 +405,14 @@ export async function refreshScm(): Promise<void> {
     $('scmState').classList.add('hidden');
     $('scmBody').classList.remove('hidden');
     if (branches) renderBranches(branches);
+    $('scmRepoName').textContent = deps.workspaceName?.() || '';
     $('ahead').textContent = String(next.ahead);
     $('behind').textContent = String(next.behind);
-    $('scmUpstream').textContent = next.upstream ? next.upstream : 'tanpa upstream';
+    $('scmUpstream').textContent = next.upstream ? next.upstream : t('noUpstream');
+    // Like VS Code's repository row: ahead/behind once the branch tracks a remote, a publish icon before that.
+    $('scmSync').classList.toggle('hidden', !next.upstream);
+    $('scmSync').title = next.upstream ? `${next.upstream} - ${next.behind}\u2193 ${next.ahead}\u2191` : '';
+    $('repoPublish').classList.toggle('hidden', !!next.upstream || next.remotes.length === 0 || next.detached);
     $('conflictBanner').classList.toggle('hidden', !next.operation);
     $('conflictText').textContent = next.operation
       ? `${next.operation} sedang berlangsung - selesaikan konflik di file lalu stage + commit, atau Abort.` : '';
@@ -378,7 +420,7 @@ export async function refreshScm(): Promise<void> {
     for (const id of ['fetchBtn', 'pullBtn', 'pushBtn']) {
       const btn = $(id) as HTMLButtonElement;
       btn.disabled = !hasRemote || !!next.operation;
-      btn.title = hasRemote ? '' : 'Repository ini belum punya remote';
+      btn.title = hasRemote ? t(id.replace('Btn', '')) : 'Repository ini belum punya remote';
     }
     renderGroups();
     renderCommitButton();
@@ -466,21 +508,41 @@ export function initScm(dependencies: ScmDeps): void {
   $('scmRefresh').addEventListener('click', () => { refreshScm(); });
   $('commitMsg').addEventListener('input', renderCommitButton);
 
-  // Sub-view toggle (Changes / Graph)
-  document.querySelectorAll<HTMLElement>('.scm-view-btn').forEach((btn) => {
-    btn.addEventListener('click', () => showScmView(btn.dataset.view === 'graph' ? 'graph' : 'changes'));
+  // Collapsible panes: click or Enter/Space on a pane header, not on its action buttons.
+  document.querySelectorAll<HTMLElement>('#tab-scm .pane-head').forEach((head) => {
+    const pane = head.closest('.pane') as HTMLElement;
+    head.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('.pane-actions')) togglePane(pane); });
+    head.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target === head) { e.preventDefault(); togglePane(pane); }
+    });
+  });
+  $('graphRefresh').addEventListener('click', () => { loadGraph(); });
+  $('repoPublish').addEventListener('click', () => { $('pushBtn').click(); });
+  $('commitMsg').addEventListener('input', fitCommitBox);
+  $('commitMsg').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('commitHeadBtn').click(); }
   });
   $('scmGraph').addEventListener('click', onGraphClick);
   $('scmGraph').addEventListener('keydown', onGraphKey);
 
-  $('commitBtn').addEventListener('click', () => run(async () => {
+  const commit = () => run(async () => {
     const box = $('commitMsg') as HTMLTextAreaElement;
     const res: any = await bridge.call('git.commit', { message: box.value });
     box.value = '';
+    fitCommitBox();
     $('commitOut').textContent = `Commit ${res.hash} - ${res.summary}`;
     paint(res.status);
     deps.toast('Commit dibuat: ' + res.hash);
-  }));
+  });
+  $('commitHeadBtn').addEventListener('click', () => {
+    if (!($('commitHeadBtn') as HTMLButtonElement).disabled) commit();
+  });
+  $('commitBtn').addEventListener('click', () => {
+    const mode = $('commitBtn').dataset.mode as ActionMode | undefined;
+    if (mode === 'publish') { $('pushBtn').click(); return; }
+    if (mode === 'sync') { syncChanges(); return; }
+    commit();
+  });
 
   $('branchSel').addEventListener('change', async () => {
     const select = $('branchSel') as HTMLSelectElement;
@@ -507,6 +569,19 @@ export function initScm(dependencies: ScmDeps): void {
     }
     if (touchesFiles) deps.onFilesChanged();
     await refreshScm();
+  };
+
+  // Sync Changes = pull (ff-only, never conflicts) then push, after one confirmation.
+  const syncChanges = () => {
+    if (!status?.isRepo || !status.upstream) return;
+    const { behind, ahead, upstream } = status;
+    deps.openModal(t('syncChanges'),
+      `<p>Branch <b>${escapeHtml(status.branch || '')}</b> &harr; <b>${escapeHtml(upstream)}</b>: `
+      + `${behind} commit di-pull (ff-only), lalu ${ahead} commit di-push.</p><p class="muted">Force-push tidak tersedia.</p>`,
+      () => sync('Sync', async () => {
+        if (behind > 0) await bridge.call('git.pull', { mode: 'ff-only' }, 130000);
+        if (ahead > 0) await bridge.call('git.push', {}, 130000);
+      }, () => 'Sync selesai'));
   };
 
   $('fetchBtn').addEventListener('click', () => sync('Fetch', () => bridge.call('git.fetch', {}, 130000),

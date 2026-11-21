@@ -512,7 +512,7 @@ const onProvidersChanged = () => { renderHome(); refreshProviderControls(); void
 void refreshProviders().then(onProvidersChanged);
 watchProviders(onProvidersChanged);
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });
-initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); }, openFile: (path)=>{ openFile(path); } });
+initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, workspaceName: ()=>activeWs?.name ?? '', onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); }, openFile: (path)=>{ openFile(path); } });
 
 connectBridge();
 

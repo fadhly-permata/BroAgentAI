@@ -80,42 +80,48 @@
 </section>
 
 <section id="tab-scm" class="panel">
-  <div class="panel-head"><h2 data-i18n="scm">Source Control</h2></div>
-  <div class="scm-toolbar">
-    <button id="scmRefresh" class="square" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button>
-    <button id="fetchBtn" disabled><i data-icon="cloud-download"></i><span data-i18n="fetch">Fetch</span></button>
-    <button id="pullBtn" disabled><i data-icon="arrow-down"></i><span data-i18n="pull">Pull</span></button>
-    <button id="pushBtn" class="primary" disabled><i data-icon="arrow-up"></i><span data-i18n="push">Push</span></button>
-  </div>
-  <div class="panel-body">
-    <div id="scmState" class="empty-state"><p data-i18n="loadingGit">Memuat status Git...</p></div>
-    <div id="scmBody" class="scm-body hidden">
-      <div class="branch-row">
-        <i data-icon="git-branch" class="branch-ico"></i>
-        <select id="branchSel" data-i18n-title="branch" title="Branch" aria-label="Branch"></select>
-        <span class="sync-pill" title="ahead / behind upstream"><i data-icon="arrow-up"></i><b id="ahead">0</b><i data-icon="arrow-down"></i><b id="behind">0</b></span>
-        <button id="newBranchBtn" class="mini" data-i18n="newBranch">+ Branch</button>
+  <div class="panel-head"><h2 data-i18n="scm">Source Control</h2><div class="head-actions">
+    <button id="scmRefresh" class="action" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button>
+  </div></div>
+  <div id="scmState" class="panel-body empty-state"><p data-i18n="loadingGit">Memuat status Git...</p></div>
+  <div id="scmBody" class="panes hidden">
+    <div class="pane" data-pane="repos">
+      <div class="pane-head" role="button" tabindex="0" aria-expanded="true"><span class="twist"><i data-icon="chevron-right"></i></span><h3 data-i18n="repositories">Repositories</h3></div>
+      <div class="pane-body">
+        <div class="scm-repo">
+          <i data-icon="repo" class="scm-repo-ico"></i>
+          <span id="scmRepoName" class="scm-repo-name"></span>
+          <label class="scm-branch" data-i18n-title="branch" title="Checkout to..."><i data-icon="git-branch"></i><select id="branchSel" aria-label="Branch"></select></label>
+          <span id="scmSync" class="sync-pill" title="ahead / behind upstream"><b id="behind">0</b><i data-icon="arrow-down"></i><b id="ahead">0</b><i data-icon="arrow-up"></i></span>
+          <button id="repoPublish" class="action hidden" data-i18n-title="publishBranch" title="Publish Branch"><i data-icon="cloud-upload"></i></button>
+          <button id="newBranchBtn" class="action" title="Create Branch..." aria-label="Create Branch"><i data-icon="add"></i></button>
+          <span id="scmUpstream" class="sr-only"></span>
+        </div>
       </div>
-      <p class="upstream-line"><span id="scmUpstream"></span></p>
-      <div id="conflictBanner" class="callout callout-warn hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
-      <div class="tabs scm-view-toggle" role="tablist" aria-label="Source control view">
-        <button class="tab scm-view-btn active" role="tab" aria-selected="true" aria-controls="scmChangesView" data-view="changes" data-i18n="changes">Changes</button>
-        <button class="tab scm-view-btn" role="tab" aria-selected="false" aria-controls="scmGraphView" data-view="graph" data-i18n="graph">Graph</button>
-      </div>
-
-      <div id="scmChangesView" role="tabpanel">
+    </div>
+    <div class="pane pane-grow" data-pane="changes">
+      <div class="pane-head" role="button" tabindex="0" aria-expanded="true"><span class="twist"><i data-icon="chevron-right"></i></span><h3 data-i18n="changes">Changes</h3><div class="pane-actions">
+        <button id="fetchBtn" class="action" data-i18n-title="fetch" title="Fetch" disabled><i data-icon="repo-fetch"></i></button>
+        <button id="pullBtn" class="action" data-i18n-title="pull" title="Pull" disabled><i data-icon="repo-pull"></i></button>
+        <button id="pushBtn" class="action" data-i18n-title="push" title="Push" disabled><i data-icon="repo-push"></i></button>
+        <button id="commitHeadBtn" class="action" data-i18n-title="commit" title="Commit" disabled><i data-icon="check"></i></button>
+      </div></div>
+      <div class="pane-body">
+        <div id="conflictBanner" class="callout callout-warn hidden"><span id="conflictText"></span><button id="scmAbort" class="mini">Abort</button></div>
         <div class="commit-box">
-          <textarea id="commitMsg" rows="3" data-i18n-ph="commitPlaceholder" placeholder="feat: ..." aria-label="Commit message"></textarea>
-          <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span data-i18n="commit">Commit</span></button>
+          <textarea id="commitMsg" rows="1" placeholder="Message (Ctrl+Enter to commit)" aria-label="Commit message"></textarea>
+          <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span id="commitLabel">Commit</span></button>
           <p id="commitOut" class="muted"></p>
         </div>
         <div id="scmGroups" class="scm-groups"></div>
       </div>
-
-      <div id="scmGraphView" class="hidden" role="tabpanel">
-        <div id="scmGraph" class="scm-graph-container">
-          <p class="muted" data-i18n="loadingGraph">Memuat riwayat commit...</p>
-        </div>
+    </div>
+    <div class="pane pane-grow" data-pane="graph">
+      <div class="pane-head" role="button" tabindex="0" aria-expanded="true"><span class="twist"><i data-icon="chevron-right"></i></span><h3 data-i18n="graph">Graph</h3><div class="pane-actions">
+        <button id="graphRefresh" class="action" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button>
+      </div></div>
+      <div class="pane-body flush">
+        <div id="scmGraph" class="scm-graph-container"><p class="scm-empty" data-i18n="loadingGraph">Memuat riwayat commit...</p></div>
       </div>
     </div>
   </div>
