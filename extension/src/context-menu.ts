@@ -28,21 +28,33 @@ function openMenu(e: MouseEvent, entries: Entry[]): void {
   const buttons: HTMLButtonElement[] = [];
   for (const en of entries) {
     if (en === 'sep') {
+      // Skip separator if it's between two disabled items or at start/end
       const s = document.createElement('div');
       s.className = 'ba-ctx-sep';
       menu.appendChild(s);
       continue;
     }
+    // Skip disabled items entirely - don't show them in the menu
+    if (en.disabled) continue;
+    
     const b = document.createElement('button');
     b.className = 'ba-ctx-item';
     b.setAttribute('role', 'menuitem');
-    b.disabled = !!en.disabled;
     b.innerHTML = (en.icon ? icon(en.icon) : '<svg class="ico"></svg>') + '<span></span>';
     b.querySelector('span')!.textContent = en.label;
     b.addEventListener('click', () => { close(); en.act(); });
     menu.appendChild(b);
     buttons.push(b);
   }
+  
+  // Don't show empty menu
+  if (buttons.length === 0) return;
+  
+  // Remove trailing separators
+  while (menu.lastElementChild?.className === 'ba-ctx-sep') {
+    menu.lastElementChild.remove();
+  }
+  
   document.body.appendChild(menu);
 
   const margin = 4;
