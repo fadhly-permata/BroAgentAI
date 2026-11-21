@@ -463,9 +463,15 @@ input[type="checkbox"]:focus-visible { outline: 1px solid var(--focus); outline-
 /* Panes (split view sections inside a view, e.g. Source Control's Repositories /
    Changes / Graph): 22px collapsible header, actions show while the view is hovered. */
 .panes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.pane { display: flex; flex-direction: column; min-height: 0; flex: none; }
+.pane { position: relative; display: flex; flex-direction: column; min-height: 0; flex: none; }
 .pane + .pane { border-top: 1px solid var(--border-section); }
-.pane-grow:not(.collapsed) { flex: 1 1 0; }
+.pane-grow:not(.collapsed) { flex: var(--pane-weight, 1) 1 0px; }
+/* Sash (panes.ts): 4px drag handle on the border between two open grow panes;
+   shows sash.hoverBorder (focusBorder) after a short hover, like VS Code. */
+.sash { display: none; position: absolute; left: 0; right: 0; top: -3px; height: 4px; z-index: 10; cursor: ns-resize; touch-action: none; }
+.pane-grow:not(.collapsed) + .pane-grow:not(.collapsed) > .sash { display: block; }
+.sash:hover { background: var(--focus); transition: background-color 0.1s ease-out 0.3s; }
+.sash.active { background: var(--focus); transition: none; }
 .pane-head {
   height: var(--row-h); flex: none;
   display: flex; align-items: center; gap: 2px;

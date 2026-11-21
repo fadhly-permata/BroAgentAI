@@ -7,6 +7,7 @@ import { openDiffView } from './diff-view.js';
 import { layoutGraph, refChips } from './git-graph.js';
 import type { GraphEdge, GraphRow } from './git-graph.js';
 import { t } from './i18n.js';
+import { initPanes } from './panes.js';
 
 interface GitFile {
   path: string;
@@ -508,6 +509,7 @@ export function initScm(dependencies: ScmDeps): void {
   $('scmRefresh').addEventListener('click', () => { refreshScm(); });
   $('commitMsg').addEventListener('input', renderCommitButton);
 
+  initPanes($('scmBody'), 'broagentai.scmPanes');
   // Collapsible panes: click or Enter/Space on a pane header, not on its action buttons.
   document.querySelectorAll<HTMLElement>('#tab-scm .pane-head').forEach((head) => {
     const pane = head.closest('.pane') as HTMLElement;
