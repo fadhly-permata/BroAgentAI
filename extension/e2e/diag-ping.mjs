@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
-const url = process.argv[2] || 'https://new.tusksearch.com/ai';
+const url = process.argv[2] || 'https://chat.deepseek.com/';
 
 const ctx = await chromium.launchPersistentContext(path.join(root, 'e2e', '.pw-diag-ping-profile'), {
   channel: 'chromium',
