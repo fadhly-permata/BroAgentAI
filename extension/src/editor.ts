@@ -12,6 +12,10 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { searchKeymap } from '@codemirror/search';
 import { bridge, BridgeErrorCode } from './bridge-client.js';
 import { applyTheme, type Theme } from './i18n.js';
+import { installContextMenuGuard } from './context-guard.js';
+
+// No native right-click menu except on editable fields and custom menus (context-guard.ts).
+installContextMenuGuard();
 
 // Same theme as the side panel: its UI settings live in this origin's localStorage.
 const UI_SETTINGS_KEY = 'broagentai.ui';

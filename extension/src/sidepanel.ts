@@ -12,6 +12,10 @@ import { reloadIfManifestStale } from './stale-manifest.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
 import { createCodeView, type CodeView } from './code-view.js';
 import { showExplorerMenu } from './context-menu.js';
+import { installContextMenuGuard } from './context-guard.js';
+
+// No native right-click menu except on editable fields and custom menus (context-guard.ts).
+installContextMenuGuard();
 
 hydrateIcons();
 
