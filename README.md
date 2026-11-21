@@ -109,6 +109,7 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 | Qwen | `https://chat.qwen.ai/` |
 | ChatGPT (experimental) | `https://chatgpt.com/` |
 | Ptero (experimental) | `https://ptero.pro/` (the plugin switches Ptero to **Quick Answer** when a session starts; in Smart mode Ptero's own server agent grabs the commands) |
+| Meta AI (experimental) | `https://www.meta.ai/` (guest mode works after the one-time birth-year prompt; signing in is optional) |
 | TuskSearch AI (experimental) | `https://new.tusksearch.com/ai` (the plugin switches the composer to **Central AI** when a session starts; in Search mode the same box runs a web search. Selectors checked on the live site; the full loop has not been run yet) |
 
 "Experimental" means the selectors work on the live site (a full read → write → answer loop passed) but haven't been around long enough to call stable.
