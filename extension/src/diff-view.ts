@@ -1,6 +1,7 @@
-// Full-height diff preview overlay (unified / side-by-side) for the Source Control panel.
+// Diff rendering (unified / side-by-side) for Source Control, shown as an editor
+// tab of the editor page's workbench (file-preview.ts) like every other file.
 import './diff-view.css';
-import { fileIcon } from './icons.js';
+import type { EditorTab, Workbench } from './file-preview.js';
 import { highlightToHtml } from './code-view.js';
 import { pairLines, parseDiff, type DiffLine } from './diff-parse.js';
 
@@ -80,58 +81,36 @@ function bodyHtml(opts: DiffViewOptions, mode: Mode): string {
   return `<div class="dv-split"><div class="dv-col">${left}</div><div class="dv-col">${right}</div></div>`;
 }
 
-let current: { el: HTMLElement; close(): void } | null = null;
-
-/** Open the diff overlay. Replaces any diff view that is already open. */
-export function openDiffView(opts: DiffViewOptions): void {
-  current?.close();
+/** Open a diff as an editor tab of the workbench (or activate it when `key` is already open). */
+export function openDiffTab(workbench: Workbench, key: string, opts: DiffViewOptions): EditorTab {
   const parsed = parseDiff(opts.diff);
   let mode = loadMode();
-  const slash = opts.path.lastIndexOf('/');
-  const name = slash < 0 ? opts.path : opts.path.slice(slash + 1);
-  const dir = slash < 0 ? '' : opts.path.slice(0, slash);
-
-  const el = document.createElement('div');
-  el.className = 'dv-overlay';
-  el.setAttribute('role', 'dialog');
-  el.setAttribute('aria-label', 'Diff ' + opts.path);
-  el.innerHTML = `<div class="dv-head">
-    <div class="dv-file" title="${esc(opts.path)}"><span class="ba-tree-icon">${fileIcon(name)}</span><span class="dv-name">${esc(name)}</span>${dir ? `<span class="dv-dir">${esc(dir)}</span>` : ''}</div>
-    <span class="dv-tag ${opts.staged ? 'staged' : ''}">${esc(opts.label ?? (opts.staged ? 'Staged' : 'Working Tree'))}</span>
-    <span class="dv-stats"><span class="a">+${parsed.added}</span><span class="d">-${parsed.removed}</span></span>
-    <div class="dv-tools">
-      <button class="dv-btn" data-m="unified" title="Unified">Unified</button>
-      <button class="dv-btn" data-m="split" title="Side-by-side">Split</button>
-      ${opts.onOpenFile ? '<button class="dv-btn" data-a="open" title="Open file">Open</button>' : ''}
-      <button class="dv-btn close" data-a="close" title="Close (Esc)" aria-label="Close">&times;</button>
-    </div></div>
-    ${opts.truncated ? '<div class="dv-note">Diff truncated (too large).</div>' : ''}
-    <div class="dv-body"></div>`;
-  const body = el.querySelector('.dv-body') as HTMLElement;
-
-  const paint = () => {
-    body.innerHTML = bodyHtml(opts, mode);
-    body.scrollTop = 0;
-    el.querySelectorAll<HTMLElement>('[data-m]').forEach((b) => b.classList.toggle('active', b.dataset.m === mode));
+  const tag = opts.label ?? (opts.staged ? 'Staged' : 'Working Tree');
+  const paint = (tab: EditorTab) => {
+    tab.body.innerHTML = bodyHtml(opts, mode);
+    tab.body.scrollTop = 0;
+    tab.setActionActive('unified', mode === 'unified');
+    tab.setActionActive('split', mode === 'split');
   };
-
-  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
-  const close = () => {
-    document.removeEventListener('keydown', onKey, true);
-    el.remove();
-    if (current?.el === el) current = null;
-    opts.onClose?.();
-  };
-
-  el.addEventListener('click', (e) => {
-    const t = (e.target as HTMLElement).closest('button') as HTMLButtonElement | null;
-    if (!t) return;
-    if (t.dataset.m) { mode = t.dataset.m as Mode; saveMode(mode); paint(); }
-    else if (t.dataset.a === 'close') close();
-    else if (t.dataset.a === 'open') opts.onOpenFile?.(opts.path);
+  return workbench.open({
+    key,
+    path: opts.path,
+    kind: 'diff',
+    tag,
+    metaHtml: `<span class="dv-stats"><span class="a">+${parsed.added}</span><span class="d">-${parsed.removed}</span></span>`,
+    note: opts.truncated ? 'Diff truncated (too large).' : undefined,
+    actions: [
+      { act: 'unified', label: 'Unified', title: 'Unified', className: 'dv-btn' },
+      { act: 'split', label: 'Split', title: 'Side-by-side', className: 'dv-btn' },
+      ...(opts.onOpenFile ? [{ act: 'open', icon: 'go-to-file', title: 'Open File' }] : []),
+    ],
+    onAction(act, _button, tab) {
+      if (act === 'unified' || act === 'split') { mode = act; saveMode(mode); paint(tab); }
+      else if (act === 'open') opts.onOpenFile?.(opts.path);
+    },
+    onClose: opts.onClose,
+  }, (tab) => {
+    paint(tab);
+    tab.setStatus(`+${parsed.added} -${parsed.removed}`, tag);
   });
-  document.addEventListener('keydown', onKey, true);
-  paint();
-  document.body.appendChild(el);
-  current = { el, close };
 }

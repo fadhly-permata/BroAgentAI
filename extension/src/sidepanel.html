@@ -37,12 +37,12 @@
 </nav>
 <main class="content">
 
-<section id="tab-home" class="panel view-editor active">
+<section id="tab-home" class="panel active">
   <div class="panel-head"><h2 data-i18n="home">Home</h2></div>
   <div id="homeBody" class="panel-body home"></div>
 </section>
 
-<section id="tab-explorer" class="panel view-sidebar">
+<section id="tab-explorer" class="panel">
   <div class="panel-head"><h2 data-i18n="explorer">Explorer</h2><div class="head-actions">
     <button id="newFileBtn" class="action" data-i18n-title="newFileTip" title="New File..."><i data-icon="new-file"></i></button>
     <button id="newFolderBtn" class="action" data-i18n-title="newFolderTip" title="New Folder..."><i data-icon="new-folder"></i></button>
@@ -52,15 +52,10 @@
   </div></div>
   <div class="panel-body flush">
     <div id="tree" class="tree-container"></div>
-    <div id="editorPreview" class="editor-preview hidden">
-      <div class="ed-head"><span id="edIcon" class="ed-icon"></span><b id="edName">-</b><span id="edDirty" class="ed-dirty"></span><div class="ed-actions"><button id="edSave" class="mini primary" data-i18n="save">Save</button><button id="edClose" class="action" data-i18n-title="close" title="Close"><i data-icon="close"></i></button></div></div>
-      <div id="edArea" class="ed-code bro-code-host"></div>
-      <p id="edMeta" class="statusline"></p>
-    </div>
   </div>
 </section>
 
-<section id="tab-search" class="panel view-sidebar">
+<section id="tab-search" class="panel">
   <div class="panel-head"><h2 data-i18n="search">Search</h2><div class="head-actions">
     <button id="searchClear" class="action" data-i18n-title="clear" title="Clear Search Results"><i data-icon="clear-all"></i></button>
     <button id="searchCollapse" class="action" data-i18n-title="collapseAll" title="Collapse All"><i data-icon="collapse-all"></i></button>
@@ -79,49 +74,55 @@
   </div>
 </section>
 
-<section id="tab-scm" class="panel view-sidebar">
-  <div class="panel-head"><h2 data-i18n="scm">Source Control</h2></div>
-  <div class="scm-toolbar">
-    <button id="scmRefresh" class="square" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button>
-    <button id="fetchBtn" disabled><i data-icon="cloud-download"></i><span data-i18n="fetch">Fetch</span></button>
-    <button id="pullBtn" disabled><i data-icon="arrow-down"></i><span data-i18n="pull">Pull</span></button>
-    <button id="pushBtn" class="primary" disabled><i data-icon="arrow-up"></i><span data-i18n="push">Push</span></button>
-  </div>
-  <div class="panel-body">
-    <div id="scmState" class="empty-state"><p data-i18n="loadingGit">Memuat status Git...</p></div>
-    <div id="scmBody" class="scm-body hidden">
-      <div class="branch-row">
-        <i data-icon="git-branch" class="branch-ico"></i>
-        <select id="branchSel" data-i18n-title="branch" title="Branch" aria-label="Branch"></select>
-        <span class="sync-pill" title="ahead / behind upstream"><i data-icon="arrow-up"></i><b id="ahead">0</b><i data-icon="arrow-down"></i><b id="behind">0</b></span>
-        <button id="newBranchBtn" class="mini" data-i18n="newBranch">+ Branch</button>
+<section id="tab-scm" class="panel">
+  <div class="panel-head"><h2 data-i18n="scm">Source Control</h2><div class="head-actions">
+    <button id="scmRefresh" class="action" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button>
+  </div></div>
+  <div id="scmState" class="panel-body empty-state"><p data-i18n="loadingGit">Memuat status Git...</p></div>
+  <div id="scmBody" class="panes hidden">
+    <div class="pane" data-pane="repos">
+      <div class="pane-head" role="button" tabindex="0" aria-expanded="true"><span class="twist"><i data-icon="chevron-right"></i></span><h3 data-i18n="repositories">Repositories</h3></div>
+      <div class="pane-body">
+        <div class="scm-repo">
+          <i data-icon="repo" class="scm-repo-ico"></i>
+          <span id="scmRepoName" class="scm-repo-name"></span>
+          <label class="scm-branch" data-i18n-title="branch" title="Checkout to..."><i data-icon="git-branch"></i><select id="branchSel" aria-label="Branch"></select></label>
+          <span id="scmSync" class="sync-pill" title="ahead / behind upstream"><b id="behind">0</b><i data-icon="arrow-down"></i><b id="ahead">0</b><i data-icon="arrow-up"></i></span>
+          <button id="repoPublish" class="action hidden" data-i18n-title="publishBranch" title="Publish Branch"><i data-icon="cloud-upload"></i></button>
+          <button id="newBranchBtn" class="action" title="Create Branch..." aria-label="Create Branch"><i data-icon="add"></i></button>
+          <span id="scmUpstream" class="sr-only"></span>
+        </div>
       </div>
-      <p class="upstream-line"><span id="scmUpstream"></span></p>
-      <div id="conflictBanner" class="callout callout-warn hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
-      <div class="scm-view-toggle" role="tablist" aria-label="Source control view">
-        <button class="scm-view-btn active" role="tab" aria-selected="true" aria-controls="scmChangesView" data-view="changes" data-i18n="changes">Changes</button>
-        <button class="scm-view-btn" role="tab" aria-selected="false" aria-controls="scmGraphView" data-view="graph" data-i18n="graph">Graph</button>
-      </div>
-
-      <div id="scmChangesView" role="tabpanel">
+    </div>
+    <div class="pane pane-grow" data-pane="changes">
+      <div class="pane-head" role="button" tabindex="0" aria-expanded="true"><span class="twist"><i data-icon="chevron-right"></i></span><h3 data-i18n="changes">Changes</h3><div class="pane-actions">
+        <button id="fetchBtn" class="action" data-i18n-title="fetch" title="Fetch" disabled><i data-icon="repo-fetch"></i></button>
+        <button id="pullBtn" class="action" data-i18n-title="pull" title="Pull" disabled><i data-icon="repo-pull"></i></button>
+        <button id="pushBtn" class="action" data-i18n-title="push" title="Push" disabled><i data-icon="repo-push"></i></button>
+        <button id="commitHeadBtn" class="action" data-i18n-title="commit" title="Commit" disabled><i data-icon="check"></i></button>
+      </div></div>
+      <div class="pane-body">
+        <div id="conflictBanner" class="callout callout-warn hidden"><span id="conflictText"></span><button id="scmAbort" class="mini">Abort</button></div>
         <div class="commit-box">
-          <textarea id="commitMsg" rows="3" data-i18n-ph="commitPlaceholder" placeholder="feat: ..." aria-label="Commit message"></textarea>
-          <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span data-i18n="commit">Commit</span></button>
+          <textarea id="commitMsg" rows="1" placeholder="Message (Ctrl+Enter to commit)" aria-label="Commit message"></textarea>
+          <button id="commitBtn" class="primary full" disabled><i data-icon="check"></i><span id="commitLabel">Commit</span></button>
           <p id="commitOut" class="muted"></p>
         </div>
         <div id="scmGroups" class="scm-groups"></div>
       </div>
-
-      <div id="scmGraphView" class="hidden" role="tabpanel">
-        <div id="scmGraph" class="scm-graph-container">
-          <p class="muted" data-i18n="loadingGraph">Memuat riwayat commit...</p>
-        </div>
+    </div>
+    <div class="pane pane-grow" data-pane="graph">
+      <div class="pane-head" role="button" tabindex="0" aria-expanded="true"><span class="twist"><i data-icon="chevron-right"></i></span><h3 data-i18n="graph">Graph</h3><div class="pane-actions">
+        <button id="graphRefresh" class="action" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button>
+      </div></div>
+      <div class="pane-body flush">
+        <div id="scmGraph" class="scm-graph-container"><p class="scm-empty" data-i18n="loadingGraph">Memuat riwayat commit...</p></div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="tab-terminal" class="panel view-editor">
+<section id="tab-terminal" class="panel">
   <div class="panel-head"><h2 data-i18n="terminal">Terminal</h2><div class="head-actions">
     <button id="termNew" class="action" data-i18n-title="newTerminal" title="New Terminal"><i data-icon="add"></i></button>
     <button id="termClear" class="action" data-i18n-title="clearTerminal" title="Clear"><i data-icon="clear-all"></i></button>
@@ -131,7 +132,7 @@
   <div id="termView" class="term-view"></div>
 </section>
 
-<section id="tab-agent" class="panel view-editor">
+<section id="tab-agent" class="panel">
   <div class="panel-head"><h2 data-i18n="agent">Agent</h2><span id="agentPill" class="pill pill-warn"><span class="dot"></span><span id="agentSession" data-i18n="noSession">Belum ada sesi</span></span><button id="agentNoticeShow" class="action hidden" data-i18n-title="agentNoticeShow" title="Show info"><i data-icon="info"></i></button></div>
   <div class="panel-body">
     <div id="agentNotice" class="callout callout-info notice"><i data-icon="agent" class="callout-ico"></i><button id="agentNoticeClose" class="action notice-x" data-i18n-title="dismiss" title="Dismiss"><i data-icon="close"></i></button><div><strong data-i18n="monitoringAgent">Monitoring &amp; Approval Agent</strong><p data-i18n="agentDesc">Chat tetap di tab AI Anda. Panel ini menjalankan perintah tool dari AI, meminta persetujuan bila perlu, dan mencatat semuanya.</p></div></div>
@@ -161,46 +162,33 @@
   </div>
 </section>
 
-<section id="tab-about" class="panel view-editor">
+<section id="tab-about" class="panel">
   <div class="panel-head"><h2 data-i18n="about">About</h2></div>
   <div class="panel-body">
-    <div class="section" style="align-items: center; text-align: center; padding-top: var(--sp-4);">
-      <img src="../assets/icon.png" alt="BroAgentAI Logo" style="width: 64px; height: 64px; border-radius: 12px; margin-bottom: var(--sp-3);" />
-      <h3 style="font-size: 18px; font-weight: 600; color: var(--text-strong); margin-bottom: var(--sp-1);">BroAgentAI</h3>
-      <p class="muted" style="margin-bottom: var(--sp-3);">v0.1.0</p>
-      <p style="color: var(--text); line-height: 1.5; max-width: 320px; margin-bottom: var(--sp-4);" data-i18n="aboutDesc">Chrome/Edge side panel that turns your DeepSeek, Gemini, Qwen, ChatGPT, Ptero or TuskSearch web chat into a local coding agent: files, Git, shell & MCP tools with approvals. No API key.</p>
-      
-      <div class="card" style="width: 100%; max-width: 320px; text-align: left;">
-        <div class="kv">
-          <span class="kv-key" data-i18n="author">Author</span>
-          <span class="kv-val">Fadhly Permata</span>
-        </div>
-        <div class="kv">
-          <span class="kv-key">GitHub</span>
-          <a href="https://github.com/fadhly-permata" target="_blank" rel="noopener noreferrer" style="color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis;">@fadhly-permata</a>
-        </div>
-        <div class="kv">
-          <span class="kv-key">Stack Overflow</span>
-          <a href="https://stackoverflow.com/users/fadhly-permata" target="_blank" rel="noopener noreferrer" style="color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis;">Fadhly Permata</a>
-        </div>
-        <div class="kv">
-          <span class="kv-key">Website</span>
-          <a href="http://fadhly-permata.rf.gd/" target="_blank" rel="noopener noreferrer" style="color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis;">fadhly-permata.rf.gd</a>
-        </div>
+    <div class="section about">
+      <img src="../assets/icon.png" alt="BroAgentAI Logo" class="about-logo" />
+      <h3>BroAgentAI</h3>
+      <p class="muted">v0.1.0</p>
+      <p class="about-desc" data-i18n="aboutDesc">Chrome/Edge side panel that turns your DeepSeek, Gemini, Qwen, ChatGPT, Ptero or TuskSearch web chat into a local coding agent: files, Git, shell &amp; MCP tools with approvals. No API key.</p>
+      <div class="card">
+        <div class="kv"><span class="kv-key" data-i18n="author">Author</span><span class="kv-val">Fadhly Permata</span></div>
+        <div class="kv"><span class="kv-key">GitHub</span><a href="https://github.com/fadhly-permata" target="_blank" rel="noopener noreferrer">@fadhly-permata</a></div>
+        <div class="kv"><span class="kv-key">Stack Overflow</span><a href="https://stackoverflow.com/users/fadhly-permata" target="_blank" rel="noopener noreferrer">Fadhly Permata</a></div>
+        <div class="kv"><span class="kv-key">Website</span><a href="http://fadhly-permata.rf.gd/" target="_blank" rel="noopener noreferrer">fadhly-permata.rf.gd</a></div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="tab-settings" class="panel view-editor">
+<section id="tab-settings" class="panel">
   <div class="panel-head"><h2 data-i18n="settingsTitle">Settings</h2></div>
-  <div class="set-nav" role="tablist">
-    <button class="set-tab active" data-set="editor" role="tab" data-i18n="displayLang">Tampilan &amp; Bahasa</button>
-    <button class="set-tab" data-set="companion" role="tab" data-i18n="companionHost">Companion</button>
-    <button class="set-tab" data-set="workspaces" role="tab" data-i18n="manageWorkspaces">Workspaces</button>
-    <button class="set-tab" data-set="mcp" role="tab" data-i18n="mcpServers">MCP</button>
-    <button class="set-tab" data-set="plugins" role="tab" data-i18n="plugins">Plugins</button>
-    <button class="set-tab" data-set="agent" role="tab" data-i18n="agentSettings">Agent</button>
+  <div class="tabs set-nav" role="tablist">
+    <button class="tab set-tab active" data-set="editor" role="tab" data-i18n="displayLang">Tampilan &amp; Bahasa</button>
+    <button class="tab set-tab" data-set="companion" role="tab" data-i18n="companionHost">Companion</button>
+    <button class="tab set-tab" data-set="workspaces" role="tab" data-i18n="manageWorkspaces">Workspaces</button>
+    <button class="tab set-tab" data-set="mcp" role="tab" data-i18n="mcpServers">MCP</button>
+    <button class="tab set-tab" data-set="plugins" role="tab" data-i18n="plugins">Plugins</button>
+    <button class="tab set-tab" data-set="agent" role="tab" data-i18n="agentSettings">Agent</button>
   </div>
 
   <div id="set-editor" class="set-panel active">

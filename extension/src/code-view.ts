@@ -10,7 +10,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { bracketMatching, indentUnit } from '@codemirror/language';
 import { highlightTree, tagHighlighter, tags as t } from '@lezer/highlight';
-import { darkModernTheme, languageFor, languageObjectFor } from './code-theme.js';
+import { vscodeTheme, languageFor, languageObjectFor } from './code-theme.js';
 
 export interface CodeViewOptions {
   path: string;
@@ -39,7 +39,7 @@ export function createCodeView(parent: HTMLElement, opts: CodeViewOptions): Code
     history(), bracketMatching(), highlightSelectionMatches(),
     EditorState.tabSize.of(tab), indentUnit.of(' '.repeat(tab)),
     EditorState.readOnly.of(!!opts.readOnly),
-    darkModernTheme,
+    vscodeTheme,
     languageFor(opts.path),
     keymap.of([
       { key: 'Mod-s', preventDefault: true, run: () => { opts.onSave?.(); return true; } },

@@ -67,6 +67,22 @@ async function edFill(page, value) {
 // textContent: gutter, marker and code cells joined without layout newlines ("1+# Alpha").
 const diffText = (page) => page.locator('.dv-overlay .dv-body').textContent();
 const toastHas = (page, re) => until(async () => re.test(await text(page, '#toast')) && await visible(page, '#toast'));
+const editorPages = () => ctx.pages().filter((p) => /\/src\/editor\.html/.test(p.url()));
+/** Run `action` in the panel and return the editor page (editor.html) it opened a new browser tab for. */
+async function openedTab(action) {
+  const [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 10000 }), action()]);
+  watch(tab, 'editor');
+  await tab.waitForLoadState('domcontentloaded');
+  return tab;
+}
+/** The editor page `action` opens a file in: the open one (new editor tab inside it) or a new browser tab. */
+async function editorTab(action) {
+  const open = editorPages()[0];
+  if (!open) return openedTab(action);
+  await action();
+  return open;
+}
+const editorTabCount = (page) => page.locator('.fp-tab').count();
 
 const bridge = startRealBridge({ configDir });
 const ctx = await chromium.launchPersistentContext(path.join(tmp, 'profile'), { // fresh profile: no state leaks between runs
@@ -146,37 +162,47 @@ try {
   await dirRow('src/deep').click();
   check('nested folder expands', await until(() => fileRow('src/deep/util.ts').isVisible()));
 
-  // ---- 5. open, edit, save
-  await fileRow('src/sidepanel.ts').click();
-  check('file opens in the preview editor', await until(() => visible(page, '#editorPreview')));
+  // ---- 5. open, edit, save (Explorer files open in the editor tab)
+  const fileTab = await editorTab(() => fileRow('src/sidepanel.ts').click());
+  check('file opens in an editor tab', /src\/editor\.html\?path=src%2Fsidepanel\.ts/.test(fileTab.url()), fileTab.url());
   check('editor shows the real file content',
-    await until(async () => (await edValue(page)) === SIDEPANEL_SRC),
-    JSON.stringify(await edValue(page)));
-  check('editor highlights syntax tokens', await until(async () => (await page.locator('#edArea .cm-line span').count()) > 0));
+    await until(async () => (await edValue(fileTab)).replace(/\n$/, '') === SIDEPANEL_SRC.replace(/\n$/, '')),
+    JSON.stringify(await edValue(fileTab)));
+  check('editor highlights syntax tokens', await until(async () => (await fileTab.locator('#edArea .cm-line span').count()) > 0));
+  await fileRow('src/sidepanel.ts').click();
+  await new Promise((r) => setTimeout(r, 800));
+  check('opening the same file again reuses its editor tab', editorPages().length === 1 && (await editorTabCount(fileTab)) === 1,
+    `${editorPages().length} pages, ${await editorTabCount(fileTab)} tabs`);
   const edited = SIDEPANEL_SRC + '// edited by e2e\n';
-  await edFill(page, edited);
-  check('editing marks the file dirty', /dirty/.test(await text(page, '#edDirty')));
-  await page.locator('#edSave').click();
-  check('save reports success', await toastHas(page, /File tersimpan/), await text(page, '#toast'));
+  await edFill(fileTab, edited);
+  check('editing marks the file dirty', /dirty/.test(await text(fileTab, '#edDirty')));
+  await fileTab.locator('#btnSave').click();
+  check('save reports success', await until(async () => /^Tersimpan/.test(await text(fileTab, '#statusMsg'))), await text(fileTab, '#statusMsg'));
   check('save writes the file on disk', fs.readFileSync(path.join(wsA, 'src/sidepanel.ts'), 'utf8') === edited);
-  check('dirty marker clears after save', (await text(page, '#edDirty')) === '');
+  check('dirty marker clears after save', (await text(fileTab, '#edDirty')) === '');
 
   // ---- 6. external change -> MTIME_CONFLICT, disk untouched
   await new Promise((r) => setTimeout(r, 50));
   const external = '// changed outside the panel\n';
   fs.writeFileSync(path.join(wsA, 'src/sidepanel.ts'), external);
   fs.utimesSync(path.join(wsA, 'src/sidepanel.ts'), new Date(), new Date(Date.now() + 5000));
-  await edFill(page, '// would clobber\n');
-  await page.locator('#edSave').click();
-  check('conflicting save is refused', await toastHas(page, /Konflik/), await text(page, '#toast'));
+  fileTab.once('dialog', (d) => d.dismiss()); // "overwrite anyway?" -> no
+  await edFill(fileTab, '// would clobber\n');
+  await fileTab.locator('#btnSave').click();
+  check('conflicting save is refused', await until(async () => /dibatalkan|KONFLIK/.test(await text(fileTab, '#statusMsg'))), await text(fileTab, '#statusMsg'));
   check('conflicting save leaves disk content alone', fs.readFileSync(path.join(wsA, 'src/sidepanel.ts'), 'utf8') === external);
-  await page.locator('#edClose').click();
-  check('editor preview closes', await until(async () => !(await visible(page, '#editorPreview'))));
+  fileTab.once('dialog', (d) => d.accept()); // discard the unsaved edit
+  await fileTab.locator('.fp-tab.active').hover(); // a dirty tab shows its close button on hover, like VS Code
+  await fileTab.locator('#edClose').click();
+  check('closing an editor tab removes it and keeps the editor page', await until(async () => (await editorTabCount(fileTab)) === 0) && !fileTab.isClosed());
 
-  // ---- 7. binary file is refused with a message, not garbage
-  await fileRow('image.bin').click();
-  check('binary file shows an error toast', await toastHas(page, /Gagal membuka file/), await text(page, '#toast'));
-  check('binary file does not open the editor', !(await visible(page, '#editorPreview')));
+  // ---- 7. binary file is refused with a message, not garbage (opens in the same editor page)
+  const binTab = await editorTab(() => fileRow('image.bin').click());
+  check('binary file opens in the same browser tab', binTab === fileTab && editorPages().length === 1);
+  check('binary file shows an error, not its bytes',
+    await until(async () => /Gagal membuka/.test(await text(binTab, '#statusMsg'))) && (await binTab.locator('.cm-content').count()) === 0,
+    await text(binTab, '#statusMsg'));
+  await binTab.locator('#edClose').click();
 
   // ---- 7b. explorer file operations, show ignored, diagnostics, language, theme
   {
@@ -259,19 +285,15 @@ try {
   await searchInfo(/Ditemukan 1 match di 1 file/);
   await page.screenshot({ path: path.join(shots, 'search-results.png'), fullPage: true });
 
-  // ---- 9. search hit opens the CodeMirror editor tab; save from there
-  const [editorPage] = await Promise.all([
-    ctx.waitForEvent('page', { timeout: 10000 }),
-    page.locator('.search-match[data-file="src/deep/util.ts"]').click(),
-  ]);
-  watch(editorPage, 'editor');
-  await editorPage.waitForLoadState('domcontentloaded');
+  // ---- 9. search hit opens the editor tab (the same container as Explorer); save from there
+  const editorPage = await editorTab(() => page.locator('.search-match[data-file="src/deep/util.ts"]').click());
+  check('search hit opens in the same editor page as Explorer', editorPage === fileTab && editorPages().length === 1);
   check('editor tab loads editor.html', /src\/editor\.html\?path=/.test(editorPage.url()), editorPage.url());
   check('CodeMirror shows the real file',
-    await until(async () => /needle three/.test(await editorPage.locator('.cm-content').innerText())),
+    await until(async () => /needle three/.test(await editorPage.locator('#edArea .cm-content').innerText())),
     await editorPage.locator('#statusMsg').innerText().catch(() => '(no status)'));
   check('editor file name is shown', (await editorPage.locator('#fileName').innerText()) === 'util.ts');
-  await editorPage.locator('.cm-content').click();
+  await editorPage.locator('#edArea .cm-content').click();
   await editorPage.keyboard.press('Control+End');
   await editorPage.keyboard.type('// typed in codemirror');
   check('typing marks the editor unsaved',
@@ -343,10 +365,12 @@ try {
     await scmRow('untracked', 'README.md').locator('[data-act="stage"]').click();
     check('scm: Stage moves the file to Staged', await until(() => scmRow('staged', 'README.md').isVisible()));
     check('scm: stage is real (git sees it)', /^A\s+README\.md$/m.test(git('status', '--porcelain')));
-    await scmRow('staged', 'README.md').locator('[data-act="diff-staged"]').click();
+    const stagedTab = await editorTab(() => scmRow('staged', 'README.md').locator('[data-act="diff-staged"]').click());
+    check('scm: staged diff opens in the editor page', await until(() => /mode=diff/.test(stagedTab.url()) && /staged=1/.test(stagedTab.url())), stagedTab.url());
     check('scm: staged diff shows the added lines',
-      await until(async () => /\+# Alpha/.test(await diffText(page))), await diffText(page).catch(() => '(no diff view)'));
-    await page.locator('.dv-overlay [data-a="close"]').click();
+      await until(async () => /\+# Alpha/.test(await diffText(stagedTab))), await diffText(stagedTab).catch(() => '(no diff view)'));
+    await stagedTab.locator('.dv-overlay [data-a="close"]').click();
+    check('scm: closing the diff closes its editor tab', await until(async () => (await editorTabCount(stagedTab)) === 0));
     await scmRow('staged', 'README.md').locator('[data-act="unstage"]').click();
     check('scm: Unstage moves the file back', await until(() => scmRow('untracked', 'README.md').isVisible()));
 
@@ -367,11 +391,13 @@ try {
     await page.locator('#scmRefresh').click();
     check('scm: an edit on disk appears under Changes', await until(() => scmRow('changes', 'README.md').isVisible()));
     check('scm: status letter is M', (await scmRow('changes', 'README.md').locator('.scm-letter').innerText()) === 'M');
-    await scmRow('changes', 'README.md').locator('[data-act="diff"]').click();
+    const diffTab = await editorTab(() => scmRow('changes', 'README.md').locator('[data-act="diff"]').click());
     check('scm: unstaged diff shows the new line',
-      await until(async () => /\+changed after commit/.test(await diffText(page))), await diffText(page).catch(() => '(no diff view)'));
-    await page.keyboard.press('Escape');
-    check('scm: Escape closes the diff view', await until(async () => (await page.locator('.dv-overlay').count()) === 0));
+      await until(async () => /\+changed after commit/.test(await diffText(diffTab))), await diffText(diffTab).catch(() => '(no diff view)'));
+    await diffTab.locator('.dv-overlay [data-act="open"]').click();
+    check('scm: Open File opens the editable file as another editor tab',
+      await until(async () => !/mode=diff/.test(diffTab.url()) && /changed after commit/.test(await edValue(diffTab)) && (await editorTabCount(diffTab)) === 2), diffTab.url());
+    await diffTab.close();
 
     await page.locator('#newBranchBtn').click();
     await page.locator('#brName').fill('feat/e2e');

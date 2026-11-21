@@ -1,0 +1,680 @@
+/* BroAgentAI design system - VS Code Dark+ / Light+ look for every page.
+   Colors are the VS Code theme color ids they mirror (comment after each value).
+   Components below use tokens only; views (sidepanel.css, home.css, ...) use
+   these components and tokens and never hard-code a color. */
+
+/* ===== 1. Tokens ======================================================== */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  /* Surfaces */
+  --bg-editor: #1e1e1e;       /* editor.background */
+  --bg-sidebar: #252526;      /* sideBar.background */
+  --bg-activity: #333333;     /* activityBar.background */
+  --bg-titlebar: #3c3c3c;     /* titleBar.activeBackground */
+  --bg-input: #3c3c3c;        /* input.background */
+  --bg-console: #1e1e1e;      /* terminal / panel.background */
+  --bg-widget: #252526;       /* editorWidget.background, notifications */
+  --bg-menu: #252526;         /* menu.background */
+  --bg-badge: #4d4d4d;        /* badge.background */
+  --bg-statusbar: #007acc;    /* statusBar.background */
+  --bg-checkbox: #3c3c3c;     /* checkbox.background */
+  /* Lines */
+  --border: rgba(128, 128, 128, 0.35);  /* panel.border #80808059 */
+  --border-strong: #454545;
+  --border-input: #3c3c3c;    /* dropdown.border (input.border is unset) */
+  --border-checkbox: #3c3c3c; /* checkbox.border */
+  --border-widget: #454545;   /* editorWidget.border */
+  --border-section: rgba(204, 204, 204, 0.2); /* sideBarSectionHeader.border */
+  --indent-guide: #404040;
+  --indent-guide-hover: #585858; /* tree.indentGuidesStroke */
+  /* Interaction */
+  --hover: #2a2d2e;           /* list.hoverBackground */
+  --selected: #37373d;        /* list.inactiveSelectionBackground */
+  --menu-select: #04395e;     /* list.activeSelectionBackground, menu.selectionBackground */
+  --menu-select-fg: #ffffff;
+  --toolbar-hover: rgba(90, 93, 94, 0.31);   /* toolbar.hoverBackground */
+  --toggle-active-bg: rgba(0, 127, 212, 0.4); /* inputOption.activeBackground */
+  --setting-hover: rgba(42, 45, 46, 0.3);     /* settings.rowHoverBackground */
+  /* Accents & status */
+  --accent: #007acc;          /* activityBarBadge, progressBar */
+  --accent-hover: #1177bb;
+  --focus: #007fd4;           /* focusBorder */
+  --btn-bg: #0e639c;          /* button.background */
+  --btn-hover: #1177bb;       /* button.hoverBackground */
+  --btn-fg: #ffffff;
+  --btn2-bg: #3a3d41;         /* button.secondaryBackground */
+  --btn2-hover: #45494e;      /* button.secondaryHoverBackground */
+  --btn2-fg: #ffffff;
+  --success: #89d185;         /* charts.green */
+  --success-strong: #388a34;
+  --warning: #cca700;         /* editorWarning.foreground */
+  --danger: #f14c4c;          /* editorError.foreground */
+  --info: #3794ff;            /* editorInfo.foreground */
+  --info-bg: #063b49;         /* inputValidation.infoBackground */
+  --info-border: #007acc;
+  --warn-bg: #352a05;         /* inputValidation.warningBackground */
+  --warn-border: #b89500;
+  --error-bg: #5a1d1d;        /* inputValidation.errorBackground */
+  --error-border: #be1100;
+  /* Text */
+  --text: #cccccc;            /* foreground */
+  --text-strong: #ffffff;
+  --text-muted: #9d9d9d;      /* descriptionForeground */
+  --text-faint: #6e6e6e;
+  --text-title: #bbbbbb;      /* sideBarTitle.foreground */
+  --text-error: #f48771;      /* errorForeground */
+  --icon: #c5c5c5;            /* icon.foreground */
+  --badge-fg: #ffffff;
+  --activity-fg: #ffffff;                       /* activityBar.foreground */
+  --activity-fg-inactive: rgba(255, 255, 255, 0.4); /* activityBar.inactiveForeground */
+  --activity-active-border: #ffffff;            /* activityBar.activeBorder */
+  --activity-badge-bg: #007acc;                 /* activityBarBadge.background */
+  --tab-fg: rgba(231, 231, 231, 0.6);           /* panelTitle.inactiveForeground */
+  --tab-active-fg: #e7e7e7;                     /* panelTitle.activeForeground */
+  --tab-active-border: #e7e7e7;                 /* panelTitle.activeBorder */
+  --editor-tab-bg: #2d2d2d;                     /* tab.inactiveBackground */
+  --editor-tab-fg: rgba(255, 255, 255, 0.5);    /* tab.inactiveForeground */
+  --editor-tab-border: #252526;                 /* tab.border */
+  --link: #3794ff;            /* textLink.foreground */
+  --code-key: #9cdcfe;
+  --selection: rgba(38, 79, 120, 0.8); /* editor.selectionBackground #264f78 */
+  /* Git decorations */
+  --git-modified: #e2c08d;
+  --git-added: #73c991;
+  --git-deleted: #c74e39;
+  --git-conflict: #e4676b;
+  --git-ignored: #8c8c8c;
+  /* Diff */
+  --diff-add-bg: rgba(155, 185, 85, 0.2);
+  --diff-add-fg: #b5cea8;
+  --diff-del-bg: rgba(255, 0, 0, 0.2);
+  --diff-del-fg: #f48771;
+  --diff-hunk-fg: #569cd6;
+  --diff-hunk-bg: rgba(55, 148, 255, 0.08);
+  --match-bg: rgba(234, 92, 0, 0.33);
+  /* Syntax (Dark+) */
+  --syn-keyword: #569cd6; --syn-control: #c586c0; --syn-string: #ce9178; --syn-comment: #6a9955;
+  --syn-fn: #dcdcaa; --syn-type: #4ec9b0; --syn-number: #b5cea8; --syn-variable: #9cdcfe;
+  --syn-regexp: #d16969; --syn-plain: #d4d4d4; --syn-punct: #808080; --syn-invalid: #f44747;
+  --editor-fg: #d4d4d4;       /* editor.foreground */
+  --editor-gutter-fg: #858585; /* editorLineNumber.foreground */
+  --editor-gutter-active: #c6c6c6;
+  --editor-cursor: #aeafad;
+  --editor-line: rgba(255, 255, 255, 0.04);
+  --editor-bracket: rgba(0, 100, 0, 0.4);
+  --editor-find: #515c6a;
+  /* Scrollbars */
+  --scroll-thumb: rgba(121, 121, 121, 0.4);       /* scrollbarSlider.background */
+  --scroll-thumb-hover: rgba(100, 100, 100, 0.7); /* scrollbarSlider.hoverBackground */
+  --scroll-thumb-active: rgba(191, 191, 191, 0.4);/* scrollbarSlider.activeBackground */
+  /* Shadows */
+  --shadow-widget: 0 0 8px 2px rgba(0, 0, 0, 0.36); /* widget.shadow #0000005c */
+  --shadow-dialog: 0 0 8px 2px rgba(0, 0, 0, 0.36);
+  --backdrop: rgba(0, 0, 0, 0.3);
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+  --font-mono: Consolas, 'Courier New', monospace;
+  --font-size: 13px;   /* user setting: body, tree, inputs */
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+  --ls-caps: 0.04em;
+  /* Spacing grid */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  /* Sizes */
+  --titlebar-h: 35px;
+  --activity-w: 48px;
+  --head-h: 35px;
+  --tab-h: 30px;
+  --row-h: 22px;
+  --control-h: 26px;
+  --radius: 2px;
+  --radius-widget: 4px;
+  --radius-menu: 5px;
+  --tree-indent: 10px;
+  --view-pad-l: 20px;  /* view content aligns with the view title */
+  --view-pad-r: 12px;
+  /* Editor preview settings (set from Settings) */
+  --tab-size: 2;
+  --editor-wrap: pre;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-editor: #ffffff;
+  --bg-sidebar: #f3f3f3;
+  --bg-activity: #2c2c2c;
+  --bg-titlebar: #dddddd;
+  --bg-input: #ffffff;
+  --bg-console: #ffffff;
+  --bg-widget: #f3f3f3;
+  --bg-menu: #ffffff;
+  --bg-badge: #c4c4c4;
+  --bg-statusbar: #007acc;
+  --bg-checkbox: #ffffff;
+  --border: rgba(128, 128, 128, 0.35);
+  --border-strong: #c8c8c8;
+  --border-input: #cecece;
+  --border-checkbox: #919191;
+  --border-widget: #c8c8c8;
+  --border-section: rgba(97, 97, 97, 0.19);
+  --indent-guide: #d3d3d3;
+  --indent-guide-hover: #a9a9a9;
+  --hover: #e8e8e8;
+  --selected: #e4e6f1;
+  --menu-select: #0060c0;
+  --menu-select-fg: #ffffff;
+  --toolbar-hover: rgba(184, 184, 184, 0.31);
+  --toggle-active-bg: rgba(0, 144, 241, 0.2);
+  --setting-hover: rgba(232, 232, 232, 0.5);
+  --accent: #007acc;
+  --accent-hover: #0062a3;
+  --focus: #0090f1;
+  --btn-bg: #007acc;
+  --btn-hover: #0062a3;
+  --btn-fg: #ffffff;
+  --btn2-bg: #5f6a79;
+  --btn2-hover: #4c5561;
+  --btn2-fg: #ffffff;
+  --success: #388a34;
+  --success-strong: #388a34;
+  --warning: #bf8803;
+  --danger: #e51400;
+  --info: #1a85ff;
+  --info-bg: #d6ecf2;
+  --info-border: #007acc;
+  --warn-bg: #f6f5d2;
+  --warn-border: #b89500;
+  --error-bg: #f2dede;
+  --error-border: #be1100;
+  --text: #616161;
+  --text-strong: #333333;
+  --text-muted: #717171;
+  --text-faint: #a0a0a0;
+  --text-title: #6f6f6f;
+  --text-error: #a1260d;
+  --icon: #424242;
+  --badge-fg: #333333;
+  --activity-fg: #ffffff;
+  --activity-fg-inactive: rgba(255, 255, 255, 0.4);
+  --activity-active-border: #ffffff;
+  --activity-badge-bg: #007acc;
+  --tab-fg: rgba(66, 66, 66, 0.75);
+  --tab-active-fg: #424242;
+  --tab-active-border: #424242;
+  --editor-tab-bg: #ececec;
+  --editor-tab-fg: rgba(51, 51, 51, 0.7);
+  --editor-tab-border: #f3f3f3;
+  --link: #006ab1;
+  --code-key: #0451a5;
+  --selection: #add6ff;
+  --git-modified: #895503;
+  --git-added: #587c0c;
+  --git-deleted: #ad0707;
+  --git-conflict: #ad0707;
+  --git-ignored: #8e8e90;
+  --diff-add-bg: rgba(155, 185, 85, 0.25);
+  --diff-add-fg: #098658;
+  --diff-del-bg: rgba(255, 0, 0, 0.15);
+  --diff-del-fg: #a31515;
+  --diff-hunk-fg: #0451a5;
+  --diff-hunk-bg: rgba(0, 96, 192, 0.07);
+  --match-bg: rgba(234, 92, 0, 0.25);
+  /* Syntax (Light+) */
+  --syn-keyword: #0000ff; --syn-control: #af00db; --syn-string: #a31515; --syn-comment: #008000;
+  --syn-fn: #795e26; --syn-type: #267f99; --syn-number: #098658; --syn-variable: #001080;
+  --syn-regexp: #811f3f; --syn-plain: #000000; --syn-punct: #800000; --syn-invalid: #cd3131;
+  --editor-fg: #000000;
+  --editor-gutter-fg: #237893;
+  --editor-gutter-active: #0b216f;
+  --editor-cursor: #000000;
+  --editor-line: rgba(0, 0, 0, 0.04);
+  --editor-bracket: rgba(0, 100, 0, 0.1);
+  --editor-find: #a8ac94;
+  --scroll-thumb: rgba(100, 100, 100, 0.4);
+  --scroll-thumb-hover: rgba(100, 100, 100, 0.7);
+  --scroll-thumb-active: rgba(0, 0, 0, 0.6);
+  --shadow-widget: 0 0 8px 2px rgba(0, 0, 0, 0.16);
+  --shadow-dialog: 0 0 8px 2px rgba(0, 0, 0, 0.16);
+  --backdrop: rgba(0, 0, 0, 0.15);
+}
+
+/* ===== 2. Base ========================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg-sidebar);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+  line-height: 1.4;
+  overflow: hidden;
+  min-width: 320px;
+  -webkit-font-smoothing: antialiased;
+}
+code, pre, kbd { font-family: var(--font-mono); font-size: var(--fs-sm); }
+code { color: var(--code-key); }
+b, strong { font-weight: 600; }
+small { font-size: var(--fs-xs); }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus { outline: none; }
+:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+::selection { background: var(--selection); }
+.hidden { display: none !important; }
+.muted { color: var(--text-muted); font-size: var(--fs-sm); }
+.mono { font-family: var(--font-mono); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* Scrollbars: VS Code slider - 10px, square, no track, shows on hover */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+::-webkit-scrollbar-thumb:active { background: var(--scroll-thumb-active); }
+
+/* Codicons (icons.ts): 16px glyphs drawn with currentColor */
+i[data-icon] { display: inline-flex; align-items: center; justify-content: center; flex: none; font-style: normal; line-height: 0; }
+.ico { width: 16px; height: 16px; fill: currentColor; flex: none; }
+.ico-folder { color: var(--icon); }
+
+/* ===== 3. Controls ====================================================== */
+/* Base button = secondary (button.secondary*). :where keeps specificity at zero so variants win. */
+:where(button) {
+  font: inherit;
+  font-size: var(--font-size);
+  line-height: 18px;
+  color: var(--btn2-fg);
+  background: var(--btn2-bg);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  height: var(--control-h);
+  padding: 0 var(--sp-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  min-width: 0;
+}
+:where(button):hover { background: var(--btn2-hover); }
+:where(button) > span { overflow: hidden; text-overflow: ellipsis; }
+:where(button):focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
+button:disabled, button:disabled:hover { opacity: 0.4; cursor: default; background: var(--btn2-bg); }
+.mini { height: 22px; padding: 0 var(--sp-2); font-size: var(--fs-sm); }
+.full { width: 100%; }
+.square { width: var(--control-h); padding: 0; flex: none; }
+
+button.primary { background: var(--btn-bg); color: var(--btn-fg); }
+button.primary:hover { background: var(--btn-hover); }
+button.primary:disabled, button.primary:disabled:hover { background: var(--btn-bg); }
+/* No red buttons in VS Code: a destructive action is a secondary button with a red glyph. */
+button.danger:not(.action) .ico { color: var(--danger); }
+button.link { background: none; border: none; height: auto; padding: 0; color: var(--link); font-size: var(--fs-sm); }
+button.link:hover { background: none; text-decoration: underline; }
+
+/* Toolbar icon action (action-item: 22px, 5px radius) */
+button.action {
+  width: 22px; height: 22px; padding: 0;
+  background: transparent; border: 1px solid transparent; border-radius: 5px;
+  color: var(--icon); flex: none;
+}
+button.action:hover { background: var(--toolbar-hover); }
+button.action:disabled, button.action:disabled:hover { background: transparent; }
+button.action.danger { color: var(--icon); }
+button.action.danger:hover { color: var(--danger); background: var(--toolbar-hover); }
+
+/* Text inputs, selects (dropdown), textareas */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius);
+  height: var(--control-h);
+  padding: 0 6px;
+  width: 100%;
+  min-width: 0;
+}
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="dark"] textarea { color: #cccccc; }
+input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 0.8; }
+input:not([type="checkbox"]):not([type="radio"]):focus,
+select:focus,
+textarea:focus { border-color: var(--focus); outline: none; }
+textarea { height: auto; min-height: 60px; padding: 4px 6px; resize: vertical; line-height: 1.4; }
+input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.input-sm { width: 72px !important; }
+
+select {
+  appearance: none;
+  padding-right: 22px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  /* codicon chevron-down */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23c5c5c5' d='M3.15 5.65a.5.5 0 0 1 .7 0L8 9.79l4.15-4.14a.5.5 0 0 1 .7.7l-4.5 4.5a.5.5 0 0 1-.7 0l-4.5-4.5a.5.5 0 0 1 0-.7z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  background-size: 16px;
+}
+[data-theme="light"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23424242' d='M3.15 5.65a.5.5 0 0 1 .7 0L8 9.79l4.15-4.14a.5.5 0 0 1 .7.7l-4.5 4.5a.5.5 0 0 1-.7 0l-4.5-4.5a.5.5 0 0 1 0-.7z'/%3E%3C/svg%3E");
+}
+select option { background: var(--bg-menu); color: var(--text); }
+select.compact { height: 22px; font-size: var(--fs-sm); width: auto; padding: 0 20px 0 6px; background-position: right 2px center; }
+
+/* Checkbox (monaco-custom-toggle): box stays its colour, a check glyph shows when on */
+input[type="checkbox"] {
+  appearance: none;
+  width: 18px; height: 18px; flex: none;
+  margin: 0;
+  border: 1px solid var(--border-checkbox);
+  border-radius: 3px;
+  background: var(--bg-checkbox);
+  color: var(--text);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+}
+input[type="checkbox"]::before {
+  content: '';
+  width: 12px; height: 12px;
+  transform: scale(0);
+  background: currentColor;
+  clip-path: polygon(14% 52%, 0 66%, 38% 100%, 100% 22%, 86% 8%, 37% 70%);
+}
+input[type="checkbox"]:checked::before { transform: scale(1); }
+input[type="checkbox"]:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
+.chk { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; color: var(--text); font-size: var(--font-size); }
+
+/* Icon toggle (inputOption: Match Case, Regex, Show ignored): the real checkbox
+   covers the whole badge so clicks and keyboard both hit it. */
+.toggle {
+  position: relative;
+  width: 22px; height: 20px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 3px;
+  color: var(--icon);
+}
+.toggle > input[type="checkbox"] {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; border: 0; border-radius: 3px; z-index: 1; cursor: pointer;
+}
+.toggle:hover { background: var(--toolbar-hover); }
+.toggle:has(input:checked) { background: var(--toggle-active-bg); border-color: var(--focus); color: var(--text-strong); }
+.toggle:has(input:focus-visible) { outline: 1px solid var(--focus); outline-offset: 0; }
+.toggle-glyph { font-size: var(--fs-sm); line-height: 1; letter-spacing: -0.02em; pointer-events: none; }
+.toggle-glyph.mono { font-family: var(--font-mono); font-weight: 600; }
+
+/* Switch (plugin enable): VS Code-style toggle */
+.switch { position: relative; width: 32px; height: 18px; flex: none; cursor: pointer; }
+.switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch span { position: absolute; inset: 0; border-radius: 9px; background: var(--bg-input); border: 1px solid var(--border-checkbox); transition: background .15s; }
+.switch span::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted); transition: transform .15s, background .15s; }
+.switch input:checked + span { background: var(--btn-bg); border-color: var(--btn-bg); }
+.switch input:checked + span::after { transform: translateX(14px); background: #ffffff; }
+.switch input:focus-visible + span { outline: 1px solid var(--focus); outline-offset: 1px; }
+.switch input:disabled + span { opacity: .5; cursor: not-allowed; }
+
+/* ===== 4. Tabs (panel title style: CAPS, 1px active underline) ========== */
+.tabs {
+  flex: none;
+  display: flex; align-items: stretch; gap: var(--sp-1);
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+.tabs::-webkit-scrollbar { height: 0; }
+.tab {
+  position: relative;
+  height: var(--tab-h); flex: none;
+  padding: 0 var(--sp-2);
+  background: transparent; border: none; border-radius: 0;
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: var(--ls-caps);
+  color: var(--tab-fg);
+}
+.tab:hover { background: transparent; color: var(--tab-active-fg); }
+.tab.active { color: var(--tab-active-fg); }
+.tab.active::after {
+  content: ''; position: absolute; left: var(--sp-2); right: var(--sp-2); bottom: -1px;
+  border-bottom: 1px solid var(--tab-active-border);
+}
+.tab:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+
+/* ===== 5. View chrome =================================================== */
+/* View title (pane header): 35px, CAPS 11px, actions on the right */
+.panel-head {
+  height: var(--head-h); flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--view-pad-l);
+}
+.panel-head h2 {
+  font-size: var(--fs-xs); font-weight: 400;
+  text-transform: uppercase; letter-spacing: var(--ls-caps);
+  color: var(--text-title);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+
+/* Panes (split view sections inside a view, e.g. Source Control's Repositories /
+   Changes / Graph): 22px collapsible header, actions show while the view is hovered. */
+.panes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pane { position: relative; display: flex; flex-direction: column; min-height: 0; flex: none; }
+.pane + .pane { border-top: 1px solid var(--border-section); }
+.pane-grow:not(.collapsed) { flex: var(--pane-weight, 1) 1 0px; }
+/* Sash (panes.ts): 4px drag handle on the border between two open grow panes;
+   shows sash.hoverBorder (focusBorder) after a short hover, like VS Code. */
+.sash { display: none; position: absolute; left: 0; right: 0; top: -3px; height: 4px; z-index: 10; cursor: ns-resize; touch-action: none; }
+.pane-grow:not(.collapsed) + .pane-grow:not(.collapsed) > .sash { display: block; }
+.sash:hover { background: var(--focus); transition: background-color 0.1s ease-out 0.3s; }
+.sash.active { background: var(--focus); transition: none; }
+.pane-head {
+  height: var(--row-h); flex: none;
+  display: flex; align-items: center; gap: 2px;
+  padding: 0 var(--sp-2) 0 2px;
+  font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--ls-caps);
+  color: var(--text);
+  cursor: pointer; user-select: none;
+}
+.pane-head:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+.pane-head .twist { width: 20px; display: inline-flex; justify-content: center; color: var(--icon); flex: none; }
+.pane-head .twist .ico { transform: rotate(90deg); }
+.pane.collapsed .pane-head .twist .ico { transform: none; }
+.pane-head h3 { flex: 1; min-width: 0; font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-actions { display: flex; align-items: center; gap: 2px; flex: none; opacity: 0; text-transform: none; letter-spacing: 0; }
+.panes:hover .pane-actions, .pane-head:focus-within .pane-actions { opacity: 1; }
+@media (hover: none) { .pane-actions { opacity: 1; } }
+.pane-body {
+  flex: 1; min-height: 0; overflow: auto;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: 2px var(--view-pad-r) var(--sp-2) var(--view-pad-l);
+}
+.pane-body.flush { padding: 0; gap: 0; }
+.pane.collapsed .pane-body { display: none; }
+
+/* Section header (sideBarSectionHeader): 22px, bold CAPS 11px */
+.section-title, .field-label {
+  font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--ls-caps);
+  color: var(--text);
+}
+.hint { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.45; }
+.hint:empty { display: none; }
+.err { color: var(--text-error); font-size: var(--fs-sm); }
+
+/* List rows: 22px, hover / selection like a VS Code tree */
+.list { display: flex; flex-direction: column; }
+.list-row {
+  min-height: var(--row-h);
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--sp-2);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.list-row:hover { background: var(--hover); }
+.list-row.selected { background: var(--selected); }
+
+/* Key/value rows */
+.kv {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  min-height: 28px;
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.kv-key { color: var(--text-muted); flex: none; }
+.kv-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-weight: 400; color: var(--text); }
+
+/* Badges & pills */
+.count-badge {
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  border-radius: 11px;
+  background: var(--bg-badge); color: var(--badge-fg);
+  font-size: var(--fs-xs); line-height: 1;
+}
+.pill {
+  height: 20px; padding: 0 var(--sp-2);
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-size: var(--fs-xs); font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+span.pill { cursor: default; }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.pill-ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 55%, transparent); }
+.pill-info { color: var(--info); border-color: color-mix(in srgb, var(--info) 55%, transparent); }
+.pill-warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
+.pill-error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
+button.pill:hover { background: var(--toolbar-hover); }
+
+/* Cards (widget surface) & callouts (inputValidation boxes) */
+.card {
+  background: var(--bg-editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-widget);
+  padding: var(--sp-2) var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-width: 0; }
+.card-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.callout {
+  display: flex; gap: var(--sp-2); align-items: flex-start;
+  padding: 6px var(--sp-2);
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+.callout strong { display: block; margin-bottom: 2px; color: var(--text-strong); font-size: var(--font-size); }
+.callout p { color: var(--text); line-height: 1.45; }
+.callout-ico { color: var(--info); margin-top: 1px; }
+.callout-warn { background: var(--warn-bg); border-color: var(--warn-border); align-items: center; justify-content: space-between; }
+.callout-error { background: var(--error-bg); border-color: var(--error-border); }
+.empty-state { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-2) 0; color: var(--text); font-size: var(--font-size); line-height: 1.5; }
+.empty-state button { width: 100%; }
+
+/* Code blocks: editor surface */
+.code-block, .diff {
+  margin: 0;
+  padding: var(--sp-2);
+  background: var(--bg-editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--editor-fg);
+  font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 280px; overflow: auto;
+}
+.diff-add { display: block; background: var(--diff-add-bg); color: var(--diff-add-fg); }
+.diff-del { display: block; background: var(--diff-del-bg); color: var(--diff-del-fg); }
+.diff-hunk { color: var(--diff-hunk-fg); }
+
+/* ===== 6. Overlays ====================================================== */
+/* Menus (title bar dropdowns, context menu): menu.* colors */
+.menu {
+  position: absolute;
+  top: calc(var(--titlebar-h) - 2px);
+  right: var(--sp-1);
+  z-index: 100;
+  min-width: 200px; max-width: calc(100vw - 16px);
+  padding: var(--sp-1);
+  background: var(--bg-menu);
+  border: 1px solid var(--border-widget);
+  border-radius: var(--radius-menu);
+  box-shadow: var(--shadow-widget);
+  display: flex; flex-direction: column;
+}
+.menu button {
+  height: 24px; width: 100%;
+  padding: 0 var(--sp-4) 0 var(--sp-2);
+  justify-content: flex-start; gap: var(--sp-2);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+  color: var(--text); font-size: var(--font-size); text-align: left;
+}
+.menu button:hover, .menu button:focus-visible { background: var(--menu-select); color: var(--menu-select-fg); outline: none; }
+.menu-sep { height: 1px; margin: var(--sp-1) 0; background: var(--border-widget); }
+.menu-title { padding: var(--sp-1) var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); }
+
+/* Dialog */
+.backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 10vh var(--sp-4) var(--sp-4);
+  background: var(--backdrop);
+}
+.modal {
+  width: 100%; max-width: 440px; max-height: 80vh;
+  display: flex; flex-direction: column;
+  background: var(--bg-widget);
+  border: 1px solid var(--border-widget);
+  border-radius: var(--radius-widget);
+  box-shadow: var(--shadow-dialog);
+  font-size: var(--font-size);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); height: var(--head-h); flex: none; padding: 0 var(--sp-2) 0 var(--sp-4); }
+.modal-head h3 { font-size: var(--font-size); font-weight: 600; color: var(--text-strong); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-body { padding: var(--sp-1) var(--sp-4) var(--sp-3); overflow: auto; display: flex; flex-direction: column; gap: var(--sp-2); color: var(--text); font-size: var(--font-size); line-height: 1.5; }
+.modal-body label { display: flex; flex-direction: column; gap: var(--sp-1); color: var(--text); }
+.modal-body label br { display: none; }
+.modal-body p { word-break: break-word; }
+.modal-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4) var(--sp-3); flex: none; }
+.modal-actions button { min-width: 72px; }
+
+/* Notification toast */
+.toast {
+  position: fixed; right: var(--sp-3); bottom: var(--sp-3); z-index: 2000;
+  max-width: min(400px, calc(100vw - 24px));
+  padding: 10px var(--sp-3);
+  background: var(--bg-widget);
+  border: 1px solid var(--border-widget);
+  border-radius: var(--radius-widget);
+  box-shadow: var(--shadow-widget);
+  font-size: var(--font-size); color: var(--text); line-height: 1.45;
+  word-break: break-word;
+}
+
+/* Status bar (editor page) */
+.status-bar {
+  height: 22px; flex: none;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px;
+  background: var(--bg-statusbar); color: #ffffff;
+  font-size: var(--fs-sm);
+}

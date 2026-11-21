@@ -75,7 +75,7 @@ function row(e: PluginEntry): string {
   if (e.source === 'user') acts.push(`<button class="mini danger" data-pl-act="remove">${e.overridesBuiltin ? tr('Reset to built-in', 'Kembalikan bawaan') : tr('Remove', 'Hapus')}</button>`);
   return `<div class="pl-row${e.enabled ? '' : ' off'}" data-pl-id="${esc(e.id)}" data-pl-source="${e.source}">`
     + `<div class="pl-head">${icon}<div class="pl-title"><b>${esc(e.manifest.name)}</b> <span class="muted">${esc(e.manifest.version)}${e.manifest.author ? ' · ' + esc(e.manifest.author) : ''}</span><div class="pl-badges">${badges(e)}</div></div>`
-    + `<label class="pl-switch" title="${esc(tr('Turn on/off', 'Nyalakan/matikan'))}"><input type="checkbox" data-pl-act="toggle"${e.enabled ? ' checked' : ''}${e.problem ? ' disabled' : ''}><span></span></label></div>`
+    + `<label class="switch" title="${esc(tr('Turn on/off', 'Nyalakan/matikan'))}"><input type="checkbox" data-pl-act="toggle"${e.enabled ? ' checked' : ''}${e.problem ? ' disabled' : ''}><span></span></label></div>`
     + `<div class="pl-domains">${e.manifest.matches.map((m) => `<code>${esc(m)}</code>`).join(' ')}</div>`
     + (e.problem ? `<p class="err">${esc(e.problem)}</p>` : '')
     + `<div class="btn-row pl-actions">${acts.join('')}</div></div>`;

@@ -239,3 +239,5 @@ Also keep in mind that automating a chat site's UI may not be something every pr
 ## License
 
 [MIT](LICENSE) © Fadhly Permata
+
+Icons: [Codicons](https://github.com/microsoft/vscode-codicons) © Microsoft Corporation, [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).

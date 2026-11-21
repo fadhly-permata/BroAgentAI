@@ -97,14 +97,20 @@ export function layoutGraph(commits: readonly GraphCommit[]): GraphRow[] {
   return rows;
 }
 
-/** Split `git log %D` decorations into display chips. */
-export function refChips(refs: readonly string[]): { label: string; kind: 'head' | 'tag' | 'remote' | 'branch' }[] {
+/**
+ * Split `git log %D` decorations into display chips. A ref is remote when it
+ * starts with a known remote name (`origin/main`); without the remote list any
+ * ref with a slash counts as remote. Local branches may contain slashes too
+ * (`feat/x`), so callers that know the remotes should pass them.
+ */
+export function refChips(refs: readonly string[], remotes?: readonly string[]): { label: string; kind: 'head' | 'tag' | 'remote' | 'branch' }[] {
   const chips: { label: string; kind: 'head' | 'tag' | 'remote' | 'branch' }[] = [];
+  const isRemote = (ref: string) => remotes ? remotes.some((r) => ref.startsWith(r + '/')) : ref.includes('/');
   for (const ref of refs) {
     if (ref.startsWith('HEAD -> ')) chips.push({ label: ref.slice(8), kind: 'head' });
     else if (ref === 'HEAD') chips.push({ label: 'HEAD', kind: 'head' });
     else if (ref.startsWith('tag: ')) chips.push({ label: ref.slice(5), kind: 'tag' });
-    else if (ref.includes('/')) chips.push({ label: ref, kind: 'remote' });
+    else if (isRemote(ref)) chips.push({ label: ref, kind: 'remote' });
     else chips.push({ label: ref, kind: 'branch' });
   }
   return chips;
