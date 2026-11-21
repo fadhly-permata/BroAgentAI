@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   BLOCKED, blockingPending, findBlockingPrompt, GENERATING_GRACE_MS, isBillingControl, MAX_PENDING_CHARS, MAX_RENEWALS, newChatReady,
-  RENEW_COOLDOWN_MS, renewalContext, renewDecision, sendFailureAction, type PromptElement, type PromptTextNode,
+  RENEW_COOLDOWN_MS, renewalContext, renewalMessage, renewDecision, sendFailureAction, type PromptElement, type PromptTextNode,
 } from './blocking-prompt.ts';
 import type { BlockingPromptRule } from './types.ts';
 
@@ -177,6 +177,45 @@ test('blockingPending: an undelivered message, else the unanswered last message,
   // A final answer came: the user's turn, nothing to carry over.
   assert.equal(blockingPending({ undelivered: null, awaitingReply: false, lastSent: 'sent' }), null);
   assert.equal(blockingPending({ awaitingReply: true, lastSent: null }), null);
+});
+
+const OPERATING = '# BroAgentAI operating instructions\nYou can use these tools...\nReply READY.';
+
+test('idle case: banner while the agent waits for the user still renews, with nothing carried over', () => {
+  // Final answer given ("Selesai - menunggu pesanmu di chat"): nothing pending.
+  const pending = blockingPending({ undelivered: null, awaitingReply: false, lastSent: '[BroAgentAI tool result] fs.readFile OK' });
+  assert.equal(pending, null);
+  const message = renewalMessage(OPERATING, 'HANDOFF CONTEXT', pending);
+  assert.ok(message.startsWith(OPERATING), 'operating prompt first');
+  assert.ok(message.includes('HANDOFF CONTEXT'), 'old conversation as background');
+  assert.match(message, /jangan jalankan tool apa pun sekarang/);
+  assert.ok(message.trimEnd().endsWith('Balas hanya dengan kata READY, lalu tunggu pesan pengguna berikutnya.'), 'READY is the last instruction');
+  assert.ok(!message.includes('Pesan Terakhir yang Belum Dijawab'));
+  // Without the bridge prompt the background and READY still go out.
+  assert.ok(renewalMessage(null, 'HANDOFF CONTEXT', null).startsWith('--- HANDOFF CONTEXT ---'));
+});
+
+test('session-start case: banner right after the operating prompt never repeats it as pending', () => {
+  // Instructions sent, banner instead of READY: the unanswered message is the operating prompt.
+  assert.equal(blockingPending({ awaitingReply: true, lastSent: OPERATING }), null);
+  assert.equal(blockingPending({ undelivered: OPERATING, lastSent: null }), null);
+  // A resumed session's handoff prompt starts with the operating prompt too.
+  assert.equal(blockingPending({ awaitingReply: true, lastSent: OPERATING + '\n\n--- HANDOFF INSTRUCTION ---\n...' }), null);
+  const message = renewalMessage(OPERATING, 'HANDOFF CONTEXT', null);
+  assert.equal(message.split('BroAgentAI operating instructions').length - 1, 1, 'operating prompt sent once');
+  assert.match(message, /READY/);
+});
+
+test('pending case: a stuck tool result is carried over and the agent continues', () => {
+  const stuck = '[BroAgentAI tool result] fs.writeFile OK {"path":"a.txt"}';
+  const pending = blockingPending({ undelivered: stuck, awaitingReply: false, lastSent: stuck });
+  assert.equal(pending, stuck);
+  const message = renewalMessage(OPERATING, 'HANDOFF CONTEXT', pending);
+  assert.ok(message.startsWith(OPERATING));
+  assert.match(message, /--- HANDOFF INSTRUCTION ---/);
+  assert.ok(message.includes('## Pesan Terakhir yang Belum Dijawab'));
+  assert.ok(message.includes(stuck));
+  assert.ok(!message.includes('Balas hanya dengan kata READY'));
 });
 
 test('renewalContext appends the pending message, clipped', () => {

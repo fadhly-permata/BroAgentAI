@@ -12,6 +12,8 @@
 // panel the session's history. Billing controls are never pressed, whatever a
 // rule says.
 import type { BlockingPromptRule } from './types.js';
+import { agentMessageKind } from '../agent-parser.ts';
+import { handoffMessage } from '../agent-handoff.ts';
 
 /** A banner's title is short; longer text is a message or a page section. */
 export const MAX_TITLE_CHARS = 200;
@@ -228,13 +230,38 @@ export interface PendingState {
 }
 
 /**
- * The agent's message the blocked chat never answered, or null when the agent
- * is not waiting on the chat (a final answer was given: the user's turn). Only
- * a pending message is worth opening a new chat for automatically.
+ * The agent's message the blocked chat never answered (to repeat in the new
+ * chat), or null when there is none: a final answer was given (the user's
+ * turn), or the unanswered message is the operating prompt itself (the new
+ * chat gets a fresh one anyway).
  */
 export function blockingPending(state: PendingState): string | null {
-  if (state.undelivered) return state.undelivered;
-  return state.awaitingReply && state.lastSent ? state.lastSent : null;
+  const pending = state.undelivered || (state.awaitingReply ? state.lastSent : null);
+  if (!pending || agentMessageKind(pending)?.kind === 'prompt') return null;
+  return pending;
+}
+
+/**
+ * First message of a new chat opened while nothing was pending (the agent was
+ * idle, or the session was just starting in a full chat): the operating
+ * prompt, the old conversation as background, and READY as the only answer,
+ * so the session sits idle in the new chat until the user writes.
+ */
+export function idleRenewalMessage(systemPrompt: string | null, handoff: string): string {
+  const note = '--- HANDOFF CONTEXT ---\nChat sebelumnya penuh (context window full), jadi percakapan dipindah ke chat baru ini. Di bawah ini catatan percakapan sebelumnya sebagai konteks. Tidak ada tugas yang tertunda: jangan jalankan tool apa pun sekarang.\n\n' + handoff + '\n\nBalas hanya dengan kata READY, lalu tunggu pesan pengguna berikutnya.';
+  return systemPrompt ? systemPrompt + '\n\n' + note : note;
+}
+
+/**
+ * The first message of the new chat. Something in flight (`pending`, already
+ * through blockingPending): operating prompt + handoff + that message, and the
+ * agent carries on. Nothing pending (idle at the user's turn, or a session
+ * that started in a full chat): idleRenewalMessage, answered with READY.
+ */
+export function renewalMessage(systemPrompt: string | null, handoff: string, pending: string | null): string {
+  if (!pending) return idleRenewalMessage(systemPrompt, handoff);
+  const context = renewalContext(handoff, pending);
+  return systemPrompt ? handoffMessage(systemPrompt, context) : context;
 }
 
 /** Longest pending message repeated in the new chat (the chat page has an input limit). */

@@ -9,13 +9,13 @@
 import { bridge } from './bridge-client.js';
 import { NATIVE_CALL_REMINDER, formatCorrection, formatToolResult, parseReply } from './agent-parser.js';
 import { SEND_ATTEMPTS, retryBackoffMs, sendDelayMs, toolTimeoutMs } from './agent-timing.js';
-import { buildHandoffSnapshot, classifyChatMessage, emptyWorkSummary, formatHandoffContext, normalizeTranscript, noteToolCall, validateHandoffSnapshot, workspaceFromGitStatus, type HandoffSnapshot, type HandoffTurn, type WorkSummary, type WorkspaceState } from './agent-handoff.js';
+import { buildHandoffSnapshot, classifyChatMessage, emptyWorkSummary, formatHandoffContext, handoffMessage, normalizeTranscript, noteToolCall, validateHandoffSnapshot, workspaceFromGitStatus, type HandoffSnapshot, type HandoffTurn, type WorkSummary, type WorkspaceState } from './agent-handoff.js';
 import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
 import { reloadIfManifestStale } from './stale-manifest.js';
 import { errorRetryDelay, isErrorReply, MAX_ERROR_RETRIES } from './reply-errors.js';
-import { BLOCKED, blockingPending, CONFIRM_TICKS, MAX_RENEWALS, newChatReady, renewalContext, renewDecision, sendFailureAction } from './providers/blocking-prompt.js';
+import { BLOCKED, blockingPending, CONFIRM_TICKS, MAX_RENEWALS, newChatReady, renewalMessage, renewDecision, sendFailureAction } from './providers/blocking-prompt.js';
 
 export interface AgentDeps {
   toast(message: string): void;
@@ -375,15 +375,6 @@ function worthResuming(snapshot: HandoffSnapshot): boolean {
   return snapshot.totalCalls > 0 || snapshot.transcript.some((turn) => turn.role === 'user' || turn.role === 'assistant');
 }
 
-/**
- * First message of a chat that continues a task: the full operating prompt
- * (tools and rules) with the handoff context at the very end, so it wins over
- * any generic opening instruction.
- */
-function handoffMessage(systemPrompt: string, context: string): string {
-  return systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${context}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
-}
-
 let saving: Promise<void> = Promise.resolve();
 
 /**
@@ -650,7 +641,11 @@ const RENEW_READY_MS = 20_000;
 
 /** Id of the blocking prompt showing in the session's chat tab, or null (also when the tab does not answer). */
 async function blockingPromptOn(active: Session): Promise<string | null> {
-  const res = await tabMessage(active.tabId, { type: 'ba.ping' }).catch(() => null);
+  return blockingIdOn(active.tabId);
+}
+
+async function blockingIdOn(tabId: number): Promise<string | null> {
+  const res = await tabMessage(tabId, { type: 'ba.ping' }).catch(() => null);
   return typeof res?.blocking === 'string' ? res.blocking : null;
 }
 
@@ -702,6 +697,8 @@ async function renewChat(active: Session, id: string, pending: string | null): P
     if (!rule || session !== active) return;
     const label = providerLabel(active.provider);
     const reason = rule.reason || id;
+    // The operating prompt is never repeated as "pending": the new chat gets a fresh one.
+    const carried = blockingPending({ undelivered: pending, lastSent: null });
     const decision = renewDecision({ count: active.renewals ?? 0, lastAt: active.renewedAt ?? null }, Date.now());
     if (!decision.act) {
       return giveUpRenew(active, label, reason, decision.reason === 'too-soon' ? 'banner muncul lagi tepat setelah chat baru' : `sudah ${MAX_RENEWALS}x pindah ke chat baru di sesi ini`);
@@ -735,16 +732,16 @@ async function renewChat(active: Session, id: string, pending: string | null): P
     active.awaitingReply = false;
     active.undelivered = null;
     active.blockingSeen = 0;
-    let prompt = renewalContext(handoff, pending);
+    // handoff: the operating prompt does not end with "reply READY"; each message below says how to answer.
+    let systemPrompt: string | null = null;
     try {
-      // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
-      const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode(), handoff: true });
-      prompt = handoffMessage(systemPrompt, prompt);
+      systemPrompt = (await bridge.call('agent.prompt', { mode: mode(), handoff: true }) as any).prompt ?? null;
     } catch (err) {
       console.warn('Failed to get system prompt for the new chat, sending the handoff alone:', err);
     }
     if (session !== active) return;
-    log({ tool: 'chat.renew', category: label, decision: 'handoff', status: 'info', ms: 0, detail: `${label}: ${reason} - dilanjutkan di chat baru (instruksi, ringkasan percakapan${pending ? ' dan pesan yang tertunda' : ''} dikirim)` });
+    const prompt = renewalMessage(systemPrompt, handoff, carried);
+    log({ tool: 'chat.renew', category: label, decision: 'handoff', status: 'info', ms: 0, detail: `${label}: ${reason} - dilanjutkan di chat baru (instruksi, ringkasan percakapan${carried ? ' dan pesan yang tertunda' : ''} dikirim)` });
     notify('BroAgentAI - ' + label, `${label}: ${reason} - dilanjutkan di chat baru`);
     active.renewing = false;
     await deliver(prompt, false);
@@ -793,25 +790,18 @@ async function tick(): Promise<void> {
 }
 
 /**
- * A blocking prompt seen on a tick. Acts only after CONFIRM_TICKS ticks in a
- * row (a reply that came just before the banner gets delivered first), when
- * no reply is being handled (a running tool hits the banner on its own send),
- * and only when the agent has a message in flight; at the user's turn it is
- * reported once and left to the user.
+ * A blocking prompt seen on a tick: open a new chat through it, whatever the
+ * agent is doing (waiting for a reply, or idle at the user's turn). Acts only
+ * after CONFIRM_TICKS ticks in a row (a reply that came just before the
+ * banner gets delivered first) and when no reply is being handled (a running
+ * tool hits the banner on its own send and renews from there). One renewal at
+ * a time: `renewing` is set before anything is awaited.
  */
 function watchBlockingPrompt(active: Session, id: string | null): void {
   if (!id) { active.blockingSeen = 0; return; }
   const seen = active.blockingSeen = (active.blockingSeen ?? 0) + 1;
   if (seen < CONFIRM_TICKS || replyBusy || active.renewing || active.renewBlocked) return;
   const pending = blockingPending(active);
-  if (!pending) {
-    if (seen === CONFIRM_TICKS) {
-      const rule = active.provider.blockingPrompts?.find((r) => r.id === id);
-      const label = providerLabel(active.provider);
-      log({ tool: 'chat.renew', category: label, decision: '-', status: 'info', ms: 0, detail: `${label}: ${rule?.reason || id}. Agent tidak sedang menunggu balasan; klik "New chat" di tab chat lalu Stop dan Start sesi bila ingin lanjut.` });
-    }
-    return;
-  }
   active.renewing = true;
   queue = queue.then(() => renewChat(active, id, pending)).catch((err) => {
     active.renewing = false;
@@ -1012,15 +1002,41 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
       if (resume.workSummary) pending.work = { ...resume.workSummary };
     }
     await activateRelay(tabId, found.provider);
-    session = { ...pending, lastSent: prompt };
-    await send(prompt);
-    setPhase('waiting', 'Menunggu balasan AI');
-    log({ tool: 'session.start', category: found.provider.label, decision: mode(), status: 'info', ms: 0, detail: `${toolCount} tools dikirim ke chat` });
-    $('detectedChat').textContent = `${found.provider.label} - ${found.tab.title || ''}`;
-    // The session now exists: refresh the session pill and the switch-provider
-    // control so it lists the OTHER providers and is clickable right away.
-    renderSession();
-    renderSwitchProviders();
+    const started = () => {
+      $('detectedChat').textContent = `${found.provider.label} - ${found.tab.title || ''}`;
+      // The session now exists: refresh the session pill and the switch-provider
+      // control so it lists the OTHER providers and is clickable right away.
+      renderSession();
+      renderSwitchProviders();
+    };
+    // The chat is already full (ChatGPT's "Context window full" banner): start
+    // in a new chat instead. renewChat presses the button and sends the
+    // operating prompt with the old conversation as background; the AI answers READY.
+    const startInNewChat = async (id: string, detail: string) => {
+      const active: Session = { ...pending, lastSent: null, renewing: true };
+      session = active;
+      log({ tool: 'session.start', category: found.provider.label, decision: mode(), status: 'info', ms: 0, detail });
+      started();
+      await renewChat(active, id, null);
+    };
+    const blockedAtStart = await blockingIdOn(tabId);
+    if (launch.cancelled) return;
+    if (blockedAtStart) {
+      await startInNewChat(blockedAtStart, `${toolCount} tools; chat ini sudah penuh, sesi dimulai di chat baru`);
+    } else {
+      session = { ...pending, lastSent: prompt };
+      try {
+        await send(prompt);
+        setPhase('waiting', 'Menunggu balasan AI');
+        log({ tool: 'session.start', category: found.provider.label, decision: mode(), status: 'info', ms: 0, detail: `${toolCount} tools dikirim ke chat` });
+        started();
+      } catch (err) {
+        // The banner showed up just as the instructions went in.
+        const id = await blockingIdOn(tabId);
+        if (!id) throw err;
+        await startInNewChat(id, `${toolCount} tools; chat penuh saat instruksi dikirim, sesi dimulai di chat baru`);
+      }
+    }
     // The chat tab may not be focused right after connect (Home opened it but the
     // user could already be elsewhere): align the pause state now.
     void syncFocusWithSession();
