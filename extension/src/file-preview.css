@@ -1,0 +1,73 @@
+/* Shared full-screen preview (file-preview.ts): a VS Code editor - tab strip
+   (editorGroupHeader.tabsBackground), one active tab (tab.activeBackground),
+   breadcrumbs, content on the editor surface, status bar. vscode.css tokens only. */
+.fp-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--bg-editor); color: var(--editor-fg);
+}
+
+/* Tab strip: one tab per open file (tab.* colors); close shows on the active /
+   hovered tab, a dirty dot replaces it while a file has unsaved changes. */
+.fp-tabs {
+  height: var(--head-h); flex: none;
+  display: flex; align-items: stretch; min-width: 0;
+  background: var(--bg-sidebar); /* editorGroupHeader.tabsBackground */
+}
+.fp-tablist { display: flex; align-items: stretch; min-width: 0; flex: 1 1 auto; overflow-x: auto; overflow-y: hidden; }
+.fp-tablist::-webkit-scrollbar { height: 3px; }
+.fp-tab {
+  display: flex; align-items: center; gap: 6px; flex: none; min-width: 80px; max-width: 240px;
+  padding: 0 4px 0 10px;
+  background: var(--editor-tab-bg);
+  border-right: 1px solid var(--editor-tab-border);
+  color: var(--editor-tab-fg); font-size: var(--font-size);
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+.fp-tab.active { background: var(--bg-editor); color: var(--text-strong); }
+.fp-tab .ba-tree-icon { display: inline-flex; flex: none; }
+.fp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fp-tag { flex: none; color: var(--text-muted); font-size: var(--fs-sm); }
+.fp-tag::before { content: '('; } .fp-tag::after { content: ')'; }
+.fp-dirty { flex: none; width: 16px; text-align: center; color: var(--text); font-size: 14px; line-height: 1; }
+.fp-dirty:empty { display: none; }
+.fp-close { margin-left: auto; visibility: hidden; }
+.fp-tab.active .fp-close, .fp-tab:hover .fp-close { visibility: visible; }
+.fp-tab.dirty:not(:hover) .fp-close { display: none; }
+.fp-tab:not(.dirty) .fp-dirty { display: none; }
+.fp-tab.dirty:hover .fp-dirty { display: none; }
+.fp-actions { display: flex; align-items: center; gap: 2px; padding: 0 var(--sp-2); flex: none; }
+.fp-text-action {
+  height: 22px; padding: 0 7px;
+  background: transparent; border: 1px solid transparent; border-radius: 5px;
+  color: var(--icon); font-size: var(--fs-sm);
+}
+.fp-text-action:hover { background: var(--toolbar-hover); }
+.fp-text-action.active { background: var(--toggle-active-bg); border-color: var(--focus); color: var(--text-strong); }
+
+/* Breadcrumbs (breadcrumb.foreground) */
+.fp-crumbs {
+  height: 22px; flex: none;
+  display: flex; align-items: center; gap: 2px; min-width: 0;
+  padding: 0 var(--sp-3) 0 10px;
+  color: var(--text-muted); font-size: var(--fs-sm);
+  white-space: nowrap; overflow: hidden;
+}
+.fp-crumb { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; gap: 4px; }
+.fp-crumb-file { flex: none; color: var(--text); }
+.fp-crumb .ba-tree-icon { display: inline-flex; }
+.fp-crumb .ico { width: 14px; height: 14px; }
+.fp-sep { flex: none; display: inline-flex; color: var(--text-muted); }
+.fp-sep .ico { width: 14px; height: 14px; }
+.fp-meta { margin-left: auto; padding-left: var(--sp-3); flex: none; display: inline-flex; gap: var(--sp-2); align-items: center; }
+.fp-note { flex: none; padding: 4px 10px; font-size: var(--fs-sm); color: var(--text-muted); border-bottom: 1px solid var(--border); }
+
+/* Content: one body per tab, only the active one shows; it scrolls inside, never the page. */
+.fp-bodies { flex: 1; min-height: 0; position: relative; }
+.fp-body { position: absolute; inset: 0; overflow: auto; display: none; }
+.fp-body.active { display: block; }
+.fp-body.bro-code-host { overflow: hidden; }
+.fp-body .cm-editor { height: 100%; }
+.fp-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: var(--font-size); text-align: center; padding: 24px; }
+.fp-empty.hidden, .fp-crumbs.hidden, .fp-note.hidden { display: none; }
+.fp-overlay .status-bar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

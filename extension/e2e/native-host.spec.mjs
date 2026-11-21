@@ -93,13 +93,15 @@ try {
   check('fs.listTree works through the native host',
     await until(() => page.locator('.ba-tree-file[data-path="hello.txt"]').isVisible()), await text('#tree'));
 
-  await page.locator('.ba-tree-file[data-path="hello.txt"]').click();
+  // Files open in the editor tab (editor.html), which talks to the native host itself.
+  const [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 10000 }), page.locator('.ba-tree-file[data-path="hello.txt"]').click()]);
+  await tab.waitForLoadState('domcontentloaded');
   check('fs.readFileLines works through the native host',
-    await until(async () => (await page.evaluate(() => [...document.querySelectorAll('#edArea .cm-line')].map((l) => l.textContent).join(String.fromCharCode(10)))) === 'hello native host\n'));
-  await page.locator('#edArea .cm-content').click();
-  await page.keyboard.press('Control+A');
-  await page.keyboard.insertText('saved through native host\n');
-  await page.locator('#edSave').click();
+    await until(async () => (await tab.evaluate(() => [...document.querySelectorAll('#edArea .cm-line')].map((l) => l.textContent).join(String.fromCharCode(10)))).replace(/\n$/, '') === 'hello native host'));
+  await tab.locator('#edArea .cm-content').click();
+  await tab.keyboard.press('Control+A');
+  await tab.keyboard.insertText('saved through native host\n');
+  await tab.locator('#btnSave').click();
   check('fs.writeFile works through the native host',
     await until(() => fs.readFileSync(path.join(workspace, 'hello.txt'), 'utf8') === 'saved through native host\n'));
 

@@ -195,29 +195,6 @@
 .ba-error { padding: var(--sp-2) var(--sp-3) var(--sp-1); color: var(--text-error); font-size: var(--fs-sm); white-space: normal; }
 .ba-retry { margin: 0 var(--sp-3); }
 
-/* File preview pane (bottom split of the explorer) */
-.editor-preview {
-  height: 45%; min-height: 160px; flex: none;
-  display: flex; flex-direction: column;
-  background: var(--bg-editor);
-  border-top: 1px solid var(--border);
-}
-/* Editor title: one active tab (tab.activeBackground) on the tab strip */
-.ed-head {
-  height: var(--head-h); flex: none;
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 var(--sp-1) 0 10px;
-  background: var(--bg-editor);
-  font-size: var(--font-size);
-}
-.ed-icon { display: inline-flex; flex: none; }
-#edName { font-weight: 400; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); }
-.ed-dirty { color: var(--text); font-size: 16px; line-height: 1; flex: none; }
-.ed-actions { margin-left: auto; display: flex; align-items: center; gap: var(--sp-1); flex: none; }
-/* CodeMirror host (see code-view.ts); the editor scrolls inside, never the panel. */
-.editor-preview .ed-code { flex: 1; min-height: 0; height: auto; background: var(--bg-editor); }
-.statusline { flex: none; height: 22px; line-height: 22px; padding: 0 var(--sp-3); font-size: var(--fs-xs); color: var(--text-muted); border-top: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 /* ----- Search ---------------------------------------------------------- */
 .search-form { padding: 0 var(--view-pad-r) var(--sp-1) var(--view-pad-l); flex: none; display: flex; flex-direction: column; gap: var(--sp-1); }
 .search-box {
@@ -555,20 +532,8 @@
 .about .kv a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .about .kv:last-child { border-bottom: none; }
 
-/* ----- Full-tab editor (editor.html) ----------------------------------- */
-.editor-page { display: flex; flex-direction: column; height: 100vh; background: var(--bg-editor); color: var(--text); }
-.editor-header {
-  height: var(--head-h); flex: none;
-  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
-  padding: 0 var(--sp-2) 0 var(--sp-3);
-  background: var(--bg-sidebar);
-}
-.editor-header .file-info { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; }
-.editor-header .file-name { font-size: var(--font-size); color: var(--text-strong); white-space: nowrap; }
-.editor-header .file-meta { font-size: var(--fs-sm); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.editor-actions { display: flex; gap: var(--sp-2); flex: none; }
-.editor-container { flex: 1; overflow: hidden; position: relative; }
-#editor { width: 100%; height: 100%; }
+/* ----- Editor tab (editor.html): the container is file-preview.css ---- */
+.editor-page { background: var(--bg-editor); }
 
 /* ===== 3. Narrow side panel ============================================ */
 @media (max-width: 400px) {

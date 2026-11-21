@@ -25,6 +25,8 @@ const NAMES = [
   'case-sensitive', 'circle-filled', 'loading',
   // Source Control
   'repo', 'repo-fetch', 'repo-pull', 'repo-push', 'cloud-upload', 'cloud', 'sync', 'target', 'tag', 'git-commit',
+  // File preview
+  'save', 'link-external',
 ];
 
 const out = [];

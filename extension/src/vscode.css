@@ -73,6 +73,9 @@
   --tab-fg: rgba(231, 231, 231, 0.6);           /* panelTitle.inactiveForeground */
   --tab-active-fg: #e7e7e7;                     /* panelTitle.activeForeground */
   --tab-active-border: #e7e7e7;                 /* panelTitle.activeBorder */
+  --editor-tab-bg: #2d2d2d;                     /* tab.inactiveBackground */
+  --editor-tab-fg: rgba(255, 255, 255, 0.5);    /* tab.inactiveForeground */
+  --editor-tab-border: #252526;                 /* tab.border */
   --link: #3794ff;            /* textLink.foreground */
   --code-key: #9cdcfe;
   --selection: rgba(38, 79, 120, 0.8); /* editor.selectionBackground #264f78 */
@@ -202,6 +205,9 @@
   --tab-fg: rgba(66, 66, 66, 0.75);
   --tab-active-fg: #424242;
   --tab-active-border: #424242;
+  --editor-tab-bg: #ececec;
+  --editor-tab-fg: rgba(51, 51, 51, 0.7);
+  --editor-tab-border: #f3f3f3;
   --link: #006ab1;
   --code-key: #0451a5;
   --selection: #add6ff;

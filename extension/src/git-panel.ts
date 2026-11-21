@@ -3,7 +3,7 @@
 import { bridge } from './bridge-client.js';
 import { fileIcon, icon } from './icons.js';
 import { formatBadgeCount } from './badge-format.js';
-import { openDiffView } from './diff-view.js';
+import { openEditorTab } from './editor-tabs.js';
 import { layoutGraph, refChips } from './git-graph.js';
 import type { GraphEdge, GraphRow } from './git-graph.js';
 import { t } from './i18n.js';
@@ -60,8 +60,6 @@ export interface ScmDeps {
   workspaceName?(): string;
   /** Called after an action changed files on disk (discard, branch switch). */
   onFilesChanged(): void;
-  /** Open a workspace file in the editor (from the diff view's "Open" button). */
-  openFile?(path: string): void;
 }
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -327,13 +325,9 @@ async function toggleCommit(hash: string): Promise<void> {
   renderGraph();
 }
 
+/** A commit's change to one file, in the editor tab. */
 async function showCommitDiff(hash: string, path: string, origPath?: string): Promise<void> {
-  const res: any = await bridge.call('git.commitDiff', { hash, path, origPath });
-  const commit = currentCommits.find((c) => c.hash === hash);
-  openDiffView({
-    path, staged: false, diff: res.diff || '', truncated: !!res.truncated, onOpenFile: deps.openFile,
-    label: commit ? commit.shortHash : hash.slice(0, 7),
-  });
+  await openEditorTab({ path, mode: 'diff', hash, origPath });
 }
 
 function onGraphClick(e: Event): void {
@@ -447,9 +441,9 @@ function paint(next: GitStatus): void {
   renderCommitButton();
 }
 
+/** Working-tree or staged diff of one file, in the editor tab. */
 async function showDiff(path: string, staged: boolean): Promise<void> {
-  const res: any = await bridge.call('git.diff', { path, staged });
-  openDiffView({ path, staged, diff: res.diff || '', truncated: !!res.truncated, onOpenFile: deps.openFile });
+  await openEditorTab({ path, mode: 'diff', staged });
 }
 
 async function onGroupClick(e: Event): Promise<void> {

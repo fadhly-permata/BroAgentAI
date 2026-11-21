@@ -10,7 +10,7 @@ import { refreshProviders, watchProviders } from './providers/registry.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
 import { reloadIfManifestStale } from './stale-manifest.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
-import { createCodeView, type CodeView } from './code-view.js';
+import { openEditorTab } from './editor-tabs.js';
 import { showExplorerMenu } from './context-menu.js';
 import { installContextMenuGuard } from './context-guard.js';
 
@@ -37,8 +37,6 @@ async function loadWorkspaces() {
     console.error('Failed to load workspaces', e);
   }
 }
-let currentFile:FileNode|null=null; let currentMtime:number|null=null; let dirty=false;
-let codeView:CodeView|null=null;
 let toastTimer:any=null;
 function toast(m:string){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.add('hidden'),4000)}
 function renderWs(){
@@ -87,8 +85,6 @@ async function renderTree(){
       workspaceRoot: () => activeWs?.path ?? null,
       refresh: async () => { await renderTree(); refreshScm(); },
       // A deleted or renamed file (or folder holding it) must not stay open in the preview.
-      onDeleted: (p) => closePreviewUnder(p),
-      onRenamed: (from) => closePreviewUnder(from),
     }),
     showIgnored,
     gitStatus: await loadGitBadges(),
@@ -96,9 +92,6 @@ async function renderTree(){
   await renderExplorer($('tree'), activeWs.path, options);
 }
 
-function closePreviewUnder(path: string) {
-  if (currentFile && (currentFile.path === path || currentFile.path.startsWith(path + '/'))) closeEditorPreview();
-}
 
 async function newFile() {
   const name = prompt('New file path (relative to workspace):');
@@ -135,58 +128,15 @@ async function applyIgnore() {
     toast('Gagal set ignore: ' + (err?.message || err));
   }
 }
-async function openFile(path:string){
+/** Every file opens in the editor tab (editor.html), the one preview container. */
+function openFile(path: string, line = 0){
   if (!activeWs) return;
-  
-  try {
-    const res: any = await bridge.call('fs.readFileLines', { path });
-    const content: string = typeof res?.content === 'string' ? res.content : '';
-    currentFile = { name: path.split('/').pop() || path, path, kind: 'file', content };
-    currentMtime = typeof res?.mtime === 'number' ? res.mtime : null;
-    dirty = false;
-    $('editorPreview').classList.remove('hidden');
-    $('edName').textContent = path;
-    $('edIcon').innerHTML = fileIcon(currentFile.name);
-    codeView?.destroy();
-    $('edArea').innerHTML = '';
-    const ui = loadUISettings();
-    codeView = createCodeView($('edArea'), {
-      path, content,
-      tabSize: Number(ui.tabSize) || 2,
-      wrap: !!ui.wrap,
-      fontSize: Number(ui.fontSize) || 13,
-      onChange: markDirty,
-      onSave: () => { saveCurrentFile(); },
-    });
-    $('edDirty').textContent = '';
-    $('edMeta').textContent = 'File dari workspace - ' + content.length + ' karakter';
-    switchTab('explorer');
-  } catch (err: any) {
-    toast('Gagal membuka file: ' + (err.message || err));
-  }
+  void openEditorTab({ path, line });
 }
-async function saveCurrentFile(){
-  if(!currentFile) return;
-  const content=codeView?.getValue() ?? '';
-  const params:any={ path: currentFile.path, content };
-  if(currentMtime!==null) params.expectedMtime=currentMtime;
-  try{
-    const res:any=await bridge.call('fs.writeFile', params);
-    currentMtime=typeof res?.mtime==='number'?res.mtime:null;
-    currentFile.content=content; dirty=false; $('edDirty').textContent='';
-    $('edMeta').textContent='File dari workspace - '+content.length+' karakter';
-    toast('File tersimpan: '+currentFile.path); renderTree(); refreshScm();
-  }catch(err:any){
-    if(err?.code===BridgeErrorCode.MTIME_CONFLICT) toast('Konflik: file berubah di disk sejak dibuka. Tutup lalu buka ulang file sebelum menyimpan.');
-    else toast('Gagal menyimpan: '+(err?.message||err));
-  }
-}
-function closeEditorPreview(){ $('editorPreview').classList.add('hidden'); codeView?.destroy(); codeView=null; currentFile=null; currentMtime=null; dirty=false; }
-function markDirty(){ dirty=true; $('edDirty').innerHTML='●<span class="sr-only"> dirty</span>'; $('edDirty').title='Unsaved changes'; }
 async function setActiveWorkspace(ws:any){
   try{
     await bridge.call('workspace.setActive', { id: ws.id });
-    activeWs=ws; closeEditorPreview(); resetExplorerState(); renderWs(); await renderTree(); refreshScm();
+    activeWs=ws; resetExplorerState(); renderWs(); await renderTree(); refreshScm();
     $('searchResults').innerHTML=''; $('searchInfo').textContent='';
     toast('Workspace aktif: '+ws.name);
   }catch(err:any){ toast('Gagal set aktif: '+(err?.message||err)); }
@@ -360,10 +310,11 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
+/** A search hit opens in the editor tab, at its line. */
 function openFileAtLine(path: string, line: number) {
-  const editorUrl = chrome.runtime.getURL(`src/editor.html?path=${encodeURIComponent(path)}&line=${line}`);
-  chrome.tabs.create({ url: editorUrl });
+  openFile(path, line);
 }
+
 
 async function runDiagnostics() {
   const diagEl = $('diagOut') as HTMLElement;
@@ -498,7 +449,6 @@ on('newFolderBtn','click',()=>newFolder());
 on('showIgnored','change',async()=>{await renderTree()});
 on('ignoreInput','change',()=>applyIgnore());
 on('ignoreInput','blur',()=>applyIgnore());
-on('edSave','click',saveCurrentFile); on('edClose','click',()=>{if(dirty && !confirm('Ada perubahan belum disimpan. Tutup?'))return; closeEditorPreview()}); document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&currentFile){e.preventDefault(); ($('edSave') as HTMLElement).click()}});
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
 try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
@@ -516,7 +466,7 @@ const onProvidersChanged = () => { renderHome(); refreshProviderControls(); void
 void refreshProviders().then(onProvidersChanged);
 watchProviders(onProvidersChanged);
 initTerminal({ toast, hasWorkspace: ()=>!!activeWs });
-initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, workspaceName: ()=>activeWs?.name ?? '', onFilesChanged: ()=>{ closeEditorPreview(); renderTree(); }, openFile: (path)=>{ openFile(path); } });
+initScm({ toast, openModal, hasWorkspace: ()=>!!activeWs, workspaceName: ()=>activeWs?.name ?? '', onFilesChanged: ()=>{ renderTree(); } });
 
 connectBridge();
 

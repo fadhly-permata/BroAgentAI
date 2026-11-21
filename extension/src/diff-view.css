@@ -1,31 +1,8 @@
-/* Diff editor overlay: VS Code diff editor colors via vscode.css tokens. */
-.dv-overlay {
-  position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column;
-  background: var(--bg-editor); color: var(--editor-fg); min-width: 0;
-}
-.dv-head {
-  height: var(--head-h); display: flex; align-items: center; gap: 6px; padding: 0 var(--sp-2) 0 10px; flex: none; min-width: 0;
-  background: var(--bg-sidebar); border-bottom: 1px solid var(--border); color: var(--text);
-}
-.dv-file { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
-.dv-file .ba-tree-icon { flex: none; display: inline-flex; }
-.dv-name { color: var(--text-strong); }
-.dv-dir { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); }
-.dv-tag { flex: none; font-size: var(--fs-xs); padding: 0 6px; line-height: 16px; border-radius: 8px; background: var(--bg-badge); color: var(--badge-fg); }
-.dv-tag.staged { background: var(--success-strong); color: #ffffff; }
+/* Diff content (rows, hunks, split columns) inside the shared preview; vscode.css tokens. */
 .dv-stats { flex: none; font-size: var(--fs-sm); font-family: var(--font-mono); }
 .dv-stats .a { color: var(--git-added); } .dv-stats .d { color: var(--git-deleted); margin-left: 4px; }
-.dv-tools { display: flex; gap: 2px; flex: none; }
-.dv-btn {
-  height: 22px; background: transparent; border: 1px solid transparent; color: var(--icon); cursor: pointer; border-radius: 5px;
-  padding: 0 7px; font-size: var(--fs-sm); line-height: 1.4; font-family: inherit;
-}
-.dv-btn:hover { background: var(--toolbar-hover); }
-.dv-btn.active { background: var(--toggle-active-bg); border-color: var(--focus); color: var(--text-strong); }
-.dv-btn.close { font-size: 16px; padding: 0 6px; }
-.dv-note { padding: 6px 10px; font-size: var(--fs-sm); color: var(--text-muted); border-bottom: 1px solid var(--border); flex: none; }
 .dv-empty { padding: 24px 12px; text-align: center; color: var(--text-muted); }
-.dv-body { flex: 1; min-height: 0; overflow: auto; font: 12.5px/1.5 var(--font-mono); }
+.dv-body { font: 12.5px/1.5 var(--font-mono); }
 
 .dv-hunk { padding: 2px 8px; color: var(--diff-hunk-fg); background: var(--diff-hunk-bg); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .dv-row { display: flex; min-width: 100%; width: max-content; }
