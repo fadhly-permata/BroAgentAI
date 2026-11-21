@@ -79,6 +79,8 @@ A `.zip` holds the files at its root or inside one top-level folder; nothing els
 
 Optional `errorReplies`: up to 10 case-insensitive regular expressions (max 300 characters each, none may match an empty string) for the site's own failure text, e.g. `["^Something went wrong generating (that|this|the) response"]`. A reply of at most 500 characters that matches is a failed generation, not an answer: when it failed on the agent's own message the panel resends that message (twice, after 3 s and 8 s) and then shows Resend; when it failed on the user's message the panel only says so.
 
+Optional `blockingPrompts`: up to 5 rules for a banner the site shows in place of its composer, e.g. ChatGPT's `{ "id": "context-window-full", "text": "^Context window full$", "button": "^New chat$", "action": "new-chat", "reason": "context window full" }`. `text` (case-insensitive regex) matches the banner's title, outside the messages; `button` matches the label of a button or link in the same small container (at most 600 characters of text, never past an ancestor that holds messages), so the sidebar's "New chat" link never counts. `action` is `new-chat`, the only one today: whenever a session is active (and at session start), the panel presses the button, waits for the new chat's composer, and sends the operating prompt with a handoff of the old chat, plus the message the old chat never answered if there is one; with nothing pending the AI is asked to answer READY. A `button` pattern that matches an upgrade or billing label is refused, and such controls are never pressed at runtime. A banner back within 90 s of a new chat, or more than 5 new chats in one session, stops the automation with a message (`providers/blocking-prompt.ts`).
+
 ### 3.3 `plugin.js` hooks
 
 ```js

@@ -2,7 +2,7 @@
 // the ProviderInfo the rest of the extension uses. Pure functions, no DOM and no
 // chrome.* APIs, so the build (vite.config.ts) and unit tests use them too.
 // See specs/09-WEBCHAT-PLUGINS.md §3.
-import type { ProviderInfo, ProviderSelectors } from '../providers/types.js';
+import type { BlockingPromptRule, ProviderInfo, ProviderSelectors } from '../providers/types.js';
 
 /** plugin.json apiVersion values this build understands (R19). */
 export const SUPPORTED_API_VERSIONS: readonly number[] = [1];
@@ -31,13 +31,21 @@ export interface PluginManifest {
    * treating it as the AI's answer.
    */
   errorReplies?: string[];
+  /**
+   * Banners the site shows in place of its composer, each with the one button
+   * that gets past it (see providers/blocking-prompt.ts), e.g. ChatGPT's
+   * "Context window full" with its "New chat" button. The panel presses it,
+   * then carries on in the new chat with a handoff. Upgrade or billing
+   * buttons are refused here and never pressed at runtime.
+   */
+  blockingPrompts?: BlockingPromptRule[];
 }
 
 export type ManifestResult =
   | { ok: true; plugin: PluginManifest; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
-const TOP_LEVEL_KEYS = new Set(['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'selectors', 'script', 'style', 'icon', 'verified', 'errorReplies']);
+const TOP_LEVEL_KEYS = new Set(['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'selectors', 'script', 'style', 'icon', 'verified', 'errorReplies', 'blockingPrompts']);
 const SELECTOR_KEYS = new Set<keyof ProviderSelectors>(['composer', 'submit', 'assistantMessage', 'userMessage', 'generating', 'messageKeyAttr', 'codeLine', 'codeBlock', 'markdownSource', 'exclude']);
 const REQUIRED_SELECTORS: (keyof ProviderSelectors)[] = ['composer', 'assistantMessage'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -47,6 +55,11 @@ const MAX_MATCHES = 10;
 const MAX_TEXT = 2000;
 const MAX_ERROR_REPLIES = 10;
 const MAX_ERROR_REPLY_LENGTH = 300;
+const MAX_BLOCKING_PROMPTS = 5;
+const BLOCKING_PROMPT_KEYS = new Set(['id', 'text', 'button', 'action', 'reason']);
+const BLOCKING_ACTIONS: readonly string[] = ['new-chat'];
+/** Labels a blockingPrompts button pattern must never match: the panel does not press upgrade or payment buttons. */
+const BILLING_LABELS = ['Upgrade to Plus', 'Upgrade', 'Upgrade plan', 'Get Plus', 'Try Plus', 'Go Pro', 'Subscribe', 'Buy', 'Start free trial', 'Billing', 'Pricing'];
 
 /** Convert a Chrome match pattern (scheme://host/path with *) to a RegExp. */
 export function matchPatternToRegExp(pattern: string): RegExp {
@@ -126,6 +139,24 @@ export function validatePluginManifest(raw: unknown): ManifestResult {
     }
   }
 
+  if (m.blockingPrompts !== undefined) {
+    const list = m.blockingPrompts;
+    if (!Array.isArray(list) || list.length > MAX_BLOCKING_PROMPTS) errors.push(`blockingPrompts must be a list of at most ${MAX_BLOCKING_PROMPTS} rules`);
+    else {
+      const ids = new Set<string>();
+      list.forEach((rule, i) => {
+        const result = blockingPromptProblems(rule, i);
+        errors.push(...result.errors);
+        warnings.push(...result.warnings);
+        const id = (rule as { id?: unknown })?.id;
+        if (typeof id === 'string') {
+          if (ids.has(id)) errors.push(`blockingPrompts[${i}].id "${id}" is used twice`);
+          ids.add(id);
+        }
+      });
+    }
+  }
+
   for (const key of ['script', 'style', 'icon'] as const) {
     if (m[key] !== undefined && (typeof m[key] !== 'string' || !FILE_RE.test(m[key] as string))) errors.push(`${key} must be a file name next to plugin.json`);
   }
@@ -146,6 +177,38 @@ export function errorReplyProblem(source: unknown): string | null {
   return null;
 }
 
+/** A regex source for a blockingPrompts field: why it is refused, or null. */
+function patternProblem(where: string, source: unknown): string | null {
+  if (typeof source !== 'string' || source.trim() === '' || source.length > MAX_ERROR_REPLY_LENGTH) return `${where} must be text (max ${MAX_ERROR_REPLY_LENGTH} characters)`;
+  let re: RegExp;
+  try { re = new RegExp(source, 'i'); } catch { return `${where} "${source}" is not a valid regular expression`; }
+  if (re.test('')) return `${where} "${source}" matches empty text, so it would match anything`;
+  return null;
+}
+
+/** Errors and warnings for one blockingPrompts rule (`i` is its index, for the messages). */
+export function blockingPromptProblems(raw: unknown, i = 0): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const at = `blockingPrompts[${i}]`;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errors: [`${at} must be an object`], warnings };
+  const rule = raw as Record<string, unknown>;
+  for (const key of Object.keys(rule)) if (!BLOCKING_PROMPT_KEYS.has(key)) warnings.push(`unknown field "${at}.${key}" is ignored`);
+  if (typeof rule.id !== 'string' || !ID_RE.test(rule.id)) errors.push(`${at}.id must be 1-40 lowercase letters, digits or "-"`);
+  const text = patternProblem(`${at}.text`, rule.text);
+  if (text) errors.push(text);
+  const button = patternProblem(`${at}.button`, rule.button);
+  if (button) errors.push(button);
+  else {
+    const re = new RegExp(rule.button as string, 'i');
+    const billing = BILLING_LABELS.find((label) => re.test(label));
+    if (billing) errors.push(`${at}.button "${rule.button}" matches "${billing}": upgrade and billing buttons are never pressed`);
+  }
+  if (typeof rule.action !== 'string' || !BLOCKING_ACTIONS.includes(rule.action)) errors.push(`${at}.action must be one of: ${BLOCKING_ACTIONS.join(', ')}`);
+  if (rule.reason !== undefined && !isText(rule.reason, 80)) errors.push(`${at}.reason must be text (max 80 characters)`);
+  return { errors, warnings };
+}
+
 /** The provider the panel, Home cards and relay work with. `files` holds the plugin's loaded icon URL and style.css text. */
 export function toProviderInfo(plugin: PluginManifest, files: { icon?: string; style?: string } = {}): ProviderInfo {
   return {
@@ -161,5 +224,6 @@ export function toProviderInfo(plugin: PluginManifest, files: { icon?: string; s
     icon: files.icon,
     style: files.style,
     ...(plugin.errorReplies ? { errorReplies: [...plugin.errorReplies] } : {}),
+    ...(plugin.blockingPrompts ? { blockingPrompts: plugin.blockingPrompts.map((rule) => ({ ...rule })) } : {}),
   };
 }
