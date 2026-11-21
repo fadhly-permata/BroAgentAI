@@ -10,8 +10,8 @@
     "https://www.meta.ai/*",
     "https://meta.ai/*"
   ],
-  "status": "experimental",
-  "icon": "icon.svg",
+  "status": "ready",
+  "icon": "icon.png",
   "script": "plugin.js",
   "verified": "2026-11-21 (guest, no account): after the one-time birth-year gate, the guest composer is input[type=text][aria-label] (no data-testid) and Enter sends with no send button; the reply arrives in [data-testid=assistant-message] at /prompt/<uuid>, and a 'reply READY' round-trip answered READY. Signed in, the composer is textarea[data-testid=composer-input] mirrored by the Lexical editor, composer-send-button is replaced by composer-stop-button while generating, and assistant-message holds the reply. The Reasoning (Reflexion) blocks thinking-status and subagent-cot-list sit inside the reply and are excluded. Code lines are separate block spans inside pre > code, so codeLine rebuilds them with newlines; a JSON fenced block renders as an interactive .ur-code-block viewer whose Tree tab interleaves expander glyphs and abridges large values, so the plugin's prepare hook switches command-shaped viewers to the Raw tab.",
   "selectors": {
