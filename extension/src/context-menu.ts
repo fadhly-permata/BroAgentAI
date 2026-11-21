@@ -25,17 +25,42 @@ function openMenu(e: MouseEvent, entries: Entry[]): void {
   const menu = document.createElement('div');
   menu.className = 'ba-ctx';
   menu.setAttribute('role', 'menu');
-  const buttons: HTMLButtonElement[] = [];
+  
+  // First pass: filter out disabled items and consecutive separators
+  const filtered: Entry[] = [];
+  let lastWasSep = false;
   for (const en of entries) {
     if (en === 'sep') {
-      // Skip separator if it's between two disabled items or at start/end
+      // Skip separator if it's at start, after another separator, or would be at end
+      if (!lastWasSep && filtered.length > 0) {
+        filtered.push('sep');
+        lastWasSep = true;
+      }
+      continue;
+    }
+    // Skip disabled items entirely - don't show them in the menu
+    if (en.disabled) continue;
+    
+    filtered.push(en);
+    lastWasSep = false;
+  }
+  
+  // Remove trailing separator if present
+  if (filtered.length > 0 && filtered[filtered.length - 1] === 'sep') {
+    filtered.pop();
+  }
+  
+  // Don't show empty menu
+  if (filtered.length === 0) return;
+  
+  const buttons: HTMLButtonElement[] = [];
+  for (const en of filtered) {
+    if (en === 'sep') {
       const s = document.createElement('div');
       s.className = 'ba-ctx-sep';
       menu.appendChild(s);
       continue;
     }
-    // Skip disabled items entirely - don't show them in the menu
-    if (en.disabled) continue;
     
     const b = document.createElement('button');
     b.className = 'ba-ctx-item';
@@ -45,14 +70,6 @@ function openMenu(e: MouseEvent, entries: Entry[]): void {
     b.addEventListener('click', () => { close(); en.act(); });
     menu.appendChild(b);
     buttons.push(b);
-  }
-  
-  // Don't show empty menu
-  if (buttons.length === 0) return;
-  
-  // Remove trailing separators
-  while (menu.lastElementChild?.className === 'ba-ctx-sep') {
-    menu.lastElementChild.remove();
   }
   
   document.body.appendChild(menu);
