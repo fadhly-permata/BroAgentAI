@@ -5,23 +5,7 @@
     <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><circle cx="12" cy="11" r="3.2"/></svg></span>
     <strong id="headerWs" class="ws-name" data-i18n="noWorkspace">Belum ada workspace</strong>
   </div>
-  <button id="wsBtn" class="ws-pill" aria-label="Pilih workspace" data-i18n-title="workspace" aria-haspopup="menu"><i data-icon="folder-opened"></i><span class="ws-pill-label" data-i18n="workspace">Workspace</span><i data-icon="chevron-down" class="chev"></i></button>
   <button id="hostPill" class="pill pill-warn" title="Buka Diagnostik"><span class="dot"></span><span data-i18n="hostOffline">Host offline</span></button>
-  <button id="overflowBtn" class="action" aria-label="Menu" title="More actions" aria-haspopup="menu"><i data-icon="ellipsis"></i></button>
-  <div id="overflowMenu" class="menu hidden" role="menu">
-    <button data-act="settings" role="menuitem"><i data-icon="settings"></i><span data-i18n="settings">Settings</span></button>
-    <button data-act="diagnostics" role="menuitem"><i data-icon="stethoscope"></i><span data-i18n="diagnostics">Diagnostics</span></button>
-    <div class="menu-sep"></div>
-    <button data-act="restart" role="menuitem"><i data-icon="debug-restart"></i><span data-i18n="restartCompanion">Restart companion</span></button>
-    <button data-act="reload" role="menuitem"><i data-icon="refresh"></i><span data-i18n="reloadPanel">Reload panel</span></button>
-  </div>
-  <div id="wsMenu" class="menu ws-menu hidden" role="menu">
-    <div class="menu-title" data-i18n="recentWorkspaces">Workspace terbaru</div>
-    <div id="wsList"></div>
-    <div class="menu-sep"></div>
-    <button data-act="open-folder" role="menuitem"><i data-icon="new-folder"></i><span data-i18n="openFolder">Open folder...</span></button>
-    <button data-act="manage" role="menuitem"><i data-icon="settings"></i><span data-i18n="manageWorkspacesBtn">Manage workspaces...</span></button>
-  </div>
 </header>
 <div id="banner" class="banner hidden"><i data-icon="warning"></i><span class="banner-text"><b data-i18n="hostOffline">Companion not running.</b></span><div class="banner-actions"><button id="restartBtn" class="mini" data-i18n="restartCompanion">Restart</button><button id="setupBtn" class="mini">Setup</button></div></div>
 <div class="shell">
@@ -185,7 +169,6 @@
   <div class="tabs set-nav" role="tablist">
     <button class="tab set-tab active" data-set="editor" role="tab" data-i18n="displayLang">Tampilan &amp; Bahasa</button>
     <button class="tab set-tab" data-set="companion" role="tab" data-i18n="companionHost">Companion</button>
-    <button class="tab set-tab" data-set="workspaces" role="tab" data-i18n="manageWorkspaces">Workspaces</button>
     <button class="tab set-tab" data-set="mcp" role="tab" data-i18n="mcpServers">MCP</button>
     <button class="tab set-tab" data-set="plugins" role="tab" data-i18n="plugins">Plugins</button>
     <button class="tab set-tab" data-set="agent" role="tab" data-i18n="agentSettings">Agent</button>
@@ -198,6 +181,7 @@
     <div class="setting"><label class="setting-title" for="fontSize" data-i18n="fontSizeLabel">Font Size</label><p class="setting-desc" data-i18n="fontSizeDesc">Font size in pixels for the panel and the file preview.</p><div class="num-row"><input type="number" id="fontSize" value="13" min="9" max="24" class="input-sm"><span class="muted">px</span></div></div>
     <div class="setting"><label class="setting-title" for="tabSize" data-i18n="tabSizeLabel">Tab Size</label><p class="setting-desc" data-i18n="tabSizeDesc">Number of spaces a tab is equal to in the file preview.</p><div class="num-row"><input type="number" id="tabSize" value="2" min="1" max="8" class="input-sm"></div></div>
     <div class="setting"><span class="setting-title" data-i18n="wordWrapLabel">Word wrap</span><label class="chk"><input type="checkbox" id="wrapChk"><span data-i18n="wordWrapDesc">Wrap long lines in the file preview.</span></label></div>
+    <div class="setting"><label class="setting-title" for="ignoreInput" data-i18n="ignorePatterns">Ignore patterns</label><p class="setting-desc" data-i18n="ignoreDesc">Comma-separated names hidden from the explorer and search.</p><input id="ignoreInput" class="input setting-control" value=".git, node_modules, dist"></div>
   </div>
 
   <div id="set-companion" class="set-panel">
@@ -206,12 +190,6 @@
     <div class="kv"><span class="kv-key" data-i18n="extIdLabel">Extension ID</span><code id="extId" class="kv-val"></code></div>
     <div class="btn-row"><button id="diagBtn"><i data-icon="stethoscope"></i><span data-i18n="diagnostics">Diagnostik</span></button><button id="restart2Btn"><i data-icon="debug-restart"></i><span data-i18n="restartCompanion">Restart Companion</span></button></div>
     <pre id="diagOut" class="code-block hidden"></pre>
-  </div>
-
-  <div id="set-workspaces" class="set-panel">
-    <h3 data-i18n="manageWorkspaces">Manage Workspaces</h3>
-    <div id="manageList" class="list"></div>
-    <div class="setting"><label class="setting-title" for="ignoreInput" data-i18n="ignorePatterns">Ignore patterns</label><p class="setting-desc" data-i18n="ignoreDesc">Comma-separated names hidden from the explorer and search.</p><input id="ignoreInput" class="input setting-control" value=".git, node_modules, dist"></div>
   </div>
 
   <div id="set-agent" class="set-panel">

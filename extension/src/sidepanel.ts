@@ -43,8 +43,6 @@ function renderWs(){
   const head=$('headerWs');
   head.textContent=activeWs?activeWs.name:t('noWorkspace');
   head.title=activeWs?activeWs.path:'';
-  $('wsList').innerHTML=workspaces.map((w,i)=>'<button data-ws="'+i+'" role="menuitem"><span class="ws-check">'+(w===activeWs?icon('check'):'')+'</span><span class="ws-text"><b>'+escapeHtml(w.name)+'</b><small>'+escapeHtml(w.path)+'</small></span></button>').join('');
-  $('manageList').innerHTML=workspaces.map((w,i)=>'<div class="card'+(w===activeWs?' active-ws':'')+'"><div class="ws-item-main"><b>'+escapeHtml(w.name)+'</b><small title="'+escapeHtml(w.path)+'">'+escapeHtml(w.path)+' - '+escapeHtml(w.last)+'</small></div><div class="ws-item-actions"><button class="mini" data-open="'+i+'">Open</button><button class="mini" data-rename="'+i+'">Rename</button><button class="mini danger" data-remove="'+i+'">Remove</button></div></div>').join('')||'<p class="muted">Belum ada workspace.</p>';
   renderHome();
 }
 
@@ -351,14 +349,19 @@ async function createProjectConfig() {
 let searchTimer:any=null;
 document.querySelectorAll('.rail-btn').forEach(b=>b.addEventListener('click',()=>switchTab((b as HTMLElement).dataset.tab!)));
 document.querySelectorAll('.set-tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.set-tab').forEach(x=>x.classList.toggle('active',x===b)); document.querySelectorAll('.set-panel').forEach(p=>p.classList.toggle('active',p.id==='set-'+(b as HTMLElement).dataset.set))}));
-on('wsBtn','click',()=>{$('wsMenu').classList.toggle('hidden'); $('overflowMenu').classList.add('hidden')});
-on('overflowBtn','click',()=>{$('overflowMenu').classList.toggle('hidden'); $('wsMenu').classList.add('hidden')});
-document.querySelectorAll('#overflowMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('overflowMenu').classList.add('hidden'); if(a==='settings')switchTab('settings'); if(a==='diagnostics')runDiagnostics(); if(a==='restart')restartHost(); if(a==='reload')location.reload()}));
-document.querySelectorAll('#wsMenu [data-act]').forEach(b=>b.addEventListener('click',()=>{const a=(b as HTMLElement).dataset.act; $('wsMenu').classList.add('hidden'); if(a==='open-folder')openFolder(); if(a==='manage'){switchTab('settings'); (document.querySelector('.set-tab[data-set="workspaces"]') as HTMLElement)?.click()}}));
-on('wsList','click',(e:any)=>{const t=e.target.closest('[data-ws]'); if(!t)return; $('wsMenu').classList.add('hidden'); setActiveWorkspace(workspaces[Number(t.dataset.ws)])});
-on('manageList','click',async(e:any)=>{const o=e.target.closest('[data-open]'); const r=e.target.closest('[data-remove]'); const rn=e.target.closest('[data-rename]'); if(o){await setActiveWorkspace(workspaces[Number(o.dataset.open)])} if(r){const idx=Number(r.dataset.remove); const ws=workspaces[idx]; try{ await bridge.call('workspace.remove', { id: ws.id }); await loadWorkspaces(); toast('Workspace dihapus dari list'); }catch(err){ toast('Gagal hapus: ' + err); }} if(rn){const idx=Number(rn.dataset.rename); const ws=workspaces[idx]; openModal('Rename workspace','<input id="wsName" class="input" value="'+ws.name+'">',async()=>{const newName=(document.getElementById('wsName') as HTMLInputElement).value; try{ await bridge.call('workspace.rename', { id: ws.id, name: newName }); await loadWorkspaces(); toast('Workspace direname'); }catch(err){ toast('Gagal rename: ' + err); }})}});
 on('restartBtn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('restart2Btn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('setupBtn','click',()=>openModal('Setup help','<p>Host: <code>com.broagentai.host</code></p><p>Dev: build host + register sekali, lalu reload extension.</p><p>Config: <code>~/.broagentai/config.jsonc</code> - Log: <code>~/.broagentai/host.log</code></p>',()=>{}));
 on('diagBtn','click',runDiagnostics); on('reloadConfigBtn','click',async()=>{try{await bridge.call('config.get'); toast('Config reloaded')}catch(err:any){toast('Gagal reload config: '+(err?.message||err))}}); on('createConfigBtn','click',createProjectConfig);
+
+// Close menus when clicking outside
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  // Don't close if clicking inside a menu or on a menu trigger
+  if (target.closest('.menu') || target.closest('[aria-haspopup="menu"]')) return;
+  // Close all menus
+  document.querySelectorAll('.menu').forEach(menu => {
+    menu.classList.add('hidden');
+  });
+});
 
 // UI settings persistence (localStorage)
 const UI_SETTINGS_KEY = 'broagentai.ui';
@@ -482,7 +485,7 @@ function scheduleChangeRefresh() {
 }
 
 bridge.onEvent((ev) => {
-  // The bridge only watches the active workspace, so any event is relevant.
+  // The bridgeonly watches the active workspace, so any event is relevant.
   if (ev?.event === 'fs.changed' || ev?.event === 'git.changed') {
     scheduleChangeRefresh();
     return;
