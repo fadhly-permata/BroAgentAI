@@ -107,7 +107,7 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 | DeepSeek | `https://chat.deepseek.com/` |
 | Gemini | `https://gemini.google.com/app` |
 | Qwen | `https://chat.qwen.ai/` |
-| ChatGPT (experimental) | `https://chatgpt.com/` |
+| ChatGPT | `https://chatgpt.com/` |
 | Ptero (experimental) | `https://ptero.pro/` (the plugin switches Ptero to **Quick Answer** when a session starts; in Smart mode Ptero's own server agent grabs the commands) |
 | TuskSearch AI (experimental) | `https://new.tusksearch.com/ai` (the plugin switches the composer to **Central AI** when a session starts; in Search mode the same box runs a web search. Selectors checked on the live site; the full loop has not been run yet) |
 
