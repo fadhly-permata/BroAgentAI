@@ -142,10 +142,12 @@
 
 .tree-container { flex: 1; min-height: 80px; overflow: auto; padding-bottom: var(--sp-2); }
 .ba-tree { min-width: 100%; }
-.ba-tree-item { display: flex; flex-direction: column; }
+/* Indent: --depth is set per .ba-tree-item by explorer.ts; 4px gutter before the twistie. */
+.ba-tree-item { display: flex; flex-direction: column; --tree-pad: calc(var(--depth, 0) * var(--tree-indent, 10px) + 4px); }
 .ba-tree-node {
   height: var(--row-h);
   display: flex; align-items: center; gap: 2px;
+  padding-left: var(--tree-pad);
   padding-right: var(--sp-3);
   font-size: var(--font-size);
   color: var(--text);
@@ -174,7 +176,8 @@
 .ba-tree-children { position: relative; }
 .ba-tree-children::before {
   content: ''; position: absolute; top: 0; bottom: 0;
-  left: var(--guide-x, 0);
+  /* Under the parent folder's chevron (16px twistie, centred). */
+  left: calc(var(--tree-pad) + 8px);
   border-left: 1px solid var(--indent-guide);
   pointer-events: none;
 }

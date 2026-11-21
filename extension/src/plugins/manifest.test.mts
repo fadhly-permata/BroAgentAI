@@ -28,7 +28,7 @@ const errorsOf = (raw: unknown) => {
 
 test('every built-in plugin is valid, named after its folder, with its icon present', () => {
   const folders = readdirSync(pluginsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  assert.deepEqual(folders.sort(), ['chatgpt', 'deepseek', 'gemini', 'meta', 'ptero', 'qwen', 'tusksearch']);
+  assert.deepEqual(folders.sort(), ['chatgpt', 'deepseek', 'gemini', 'meta', 'ptero', 'qwen']);
   for (const folder of folders) {
     const raw = JSON.parse(readFileSync(join(pluginsDir, folder, 'plugin.json'), 'utf8'));
     const result = validatePluginManifest(raw);
@@ -107,6 +107,34 @@ test('errorReplies: valid patterns pass and reach ProviderInfo', () => {
   const res = validatePluginManifest(minimal({ errorReplies: ['^Something went wrong', 'rate limit'] }));
   assert.equal(res.ok, true);
   if (res.ok) assert.deepEqual(toProviderInfo(res.plugin).errorReplies, ['^Something went wrong', 'rate limit']);
+});
+
+const contextFull = { id: 'context-window-full', text: '^Context window full$', button: '^New chat$', action: 'new-chat', reason: 'context window full' };
+
+test('blockingPrompts: a valid rule passes and reaches ProviderInfo', () => {
+  const res = validatePluginManifest(minimal({ blockingPrompts: [contextFull] }));
+  assert.ok(res.ok, res.ok ? '' : res.errors.join('; '));
+  if (res.ok) {
+    assert.deepEqual(res.warnings, []);
+    assert.deepEqual(toProviderInfo(res.plugin).blockingPrompts, [contextFull]);
+  }
+  assert.equal('blockingPrompts' in toProviderInfo((validatePluginManifest(minimal()) as { plugin: never }).plugin), false);
+});
+
+test('blockingPrompts: billing buttons, bad patterns, unknown actions and duplicates are refused', () => {
+  const refused = (rule: Record<string, unknown>) => errorsOf(minimal({ blockingPrompts: [rule] }));
+  assert.match(refused({ ...contextFull, button: 'Upgrade to Plus' }).join(), /never pressed/);
+  assert.match(refused({ ...contextFull, button: 'plus|chat' }).join(), /never pressed/);
+  assert.match(refused({ ...contextFull, text: '(broken' }).join(), /not a valid regular expression/);
+  assert.match(refused({ ...contextFull, button: '.*' }).join(), /matches empty text/);
+  assert.match(refused({ ...contextFull, action: 'click' }).join(), /action must be one of/);
+  assert.match(refused({ ...contextFull, id: 'Bad Id' }).join(), /id must be/);
+  assert.match(errorsOf(minimal({ blockingPrompts: [contextFull, contextFull] })).join(), /used twice/);
+  assert.match(errorsOf(minimal({ blockingPrompts: 'nope' })).join(), /blockingPrompts must be a list/);
+  assert.match(errorsOf(minimal({ blockingPrompts: ['nope'] })).join(), /must be an object/);
+  const extra = validatePluginManifest(minimal({ blockingPrompts: [{ ...contextFull, selector: '.x' }] }));
+  assert.ok(extra.ok);
+  assert.deepEqual(extra.warnings, ['unknown field "blockingPrompts[0].selector" is ignored']);
 });
 
 test('errorReplies: bad regex, catch-all pattern, wrong type and too many are refused', () => {

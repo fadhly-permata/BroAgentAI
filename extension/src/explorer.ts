@@ -4,10 +4,10 @@
 import { bridge } from "./bridge-client.js";
 import { fileIcon, icon } from "./icons.js";
 
-/** Horizontal step per tree level, px (matches --tree-indent in sidepanel.css). */
-const TREE_INDENT = 8;
-
-/** Depth is handed to CSS via a custom property; indentation is a CSS concern. */
+/**
+ * Depth is handed to CSS via a custom property; sidepanel.css turns it into the
+ * row indent and the indent-guide position (step: --tree-indent).
+ */
 const depthStyle = (depth: number) => `--depth:${depth}`;
 
 /**

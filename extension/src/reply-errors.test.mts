@@ -1,22 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { errorRetryDelay, isErrorReply, MAX_ERROR_RETRIES } from './reply-errors.ts';
 
-const tusk = JSON.parse(readFileSync(fileURLToPath(new URL('../plugins/tusksearch/plugin.json', import.meta.url)), 'utf8'));
+const failure = ['^Something went wrong generating (that|this|the) response'];
 
-test('TuskSearch failure text is an error reply', () => {
-  assert.equal(isErrorReply('Something went wrong generating that response. Please try again.', tusk.errorReplies), true);
-  assert.equal(isErrorReply('  something went wrong generating the response  ', tusk.errorReplies), true);
+test('a site failure text is an error reply', () => {
+  assert.equal(isErrorReply('Something went wrong generating that response. Please try again.', failure), true);
+  assert.equal(isErrorReply('  something went wrong generating the response  ', failure), true);
 });
 
 test('real answers are not error replies', () => {
-  assert.equal(isErrorReply('READY', tusk.errorReplies), false);
-  assert.equal(isErrorReply('```json\n{"command":"fs.listTree","params":{}}\n```', tusk.errorReplies), false);
+  assert.equal(isErrorReply('READY', failure), false);
+  assert.equal(isErrorReply('```json\n{"command":"fs.listTree","params":{}}\n```', failure), false);
   // Only short replies count: a long answer may quote the error while explaining it.
   const long = 'Something went wrong generating that response. ' + 'x'.repeat(600);
-  assert.equal(isErrorReply(long, tusk.errorReplies), false);
+  assert.equal(isErrorReply(long, failure), false);
 });
 
 test('no patterns, or a broken one, never match', () => {

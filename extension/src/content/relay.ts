@@ -15,6 +15,7 @@ import { PREPARE_TIMEOUT_MS, runPrepare } from '../plugins/hooks.js';
 import { callUserHook } from '../plugins/user-world.ts';
 import { createHookApi } from '../plugins/hook-api.js';
 import { startAgentMarks } from './agent-marks.js';
+import { BLOCKED } from '../providers/blocking-prompt.js';
 import { ReplyTracker } from './reply-tracker.js';
 
 const POLL_MS = 400;
@@ -104,17 +105,36 @@ function startRelay(provider: ProviderInfo): void {
     if (ready) deliver(reply);
   };
 
+  /** Id of the blocking prompt (plugin's blockingPrompts) showing now, or null. Never throws. */
+  const blocking = (): string | null => {
+    try { return adapter.blockingPrompt()?.rule.id ?? null; } catch { return null; }
+  };
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Only this extension's own pages may drive the relay.
     if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string') return;
 
+    // The blocking-prompt scan never depends on isGenerating(): ChatGPT's
+    // `generating` selector also matches the composer's send button, which
+    // shows exactly when a message is stuck in the input under the banner.
     if (message.type === 'ba.ping') {
-      sendResponse({ ...adapter.health(), label: provider.label, status: provider.status, active, paused });
+      sendResponse({ ...adapter.health(), label: provider.label, status: provider.status, active, paused, generating: adapter.isGenerating(), blocking: blocking() });
       return;
     }
     if (message.type === 'ba.tick') {
       poll();
-      sendResponse({ active, paused, composer: adapter.health().composer, loadedMs: Date.now() - loadedAt });
+      sendResponse({ active, paused, composer: adapter.health().composer, loadedMs: Date.now() - loadedAt, blocking: active && !paused ? blocking() : null });
+      return;
+    }
+    if (message.type === 'ba.blocking.press') {
+      // Press the one button the plugin's rule names (never an upgrade or billing control).
+      if (paused) { sendResponse({ ok: false, code: 'PAUSED', error: 'relay paused (chat tab not focused)' }); return; }
+      try {
+        const pressed = adapter.pressBlockingPrompt(String(message.id ?? ''));
+        sendResponse(pressed === null ? { ok: false, error: 'blocking prompt not found' } : { ok: true, button: pressed });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
     if (message.type === 'ba.activate') {
@@ -165,10 +185,17 @@ function startRelay(provider: ProviderInfo): void {
     if (message.type === 'ba.send') {
       // A held relay must not type anything into the chat either.
       if (paused) { sendResponse({ ok: false, code: 'PAUSED', error: 'relay paused (chat tab not focused)' }); return; }
+      // A blocking prompt (ChatGPT's "Context window full") makes the page
+      // refuse every message, composer or not: report it instead of typing.
+      const before = blocking();
+      if (before) { sendResponse({ ok: false, code: BLOCKED, blocking: before, error: `blocking prompt "${before}" is showing` }); return; }
       adapter.sendPrompt(String(message.text ?? ''))
         .then(() => sendResponse({ ok: true }))
         .catch((error) => {
           const text = error instanceof Error ? error.message : String(error);
+          // Refused or no composer: the banner may have just appeared. Say so, so the panel opens a new chat instead of calling it a rate limit.
+          const after = blocking();
+          if (after) { sendResponse({ ok: false, code: BLOCKED, blocking: after, error: `blocking prompt "${after}" is showing (${text})` }); return; }
           sendResponse({ ok: false, code: text.startsWith(NOT_ACCEPTED) ? NOT_ACCEPTED : 'SEND_FAILED', error: text });
         });
       return true; // async response

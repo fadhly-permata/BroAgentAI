@@ -341,6 +341,15 @@ export function formatTranscript(transcript: HandoffTurn[], budget = MAX_PROMPT_
   return out.join('\n\n');
 }
 
+/**
+ * First message of a chat that continues a task: the full operating prompt
+ * (tools and rules) with the handoff context at the very end, so it wins over
+ * any generic opening instruction.
+ */
+export function handoffMessage(systemPrompt: string, context: string): string {
+  return systemPrompt + `\n\n--- HANDOFF INSTRUCTION ---\nKamu sedang melanjutkan sesi yang dipindah (handoff). JANGAN mulai dari nol.\n\n${context}\n\nLanjutkan tugas dari titik ini. Balas dengan satu perintah JSON seperti biasa, atau prosa jika sudah selesai.`;
+}
+
 export function formatHandoffContext(snapshot: HandoffSnapshot): string {
   const parts: string[] = [];
 

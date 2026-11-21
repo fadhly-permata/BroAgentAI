@@ -53,6 +53,24 @@ export interface ProviderSelectors {
   exclude?: string;
 }
 
+/**
+ * A banner the site shows in place of its composer (e.g. ChatGPT's "Context
+ * window full"), and the one button that gets the agent past it. See
+ * providers/blocking-prompt.ts.
+ */
+export interface BlockingPromptRule {
+  /** Short id, e.g. "context-window-full". */
+  id: string;
+  /** Case-insensitive regex for the banner's title text, e.g. "^Context window full$". */
+  text: string;
+  /** Case-insensitive regex for the label of the button to press, inside the same banner, e.g. "^New chat$". */
+  button: string;
+  /** What pressing it does. "new-chat": the site opens a new chat; the agent carries on there with a handoff. */
+  action: 'new-chat';
+  /** A few words for the panel notice, e.g. "context window full". */
+  reason?: string;
+}
+
 export interface ProviderInfo {
   id: string;
   label: string;
@@ -75,6 +93,8 @@ export interface ProviderInfo {
   style?: string;
   /** Patterns (case-insensitive regex sources) for the site's failure text; see PluginManifest.errorReplies. */
   errorReplies?: string[];
+  /** Banners that replace the composer and the button that gets past them; see PluginManifest.blockingPrompts. */
+  blockingPrompts?: BlockingPromptRule[];
   /** Built-in (bundled, trusted) or installed by the user (custom). */
   source?: 'builtin' | 'user';
   /** The plugin ships plugin.js hooks. */
