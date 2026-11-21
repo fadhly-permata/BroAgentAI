@@ -28,7 +28,7 @@ const errorsOf = (raw: unknown) => {
 
 test('every built-in plugin is valid, named after its folder, with its icon present', () => {
   const folders = readdirSync(pluginsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  assert.deepEqual(folders.sort(), ['chatgpt', 'deepseek', 'gemini', 'ptero', 'qwen']);
+  assert.deepEqual(folders.sort(), ['chatgpt', 'deepseek', 'gemini', 'meta', 'ptero', 'qwen']);
   for (const folder of folders) {
     const raw = JSON.parse(readFileSync(join(pluginsDir, folder, 'plugin.json'), 'utf8'));
     const result = validatePluginManifest(raw);
