@@ -656,6 +656,7 @@ button.pill:hover { background: var(--toolbar-hover); }
 .modal-body p { word-break: break-word; }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4) var(--sp-3); flex: none; }
 .modal-actions button { min-width: 72px; }
+.modal-actions.handoff-actions button { flex: 1 1 0; }
 
 /* Notification toast */
 .toast {

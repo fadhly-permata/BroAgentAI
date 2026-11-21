@@ -194,7 +194,7 @@ let modalOnClose:(()=>void)|null=null;
 function openModal(title:string,body:string,cb:()=>void){ const prev=modalOnClose; modalOnClose=null; prev?.(); $('modalTitle').textContent=title; $('modalBody').innerHTML=body; modalCb=cb; $('modalBackdrop').classList.remove('hidden') }
 function closeModal(){ $('modalBackdrop').classList.add('hidden'); modalCb=null; const f=modalOnClose; modalOnClose=null; f?.() }
 /** OK resolves true; anything that closes the modal otherwise resolves false. */
-function confirmModal(title:string,body:string):Promise<boolean>{ return new Promise((resolve)=>{ let decided=false; openModal(title,body,()=>{ decided=true; resolve(true) }); modalOnClose=()=>{ if(!decided) resolve(false) } }) }
+function confirmModal(title:string,body:string):Promise<boolean>{ return new Promise((resolve)=>{ const handoff = title === 'Lanjutkan pekerjaan sebelumnya?'; $('modalCancel').textContent = handoff ? 'New Session' : 'Cancel'; $('modalOk').textContent = handoff ? 'Continue Session' : 'OK'; document.querySelector('.modal-actions')?.classList.toggle('handoff-actions', handoff); let decided=false; const modalBody = handoff ? body.replace('<b>OK</b>', '<b>Continue Session</b>').replace('<b>Batal</b>', '<b>New Session</b>') : body; openModal(title,modalBody,()=>{ decided=true; resolve(true) }); modalOnClose=()=>{ if(!decided) resolve(false) } }) }
 async function doSearch(){
   const query = ($('searchInput') as HTMLInputElement).value.trim();
   if (!query) {
