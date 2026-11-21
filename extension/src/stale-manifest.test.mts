@@ -23,8 +23,8 @@ test('same manifest, different order, is not stale', () => {
 test('a new chat site on disk makes the loaded manifest stale', () => {
   const disk = {
     ...base,
-    host_permissions: [...base.host_permissions, 'https://new.tusksearch.com/*'],
-    content_scripts: base.content_scripts.map((cs) => ({ ...cs, matches: [...cs.matches, 'https://new.tusksearch.com/*'] })),
+    host_permissions: [...base.host_permissions, 'https://chat.example.com/*'],
+    content_scripts: base.content_scripts.map((cs) => ({ ...cs, matches: [...cs.matches, 'https://chat.example.com/*'] })),
   };
   assert.equal(isStale(base, disk), true);
 });
