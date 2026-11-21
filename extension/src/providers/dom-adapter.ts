@@ -1,5 +1,6 @@
 // Shared DOM adapter: drives a chat page using only the selectors from a plugin's plugin.json.
 import type { ConversationMessage, ProviderHealth, ProviderInfo, ProviderReply } from './types.js';
+import { findBlockingPrompt, type BlockingPromptMatch } from './blocking-prompt.js';
 import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, cutText, fencedBlocks, joinLines, spliceCode } from './reply-text.js';
 
 function visible(el: Element | null): el is HTMLElement {
@@ -22,6 +23,12 @@ function first(selector: string | undefined): HTMLElement | null {
   if (!selector) return null;
   for (const el of document.querySelectorAll(selector)) if (visible(el)) return el;
   return null;
+}
+
+/** Every text node under `root`, in document order. */
+function* textNodes(root: Node): Generator<Text> {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) yield node as Text;
 }
 
 /** Drop elements nested inside another one in the list (a selector may match both). */
@@ -56,6 +63,29 @@ export class DomAdapter {
 
   isGenerating(): boolean {
     return first(this.provider.selectors.generating) !== null;
+  }
+
+  /**
+   * A blocking prompt (plugin's blockingPrompts) showing on the page, with the
+   * button that gets past it; null when none shows. Text inside messages is
+   * ignored, so a reply that quotes the banner never counts.
+   */
+  blockingPrompt(): BlockingPromptMatch<HTMLElement> | null {
+    const rules = this.provider.blockingPrompts;
+    if (!rules || rules.length === 0 || !document.body) return null;
+    const { assistantMessage, userMessage } = this.provider.selectors;
+    return findBlockingPrompt<HTMLElement>(textNodes(document.body), rules, {
+      skip: [assistantMessage, userMessage].filter(Boolean).join(', '),
+      visible: (el) => visible(el as unknown as Element),
+    });
+  }
+
+  /** Press the button of the blocking prompt `id`, if it is still showing. Returns the pressed button's label. */
+  pressBlockingPrompt(id: string): string | null {
+    const match = this.blockingPrompt();
+    if (!match || match.rule.id !== id) return null;
+    match.button.click();
+    return (match.button.innerText || match.button.textContent || '').trim();
   }
 
   readLatestReply(): ProviderReply {

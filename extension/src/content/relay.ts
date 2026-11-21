@@ -104,17 +104,36 @@ function startRelay(provider: ProviderInfo): void {
     if (ready) deliver(reply);
   };
 
+  /** Id of the blocking prompt (plugin's blockingPrompts) showing now, or null. Never throws. */
+  const blocking = (): string | null => {
+    try { return adapter.blockingPrompt()?.rule.id ?? null; } catch { return null; }
+  };
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Only this extension's own pages may drive the relay.
     if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string') return;
 
     if (message.type === 'ba.ping') {
-      sendResponse({ ...adapter.health(), label: provider.label, status: provider.status, active, paused });
+      const generating = adapter.isGenerating();
+      sendResponse({ ...adapter.health(), label: provider.label, status: provider.status, active, paused, generating, blocking: generating ? null : blocking() });
       return;
     }
     if (message.type === 'ba.tick') {
       poll();
-      sendResponse({ active, paused, composer: adapter.health().composer, loadedMs: Date.now() - loadedAt });
+      // A blocking prompt only shows once the site stopped generating; skip the page scan while it streams.
+      const scan = active && !paused && !adapter.isGenerating();
+      sendResponse({ active, paused, composer: adapter.health().composer, loadedMs: Date.now() - loadedAt, blocking: scan ? blocking() : null });
+      return;
+    }
+    if (message.type === 'ba.blocking.press') {
+      // Press the one button the plugin's rule names (never an upgrade or billing control).
+      if (paused) { sendResponse({ ok: false, code: 'PAUSED', error: 'relay paused (chat tab not focused)' }); return; }
+      try {
+        const pressed = adapter.pressBlockingPrompt(String(message.id ?? ''));
+        sendResponse(pressed === null ? { ok: false, error: 'blocking prompt not found' } : { ok: true, button: pressed });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
     if (message.type === 'ba.activate') {

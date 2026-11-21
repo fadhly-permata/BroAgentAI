@@ -21,5 +21,14 @@
     "exclude": "[data-code-block] [data-markdown-copy=\"exclude\"], [data-message-content-controls], [data-message-content-controls] + div",
     "codeBlock": "[data-code-block], [data-assistant-markdown-root] pre",
     "codeLine": ".cm-line"
-  }
+  },
+  "blockingPrompts": [
+    {
+      "id": "context-window-full",
+      "text": "^Context window full$",
+      "button": "^New chat$",
+      "action": "new-chat",
+      "reason": "context window full"
+    }
+  ]
 }

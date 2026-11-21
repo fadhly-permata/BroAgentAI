@@ -15,6 +15,7 @@ import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
 import { reloadIfManifestStale } from './stale-manifest.js';
 import { errorRetryDelay, isErrorReply, MAX_ERROR_RETRIES } from './reply-errors.js';
+import { blockingPending, CONFIRM_TICKS, MAX_RENEWALS, renewalContext, renewDecision } from './providers/blocking-prompt.js';
 
 export interface AgentDeps {
   toast(message: string): void;
@@ -73,6 +74,19 @@ interface Session {
   recorded: HandoffTurn[];
   /** Tools that ran OK and the files they read or changed, over the whole task. */
   work: WorkSummary;
+  /** An automatic message that could not be typed (send failed); repeated in a new chat. */
+  undelivered?: string | null;
+  /** Ticks in a row the chat showed a blocking prompt (providers/blocking-prompt.ts). */
+  blockingSeen?: number;
+  /** A new chat is being opened for a blocking prompt: replies are not acted on meanwhile. */
+  renewing?: boolean;
+  /** New chats opened for blocking prompts in this session, and when the last one was. */
+  renewals?: number;
+  renewedAt?: number | null;
+  /** Opening a new chat failed or would loop: the user continues by hand, no more automatic clicks. */
+  renewBlocked?: boolean;
+  /** Bumped when the chat is replaced; a reply queued before that belongs to the old chat. */
+  epoch?: number;
 }
 
 type PhaseKind = 'opening' | 'connecting' | 'idle' | 'waiting' | 'running' | 'approval' | 'delay' | 'sending' | 'retry' | 'paused' | 'failed' | 'offline';
@@ -107,6 +121,8 @@ let deps: AgentDeps;
 let session: Session | null = null;
 let logs: LogEntry[] = [];
 let queue: Promise<void> = Promise.resolve();
+/** True while a reply is being handled (tool approval, tool run, sending its result). */
+let replyBusy = false;
 let pendingApproval: ((decision: 'allow' | 'deny') => void) | null = null;
 let phase: Phase | null = null;
 /**
@@ -589,6 +605,7 @@ async function deliver(text: string, pause = true): Promise<void> {
     if (session !== active) return;
     if (res?.ok) {
       active.awaitingReply = true;
+      active.undelivered = null;
       record(active, 'user', text);
       setPhase('waiting', 'Menunggu balasan AI');
       return;
@@ -599,8 +616,20 @@ async function deliver(text: string, pause = true): Promise<void> {
       setPhase('paused', 'Dijeda - tab chat tidak aktif');
       return;
     }
+    // A banner took the composer's place (ChatGPT's "Context window full"):
+    // open a new chat through it and carry this message over, instead of
+    // retrying into a page that has no input box.
+    const blockedBy = await blockingPromptOn(active);
+    if (session !== active) return;
+    if (blockedBy) {
+      active.undelivered = text;
+      if (active.renewBlocked) { setPhase('failed', 'Chat terhalang banner - lanjutkan manual'); return; }
+      if (!active.renewing) await renewChat(active, blockedBy, text);
+      return;
+    }
     const refused = res?.code === 'NOT_ACCEPTED';
     if (!refused || attempt >= SEND_ATTEMPTS) {
+      active.undelivered = text;
       const why = refused ? 'chat menolak pesan (rate limit?)' : (res?.code === 'UNREACHABLE' ? 'tab chat tidak merespons' : 'gagal mengirim');
       setPhase('failed', `Belum terkirim: ${why}`);
       log({ tool: 'send', category: '-', decision: `${attempt}x dicoba`, status: 'error', ms: 0, detail: `${res?.error || why}. Klik "Kirim ulang", atau tekan kirim di tab chat.` });
@@ -611,6 +640,115 @@ async function deliver(text: string, pause = true): Promise<void> {
     log({ tool: 'send', category: '-', decision: `retry ${attempt}/${SEND_ATTEMPTS - 1}`, status: 'info', ms: 0, detail: `chat menolak pesan (rate limit?); coba lagi dalam ${Math.round(backoff / 1000)}s` });
     setPhase('retry', `Chat menolak pesan, coba lagi (${attempt}/${SEND_ATTEMPTS - 1})`, backoff);
     if (!(await waitFor(active, backoff))) return;
+  }
+}
+
+/** How long a new chat opened through a blocking prompt may take to show its composer. */
+const RENEW_READY_MS = 20_000;
+
+/** Id of the blocking prompt showing in the session's chat tab, or null (also when the tab does not answer). */
+async function blockingPromptOn(active: Session): Promise<string | null> {
+  const res = await tabMessage(active.tabId, { type: 'ba.ping' }).catch(() => null);
+  return typeof res?.blocking === 'string' ? res.blocking : null;
+}
+
+/**
+ * After the blocking prompt's button was pressed: wait until the new chat is
+ * usable (composer shown, banner gone, nothing generating - the site may write
+ * its own summary first), seen twice in a row so a half-drawn page does not
+ * count. 'blocked' when the banner never went away.
+ */
+async function waitForNewChat(active: Session): Promise<'ready' | 'blocked' | 'timeout'> {
+  const end = Date.now() + RENEW_READY_MS;
+  let settled = 0;
+  let lastBlocked = false;
+  if (!(await waitFor(active, 1500))) return 'timeout';
+  while (Date.now() < end) {
+    const res = await tabMessage(active.tabId, { type: 'ba.ping' }).catch(() => null);
+    if (session !== active) return 'timeout';
+    lastBlocked = typeof res?.blocking === 'string';
+    settled = res?.composer && !lastBlocked && !res.generating ? settled + 1 : 0;
+    if (settled >= 2) return 'ready';
+    if (!(await waitFor(active, 500))) return 'timeout';
+  }
+  return lastBlocked ? 'blocked' : 'timeout';
+}
+
+/** Opening a new chat failed or would loop: say so once, keep the session, leave the rest to the user. */
+function giveUpRenew(active: Session, label: string, reason: string, why: string): void {
+  active.renewBlocked = true;
+  log({ tool: 'chat.renew', category: label, decision: 'stopped', status: 'error', ms: 0, detail: `${label}: ${reason}. Chat baru otomatis dihentikan (${why}). Klik "New chat" sendiri di tab chat, lalu Stop dan Start sesi untuk melanjutkan.` });
+  setPhase('failed', `${label}: ${reason} - lanjutkan manual`);
+  notify('BroAgentAI - ' + label, `${label}: ${reason}. Chat baru otomatis dihentikan (${why}). Lanjutkan manual dari side panel.`);
+  void saveWorkspaceHandoff(active);
+}
+
+/**
+ * The chat shows a blocking prompt (plugin's blockingPrompts, e.g. ChatGPT's
+ * "Context window full" with its "New chat" button): press the button, wait
+ * for the new chat, then send the operating prompt with a handoff of the old
+ * chat and the message it never answered. The site's own summary of the old
+ * chat (if any) lacks the tool catalog, the rules and that pending message, so
+ * the handoff is always sent. Loop-safe: a banner back right after a new chat,
+ * too many new chats, a button that cannot be pressed or a new chat that
+ * never shows its composer all stop the automation with a message instead.
+ */
+async function renewChat(active: Session, id: string, pending: string | null): Promise<void> {
+  active.renewing = true;
+  try {
+    const rule = active.provider.blockingPrompts?.find((r) => r.id === id);
+    if (!rule || session !== active) return;
+    const label = providerLabel(active.provider);
+    const reason = rule.reason || id;
+    const decision = renewDecision({ count: active.renewals ?? 0, lastAt: active.renewedAt ?? null }, Date.now());
+    if (!decision.act) {
+      return giveUpRenew(active, label, reason, decision.reason === 'too-soon' ? 'banner muncul lagi tepat setelah chat baru' : `sudah ${MAX_RENEWALS}x pindah ke chat baru di sesi ini`);
+    }
+    setPhase('connecting', `${label}: ${reason} - membuka chat baru`);
+    log({ tool: 'chat.renew', category: label, decision: rule.action, status: 'info', ms: 0, detail: `${label}: ${reason}; tombol "${rule.button}" ditekan untuk membuka chat baru` });
+    // Read the old chat before it leaves the page: the new one never saw it.
+    const transcript = await collectTranscript(active);
+    if (session !== active) return;
+    const handoff = formatHandoffContext(snapshotOf(active, transcript, await currentWorkspace()));
+    if (session !== active) return;
+    const res = await tabMessage(active.tabId, { type: 'ba.blocking.press', id })
+      .catch((err: any) => ({ ok: false, error: err?.message || String(err) }));
+    if (session !== active) return;
+    if (!res?.ok) return giveUpRenew(active, label, reason, 'tombol tidak bisa ditekan: ' + (res?.error || 'tidak ada jawaban'));
+    active.renewals = (active.renewals ?? 0) + 1;
+    active.renewedAt = Date.now();
+    // Replies already queued came from the old chat.
+    active.epoch = (active.epoch ?? 0) + 1;
+    setPhase('connecting', `${label}: menunggu chat baru`);
+    const ready = await waitForNewChat(active);
+    if (session !== active) return;
+    if (ready !== 'ready') return giveUpRenew(active, label, reason, ready === 'blocked' ? 'banner tetap tampil setelah tombol ditekan' : 'kolom chat baru tidak muncul');
+    // Fresh tracker on the new chat: a summary the site wrote there is not the AI's answer to us.
+    await activateRelay(active.tabId, active.provider);
+    if (session !== active) return;
+    active.carried = transcript;
+    active.recorded = [];
+    active.toolCalls = 0;
+    active.resumeGuard = null;
+    active.awaitingReply = false;
+    active.undelivered = null;
+    active.blockingSeen = 0;
+    let prompt = renewalContext(handoff, pending);
+    try {
+      // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
+      const { prompt: systemPrompt }: any = await bridge.call('agent.prompt', { mode: mode(), handoff: true });
+      prompt = handoffMessage(systemPrompt, prompt);
+    } catch (err) {
+      console.warn('Failed to get system prompt for the new chat, sending the handoff alone:', err);
+    }
+    if (session !== active) return;
+    log({ tool: 'chat.renew', category: label, decision: 'handoff', status: 'info', ms: 0, detail: `${label}: ${reason} - dilanjutkan di chat baru (instruksi, ringkasan percakapan${pending ? ' dan pesan yang tertunda' : ''} dikirim)` });
+    notify('BroAgentAI - ' + label, `${label}: ${reason} - dilanjutkan di chat baru`);
+    active.renewing = false;
+    await deliver(prompt, false);
+    if (session === active) void saveWorkspaceHandoff(active);
+  } finally {
+    active.renewing = false;
   }
 }
 
@@ -641,6 +779,7 @@ async function tick(): Promise<void> {
       active.resumeGuard = active.lastReplyText;
       log({ tool: 'relay', category: '-', decision: '-', status: 'info', ms: 0, detail: 'tab chat dimuat ulang - relay disambung lagi' });
     }
+    watchBlockingPrompt(active, typeof res?.blocking === 'string' ? res.blocking : null);
   } catch {
     if (session === active && phase?.kind !== 'offline' && phase?.kind !== 'paused') {
       beforeOffline = phase;
@@ -649,6 +788,33 @@ async function tick(): Promise<void> {
   } finally {
     ticking = false;
   }
+}
+
+/**
+ * A blocking prompt seen on a tick. Acts only after CONFIRM_TICKS ticks in a
+ * row (a reply that came just before the banner gets delivered first), when
+ * no reply is being handled (a running tool hits the banner on its own send),
+ * and only when the agent has a message in flight; at the user's turn it is
+ * reported once and left to the user.
+ */
+function watchBlockingPrompt(active: Session, id: string | null): void {
+  if (!id) { active.blockingSeen = 0; return; }
+  const seen = active.blockingSeen = (active.blockingSeen ?? 0) + 1;
+  if (seen < CONFIRM_TICKS || replyBusy || active.renewing || active.renewBlocked) return;
+  const pending = blockingPending(active);
+  if (!pending) {
+    if (seen === CONFIRM_TICKS) {
+      const rule = active.provider.blockingPrompts?.find((r) => r.id === id);
+      const label = providerLabel(active.provider);
+      log({ tool: 'chat.renew', category: label, decision: '-', status: 'info', ms: 0, detail: `${label}: ${rule?.reason || id}. Agent tidak sedang menunggu balasan; klik "New chat" di tab chat lalu Stop dan Start sesi bila ingin lanjut.` });
+    }
+    return;
+  }
+  active.renewing = true;
+  queue = queue.then(() => renewChat(active, id, pending)).catch((err) => {
+    active.renewing = false;
+    log({ tool: 'chat.renew', category: '-', decision: '-', status: 'error', ms: 0, detail: err?.message || String(err) });
+  });
 }
 
 /**
@@ -954,12 +1120,14 @@ async function handleErrorReply(active: Session, text: string): Promise<void> {
   await deliver(active.lastSent, false);
 }
 
-async function handleReply(reply: ProviderReply): Promise<void> {
+async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
   if (!session) return;
   const active = session;
   // While paused nothing is acted on: the relay holds the reply and re-offers
   // it once resumed (the panel also does not nudge a paused relay).
   if (active.paused) return;
+  // Queued before the chat was replaced (blocking prompt): it belongs to the old chat.
+  if (active.renewing || (active.epoch ?? 0) !== epoch) return;
   const guard = active.resumeGuard;
   active.resumeGuard = null;
   if (guard !== null && reply.text === guard) {
@@ -1064,8 +1232,15 @@ export function initAgent(dependencies: AgentDeps): void {
     if (!session || sender.tab?.id !== session.tabId) return;
     // Acknowledge, so the relay re-offers a reply nobody took instead of dropping it.
     sendResponse({ ok: true });
+    // A new chat is being opened (blocking prompt): what the page shows now is
+    // the old chat or the site's own summary, not an answer to the agent.
+    if (session.renewing) return;
+    const epoch = session.epoch ?? 0;
     // One reply at a time, in order.
-    queue = queue.then(() => handleReply(message.reply)).catch((err) => {
+    queue = queue.then(async () => {
+      replyBusy = true;
+      try { await handleReply(message.reply, epoch); } finally { replyBusy = false; }
+    }).catch((err) => {
       log({ tool: 'relay', category: '-', decision: '-', status: 'error', ms: 0, detail: err?.message || String(err) });
     });
   });
