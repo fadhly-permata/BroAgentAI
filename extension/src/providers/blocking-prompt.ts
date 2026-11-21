@@ -162,6 +162,62 @@ export function renewDecision(history: RenewHistory, now: number): RenewDecision
   return { act: true };
 }
 
+/** Relay error code: a blocking prompt shows, so the message was not sent (or not taken). */
+export const BLOCKED = 'BLOCKED';
+
+/** A relay's answer to a send that did not go through. */
+export interface SendFailure {
+  code?: string;
+  /** Rule id when the relay saw a blocking prompt (code BLOCKED). */
+  blocking?: string | null;
+}
+
+export type SendFailureAction =
+  | { kind: 'paused' }
+  /** Open a new chat through the blocking prompt and carry the message over. */
+  | { kind: 'renew'; id: string }
+  /** A blocking prompt shows but the automation already gave up (or is busy opening one): no retry. */
+  | { kind: 'blocked'; id: string }
+  /** Refused without a banner: probably a rate limit, try again later. */
+  | { kind: 'retry' }
+  | { kind: 'fail' };
+
+/**
+ * What to do with a send that did not go through. A blocking prompt wins over
+ * everything else: ChatGPT keeps a message in its input under "Context window
+ * full" (NOT_ACCEPTED, composer still there), which looks like a rate limit
+ * but never clears by retrying. `blockingNow` is the panel's own check for
+ * relays that do not report BLOCKED themselves.
+ */
+export function sendFailureAction(
+  res: SendFailure | null | undefined,
+  state: { renewing?: boolean; renewBlocked?: boolean },
+  attempt: number,
+  maxAttempts: number,
+  blockingNow: string | null = null,
+): SendFailureAction {
+  if (res?.code === 'PAUSED') return { kind: 'paused' };
+  const id = (res?.code === BLOCKED && typeof res.blocking === 'string' && res.blocking) || blockingNow;
+  if (id) return state.renewBlocked || state.renewing ? { kind: 'blocked', id } : { kind: 'renew', id };
+  if (res?.code === 'NOT_ACCEPTED' && attempt < maxAttempts) return { kind: 'retry' };
+  return { kind: 'fail' };
+}
+
+/** How long a new chat may look "generating" before the agent sends anyway. */
+export const GENERATING_GRACE_MS = 8_000;
+
+/**
+ * Is the new chat (opened through a blocking prompt) ready for the handoff?
+ * It needs a composer and no banner. "Generating" only delays it for a while:
+ * the site may write its own summary first, but ChatGPT's `generating`
+ * selector also matches the send button, which shows whenever the composer
+ * holds text (a draft carried over), so waiting on it alone could never end.
+ */
+export function newChatReady(page: { composer: boolean; blocking: string | null; generating: boolean }, elapsedMs: number): boolean {
+  if (!page.composer || page.blocking) return false;
+  return !page.generating || elapsedMs >= GENERATING_GRACE_MS;
+}
+
 /** The bits of a session that say whether the agent has something in flight. */
 export interface PendingState {
   /** An automatic message that could not be typed (the composer was gone). */

@@ -15,7 +15,7 @@ import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
 import { reloadIfManifestStale } from './stale-manifest.js';
 import { errorRetryDelay, isErrorReply, MAX_ERROR_RETRIES } from './reply-errors.js';
-import { blockingPending, CONFIRM_TICKS, MAX_RENEWALS, renewalContext, renewDecision } from './providers/blocking-prompt.js';
+import { BLOCKED, blockingPending, CONFIRM_TICKS, MAX_RENEWALS, newChatReady, renewalContext, renewDecision, sendFailureAction } from './providers/blocking-prompt.js';
 
 export interface AgentDeps {
   toast(message: string): void;
@@ -610,25 +610,27 @@ async function deliver(text: string, pause = true): Promise<void> {
       setPhase('waiting', 'Menunggu balasan AI');
       return;
     }
+    // A blocking prompt (ChatGPT's "Context window full") wins over a rate
+    // limit: the relay reports it (BLOCKED, checked before typing and again
+    // after a refused send); the panel also looks itself in case the relay
+    // did not. The page keeps refusing until a new chat is opened, so no retry.
+    const blockingNow = res?.code === 'PAUSED' || res?.code === BLOCKED ? null : await blockingPromptOn(active);
+    if (session !== active) return;
+    const action = sendFailureAction(res, active, attempt, SEND_ATTEMPTS, blockingNow);
     // Held because the chat tab lost focus: not a failure. The message stays
     // queued and goes out once the user is back (Resend or the next tool).
-    if (res?.code === 'PAUSED') {
+    if (action.kind === 'paused') {
       setPhase('paused', 'Dijeda - tab chat tidak aktif');
       return;
     }
-    // A banner took the composer's place (ChatGPT's "Context window full"):
-    // open a new chat through it and carry this message over, instead of
-    // retrying into a page that has no input box.
-    const blockedBy = await blockingPromptOn(active);
-    if (session !== active) return;
-    if (blockedBy) {
+    if (action.kind === 'renew' || action.kind === 'blocked') {
       active.undelivered = text;
-      if (active.renewBlocked) { setPhase('failed', 'Chat terhalang banner - lanjutkan manual'); return; }
-      if (!active.renewing) await renewChat(active, blockedBy, text);
+      if (action.kind === 'renew') { await renewChat(active, action.id, text); return; }
+      if (active.renewBlocked) setPhase('failed', 'Chat terhalang banner - lanjutkan manual');
       return;
     }
     const refused = res?.code === 'NOT_ACCEPTED';
-    if (!refused || attempt >= SEND_ATTEMPTS) {
+    if (action.kind === 'fail') {
       active.undelivered = text;
       const why = refused ? 'chat menolak pesan (rate limit?)' : (res?.code === 'UNREACHABLE' ? 'tab chat tidak merespons' : 'gagal mengirim');
       setPhase('failed', `Belum terkirim: ${why}`);
@@ -654,12 +656,12 @@ async function blockingPromptOn(active: Session): Promise<string | null> {
 
 /**
  * After the blocking prompt's button was pressed: wait until the new chat is
- * usable (composer shown, banner gone, nothing generating - the site may write
- * its own summary first), seen twice in a row so a half-drawn page does not
+ * usable (see newChatReady), seen twice in a row so a half-drawn page does not
  * count. 'blocked' when the banner never went away.
  */
 async function waitForNewChat(active: Session): Promise<'ready' | 'blocked' | 'timeout'> {
-  const end = Date.now() + RENEW_READY_MS;
+  const started = Date.now();
+  const end = started + RENEW_READY_MS;
   let settled = 0;
   let lastBlocked = false;
   if (!(await waitFor(active, 1500))) return 'timeout';
@@ -667,7 +669,7 @@ async function waitForNewChat(active: Session): Promise<'ready' | 'blocked' | 't
     const res = await tabMessage(active.tabId, { type: 'ba.ping' }).catch(() => null);
     if (session !== active) return 'timeout';
     lastBlocked = typeof res?.blocking === 'string';
-    settled = res?.composer && !lastBlocked && !res.generating ? settled + 1 : 0;
+    settled = newChatReady({ composer: !!res?.composer, blocking: res?.blocking ?? null, generating: !!res?.generating }, Date.now() - started) ? settled + 1 : 0;
     if (settled >= 2) return 'ready';
     if (!(await waitFor(active, 500))) return 'timeout';
   }

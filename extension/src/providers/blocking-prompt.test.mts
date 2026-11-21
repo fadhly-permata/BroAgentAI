@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  blockingPending, findBlockingPrompt, isBillingControl, MAX_PENDING_CHARS, MAX_RENEWALS, RENEW_COOLDOWN_MS,
-  renewalContext, renewDecision, type PromptElement, type PromptTextNode,
+  BLOCKED, blockingPending, findBlockingPrompt, GENERATING_GRACE_MS, isBillingControl, MAX_PENDING_CHARS, MAX_RENEWALS, newChatReady,
+  RENEW_COOLDOWN_MS, renewalContext, renewDecision, sendFailureAction, type PromptElement, type PromptTextNode,
 } from './blocking-prompt.ts';
 import type { BlockingPromptRule } from './types.ts';
 
@@ -75,6 +75,46 @@ test('finds the banner and picks its New chat button, not Upgrade to Plus', () =
   assert.equal(match.rule.id, 'context-window-full');
   assert.equal(match.button.textContent.trim(), 'New chat');
   assert.equal(match.button.closest('.banner') !== null, true, 'the button is inside the banner');
+});
+
+test('banner above a composer that still holds the stuck tool result (live layout) is found', () => {
+  // As seen live: disclaimer line, then the banner, then the composer with the
+  // typed tool result and its send button (which ChatGPT's `generating` selector matches).
+  const stuck = '[BroAgentAI tool result] fs.writeFile OK {"path": "extension/plugins/stackoverflow/plugin.json", "mtime": "2026-11-21T03:03:00Z"} ' + 'x'.repeat(700);
+  const composerArea = h('div', { class: 'composer-area' },
+    h('div', {}, 'ChatGPT can make mistakes. Check important info.'),
+    banner(),
+    h('form', {}, h('div', { class: 'composer' }, h('p', {}, stuck)), h('button', { class: 'size-token-button-composer' }, h('svg', {}))));
+  const body = page(composerArea);
+  const match = findBlockingPrompt<El>(body.texts(), rules, { skip: SKIP });
+  assert.equal(match?.button.textContent.trim(), 'New chat');
+  assert.ok(match?.button.closest('.banner'));
+});
+
+test('sendFailureAction: banner + composer still there + send not accepted opens a new chat, never retries', () => {
+  const idle = { renewing: false, renewBlocked: false };
+  // The relay saw the banner itself (before typing, or after the refused send).
+  assert.deepEqual(sendFailureAction({ code: BLOCKED, blocking: 'context-window-full' }, idle, 1, 3), { kind: 'renew', id: 'context-window-full' });
+  // NOT_ACCEPTED (text kept in the input) and the panel's own check sees the banner: not a rate limit.
+  assert.deepEqual(sendFailureAction({ code: 'NOT_ACCEPTED' }, idle, 1, 3, 'context-window-full'), { kind: 'renew', id: 'context-window-full' });
+  assert.deepEqual(sendFailureAction({ code: 'SEND_FAILED' }, idle, 3, 3, 'context-window-full'), { kind: 'renew', id: 'context-window-full' });
+  // Already gave up, or a new chat is being opened: no click, no retry.
+  assert.deepEqual(sendFailureAction({ code: 'NOT_ACCEPTED' }, { renewBlocked: true }, 1, 3, 'context-window-full'), { kind: 'blocked', id: 'context-window-full' });
+  assert.deepEqual(sendFailureAction({ code: BLOCKED, blocking: 'context-window-full' }, { renewing: true }, 1, 3), { kind: 'blocked', id: 'context-window-full' });
+  // Without a banner the old behaviour stays: retry a refused send, then fail.
+  assert.deepEqual(sendFailureAction({ code: 'NOT_ACCEPTED' }, idle, 1, 3), { kind: 'retry' });
+  assert.deepEqual(sendFailureAction({ code: 'NOT_ACCEPTED' }, idle, 3, 3), { kind: 'fail' });
+  assert.deepEqual(sendFailureAction({ code: 'UNREACHABLE' }, idle, 1, 3), { kind: 'fail' });
+  assert.deepEqual(sendFailureAction({ code: 'PAUSED' }, idle, 1, 3, 'context-window-full'), { kind: 'paused' });
+});
+
+test('newChatReady: needs a composer and no banner; "generating" only delays it', () => {
+  assert.equal(newChatReady({ composer: true, blocking: null, generating: false }, 0), true);
+  assert.equal(newChatReady({ composer: false, blocking: null, generating: false }, 60_000), false);
+  assert.equal(newChatReady({ composer: true, blocking: 'context-window-full', generating: false }, 60_000), false);
+  // A draft left in the composer shows the send button, which reads as generating.
+  assert.equal(newChatReady({ composer: true, blocking: null, generating: true }, 1_000), false);
+  assert.equal(newChatReady({ composer: true, blocking: null, generating: true }, GENERATING_GRACE_MS), true);
 });
 
 test('the sidebar New chat link alone is not a blocking prompt', () => {
