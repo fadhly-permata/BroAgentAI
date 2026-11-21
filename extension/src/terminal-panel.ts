@@ -22,6 +22,21 @@ function setStatus(text: string): void {
   $('termStatus').textContent = text;
 }
 
+// VS Code Dark+ / Light+ integrated terminal palettes (terminal.* / terminal.ansi* colors).
+const DARK_TERMINAL = {
+  background: '#1e1e1e', foreground: '#cccccc', cursor: '#aeafad', cursorAccent: '#1e1e1e',
+  selectionBackground: '#264f78',
+  black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510', blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
+  brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b', brightYellow: '#f5f543', brightBlue: '#3b8eea', brightMagenta: '#d670d6', brightCyan: '#29b8db', brightWhite: '#e5e5e5',
+};
+const LIGHT_TERMINAL = {
+  background: '#ffffff', foreground: '#333333', cursor: '#000000', cursorAccent: '#ffffff',
+  selectionBackground: '#add6ff',
+  black: '#000000', red: '#cd3131', green: '#00bc00', yellow: '#949800', blue: '#0451a5', magenta: '#bc05bc', cyan: '#0598bc', white: '#555555',
+  brightBlack: '#666666', brightRed: '#cd3131', brightGreen: '#14ce14', brightYellow: '#b5ba00', brightBlue: '#0451a5', brightMagenta: '#bc05bc', brightCyan: '#0598bc', brightWhite: '#a5a5a5',
+};
+const terminalTheme = () => (document.documentElement.dataset.theme === 'light' ? LIGHT_TERMINAL : DARK_TERMINAL);
+
 function ensureXterm(): Terminal {
   if (term) return term;
   term = new Terminal({
@@ -29,13 +44,7 @@ function ensureXterm(): Terminal {
     fontSize: 12,
     lineHeight: 1.15,
     fontFamily: "Consolas, 'Courier New', monospace",
-    // VS Code Dark Modern terminal palette.
-    theme: {
-      background: '#1e1e1e', foreground: '#cccccc', cursor: '#aeafad', cursorAccent: '#1e1e1e',
-      selectionBackground: '#264f78',
-      black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510', blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
-      brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b', brightYellow: '#f5f543', brightBlue: '#3b8eea', brightMagenta: '#d670d6', brightCyan: '#29b8db', brightWhite: '#e5e5e5',
-    },
+    theme: terminalTheme(),
     scrollback: 5000,
   });
   fit = new FitAddon();
@@ -49,6 +58,9 @@ function ensureXterm(): Terminal {
     if (sessionId) bridge.call('term.resize', { sessionId, cols, rows }).catch(() => {});
   });
   new ResizeObserver(() => fitNow()).observe($('termView'));
+  // Follow the panel theme (Settings or the OS) like VS Code's terminal does.
+  new MutationObserver(() => { if (term) term.options.theme = terminalTheme(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   // Test/diagnostic hook: read what the terminal currently shows as plain text.
   (window as any).__broagentaiTermText = () => {
     if (!term) return '';

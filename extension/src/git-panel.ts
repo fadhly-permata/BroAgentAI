@@ -162,7 +162,8 @@ const GRAPH_PAGE = 50;
 const GRAPH_MAX = 500;
 const LANE_W = 12;
 const ROW_H = 22;
-const LANE_COLORS = ['#4fa3e0', '#e06c75', '#98c379', '#e5c07b', '#c678dd', '#56b6c2', '#d19a66', '#be5046'];
+// VS Code Source Control Graph colors (scmGraph.historyItemRefColor, scmGraph.foreground1-5).
+const LANE_COLORS = ['#59a4f9', '#ffb000', '#dc267f', '#994f00', '#40b0a6', '#b66dff'];
 let currentCommits: GitCommit[] = [];
 let graphLimit = GRAPH_PAGE;
 let graphSeq = 0;

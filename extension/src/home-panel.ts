@@ -40,8 +40,8 @@ function providerMark(p: ProviderInfo): string {
   }
   // Fallback to a neutral chat bubble with its initial
   return `<svg class="prov-mark" viewBox="0 0 24 24" aria-hidden="true">`
-    + `<path d="M4 4.5h16a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5z" fill="var(--home-mark-bg)"/>`
-    + `<text x="12" y="14.2" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--home-mark-fg)">${esc(((p.label)[0] || '?').toUpperCase())}</text>`
+    + `<path d="M4 4.5h16a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5z" class="prov-mark-bg"/>`
+    + `<text x="12" y="14.2" text-anchor="middle" font-size="8.5" font-weight="700" class="prov-mark-fg">${esc(((p.label)[0] || '?').toUpperCase())}</text>`
     + `</svg>`;
 }
 
@@ -81,7 +81,7 @@ export function renderHome(): void {
   const busy = state !== 'idle';
   const ctaLabel = busy ? t('homeStop') : t('homeStart');
   const hint = state === 'starting'
-    ? `<span class="home-spin"></span><span>${esc(t('homeStarting'))}</span>`
+    ? `<span class="home-spin">${icon('loading')}</span><span>${esc(t('homeStarting'))}</span>`
     : state === 'active'
       ? `${icon('pulse')}<span>${esc(t('homeSessionActive'))}</span>`
       : active
@@ -90,13 +90,13 @@ export function renderHome(): void {
 
   body.innerHTML =
     `<section class="home-sec">`
-      + `<div class="home-sec-head"><h3>${esc(t('homeWorkspace'))}</h3>`
+      + `<div class="home-sec-head"><h3 class="section-title">${esc(t('homeWorkspace'))}</h3>`
       + `<button id="homeOpenFolder" class="home-head-btn" data-act="open-folder" title="${esc(t('homeOpenFolder'))}">${icon('new-folder')}<span>${esc(t('homeOpenFolder'))}</span></button></div>`
       + workspaceRows(deps.getWorkspaces(), active)
     + `</section>`
-    + `<section class="home-sec"><div class="home-sec-head"><h3>${esc(t('homeProvider'))}</h3></div><div class="home-grid">${cards}</div></section>`
+    + `<section class="home-sec"><div class="home-sec-head"><h3 class="section-title">${esc(t('homeProvider'))}</h3></div><div class="home-grid">${cards}</div></section>`
     + `<section class="home-sec home-cta-sec">`
-      + `<button id="homeStart" class="home-cta${busy ? ' stop' : ''}" data-state="${state}"${busy ? '' : ` title="${esc(t('homeStartHint'))}"`}>`
+      + `<button id="homeStart" class="home-cta ${busy ? 'danger stop' : 'primary'}" data-state="${state}"${busy ? '' : ` title="${esc(t('homeStartHint'))}"`}>`
         + `<span class="home-cta-ico">${icon(busy ? 'debug-stop' : 'play')}</span><span class="home-cta-label">${esc(ctaLabel)}</span>`
       + `</button>`
       + `<p class="home-hint${active || busy ? '' : ' warn'}" role="status" aria-live="polite">${hint}</p>`

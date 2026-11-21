@@ -37,12 +37,12 @@
 </nav>
 <main class="content">
 
-<section id="tab-home" class="panel view-editor active">
+<section id="tab-home" class="panel active">
   <div class="panel-head"><h2 data-i18n="home">Home</h2></div>
   <div id="homeBody" class="panel-body home"></div>
 </section>
 
-<section id="tab-explorer" class="panel view-sidebar">
+<section id="tab-explorer" class="panel">
   <div class="panel-head"><h2 data-i18n="explorer">Explorer</h2><div class="head-actions">
     <button id="newFileBtn" class="action" data-i18n-title="newFileTip" title="New File..."><i data-icon="new-file"></i></button>
     <button id="newFolderBtn" class="action" data-i18n-title="newFolderTip" title="New Folder..."><i data-icon="new-folder"></i></button>
@@ -60,7 +60,7 @@
   </div>
 </section>
 
-<section id="tab-search" class="panel view-sidebar">
+<section id="tab-search" class="panel">
   <div class="panel-head"><h2 data-i18n="search">Search</h2><div class="head-actions">
     <button id="searchClear" class="action" data-i18n-title="clear" title="Clear Search Results"><i data-icon="clear-all"></i></button>
     <button id="searchCollapse" class="action" data-i18n-title="collapseAll" title="Collapse All"><i data-icon="collapse-all"></i></button>
@@ -79,7 +79,7 @@
   </div>
 </section>
 
-<section id="tab-scm" class="panel view-sidebar">
+<section id="tab-scm" class="panel">
   <div class="panel-head"><h2 data-i18n="scm">Source Control</h2></div>
   <div class="scm-toolbar">
     <button id="scmRefresh" class="square" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button>
@@ -98,9 +98,9 @@
       </div>
       <p class="upstream-line"><span id="scmUpstream"></span></p>
       <div id="conflictBanner" class="callout callout-warn hidden"><span id="conflictText"></span><button id="scmAbort" class="mini danger">Abort</button></div>
-      <div class="scm-view-toggle" role="tablist" aria-label="Source control view">
-        <button class="scm-view-btn active" role="tab" aria-selected="true" aria-controls="scmChangesView" data-view="changes" data-i18n="changes">Changes</button>
-        <button class="scm-view-btn" role="tab" aria-selected="false" aria-controls="scmGraphView" data-view="graph" data-i18n="graph">Graph</button>
+      <div class="tabs scm-view-toggle" role="tablist" aria-label="Source control view">
+        <button class="tab scm-view-btn active" role="tab" aria-selected="true" aria-controls="scmChangesView" data-view="changes" data-i18n="changes">Changes</button>
+        <button class="tab scm-view-btn" role="tab" aria-selected="false" aria-controls="scmGraphView" data-view="graph" data-i18n="graph">Graph</button>
       </div>
 
       <div id="scmChangesView" role="tabpanel">
@@ -121,7 +121,7 @@
   </div>
 </section>
 
-<section id="tab-terminal" class="panel view-editor">
+<section id="tab-terminal" class="panel">
   <div class="panel-head"><h2 data-i18n="terminal">Terminal</h2><div class="head-actions">
     <button id="termNew" class="action" data-i18n-title="newTerminal" title="New Terminal"><i data-icon="add"></i></button>
     <button id="termClear" class="action" data-i18n-title="clearTerminal" title="Clear"><i data-icon="clear-all"></i></button>
@@ -131,7 +131,7 @@
   <div id="termView" class="term-view"></div>
 </section>
 
-<section id="tab-agent" class="panel view-editor">
+<section id="tab-agent" class="panel">
   <div class="panel-head"><h2 data-i18n="agent">Agent</h2><span id="agentPill" class="pill pill-warn"><span class="dot"></span><span id="agentSession" data-i18n="noSession">Belum ada sesi</span></span><button id="agentNoticeShow" class="action hidden" data-i18n-title="agentNoticeShow" title="Show info"><i data-icon="info"></i></button></div>
   <div class="panel-body">
     <div id="agentNotice" class="callout callout-info notice"><i data-icon="agent" class="callout-ico"></i><button id="agentNoticeClose" class="action notice-x" data-i18n-title="dismiss" title="Dismiss"><i data-icon="close"></i></button><div><strong data-i18n="monitoringAgent">Monitoring &amp; Approval Agent</strong><p data-i18n="agentDesc">Chat tetap di tab AI Anda. Panel ini menjalankan perintah tool dari AI, meminta persetujuan bila perlu, dan mencatat semuanya.</p></div></div>
@@ -161,46 +161,33 @@
   </div>
 </section>
 
-<section id="tab-about" class="panel view-editor">
+<section id="tab-about" class="panel">
   <div class="panel-head"><h2 data-i18n="about">About</h2></div>
   <div class="panel-body">
-    <div class="section" style="align-items: center; text-align: center; padding-top: var(--sp-4);">
-      <img src="../assets/icon.png" alt="BroAgentAI Logo" style="width: 64px; height: 64px; border-radius: 12px; margin-bottom: var(--sp-3);" />
-      <h3 style="font-size: 18px; font-weight: 600; color: var(--text-strong); margin-bottom: var(--sp-1);">BroAgentAI</h3>
-      <p class="muted" style="margin-bottom: var(--sp-3);">v0.1.0</p>
-      <p style="color: var(--text); line-height: 1.5; max-width: 320px; margin-bottom: var(--sp-4);" data-i18n="aboutDesc">Chrome/Edge side panel that turns your DeepSeek, Gemini, Qwen, ChatGPT, Ptero or TuskSearch web chat into a local coding agent: files, Git, shell & MCP tools with approvals. No API key.</p>
-      
-      <div class="card" style="width: 100%; max-width: 320px; text-align: left;">
-        <div class="kv">
-          <span class="kv-key" data-i18n="author">Author</span>
-          <span class="kv-val">Fadhly Permata</span>
-        </div>
-        <div class="kv">
-          <span class="kv-key">GitHub</span>
-          <a href="https://github.com/fadhly-permata" target="_blank" rel="noopener noreferrer" style="color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis;">@fadhly-permata</a>
-        </div>
-        <div class="kv">
-          <span class="kv-key">Stack Overflow</span>
-          <a href="https://stackoverflow.com/users/fadhly-permata" target="_blank" rel="noopener noreferrer" style="color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis;">Fadhly Permata</a>
-        </div>
-        <div class="kv">
-          <span class="kv-key">Website</span>
-          <a href="http://fadhly-permata.rf.gd/" target="_blank" rel="noopener noreferrer" style="color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis;">fadhly-permata.rf.gd</a>
-        </div>
+    <div class="section about">
+      <img src="../assets/icon.png" alt="BroAgentAI Logo" class="about-logo" />
+      <h3>BroAgentAI</h3>
+      <p class="muted">v0.1.0</p>
+      <p class="about-desc" data-i18n="aboutDesc">Chrome/Edge side panel that turns your DeepSeek, Gemini, Qwen, ChatGPT, Ptero or TuskSearch web chat into a local coding agent: files, Git, shell &amp; MCP tools with approvals. No API key.</p>
+      <div class="card">
+        <div class="kv"><span class="kv-key" data-i18n="author">Author</span><span class="kv-val">Fadhly Permata</span></div>
+        <div class="kv"><span class="kv-key">GitHub</span><a href="https://github.com/fadhly-permata" target="_blank" rel="noopener noreferrer">@fadhly-permata</a></div>
+        <div class="kv"><span class="kv-key">Stack Overflow</span><a href="https://stackoverflow.com/users/fadhly-permata" target="_blank" rel="noopener noreferrer">Fadhly Permata</a></div>
+        <div class="kv"><span class="kv-key">Website</span><a href="http://fadhly-permata.rf.gd/" target="_blank" rel="noopener noreferrer">fadhly-permata.rf.gd</a></div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="tab-settings" class="panel view-editor">
+<section id="tab-settings" class="panel">
   <div class="panel-head"><h2 data-i18n="settingsTitle">Settings</h2></div>
-  <div class="set-nav" role="tablist">
-    <button class="set-tab active" data-set="editor" role="tab" data-i18n="displayLang">Tampilan &amp; Bahasa</button>
-    <button class="set-tab" data-set="companion" role="tab" data-i18n="companionHost">Companion</button>
-    <button class="set-tab" data-set="workspaces" role="tab" data-i18n="manageWorkspaces">Workspaces</button>
-    <button class="set-tab" data-set="mcp" role="tab" data-i18n="mcpServers">MCP</button>
-    <button class="set-tab" data-set="plugins" role="tab" data-i18n="plugins">Plugins</button>
-    <button class="set-tab" data-set="agent" role="tab" data-i18n="agentSettings">Agent</button>
+  <div class="tabs set-nav" role="tablist">
+    <button class="tab set-tab active" data-set="editor" role="tab" data-i18n="displayLang">Tampilan &amp; Bahasa</button>
+    <button class="tab set-tab" data-set="companion" role="tab" data-i18n="companionHost">Companion</button>
+    <button class="tab set-tab" data-set="workspaces" role="tab" data-i18n="manageWorkspaces">Workspaces</button>
+    <button class="tab set-tab" data-set="mcp" role="tab" data-i18n="mcpServers">MCP</button>
+    <button class="tab set-tab" data-set="plugins" role="tab" data-i18n="plugins">Plugins</button>
+    <button class="tab set-tab" data-set="agent" role="tab" data-i18n="agentSettings">Agent</button>
   </div>
 
   <div id="set-editor" class="set-panel active">

@@ -1,4 +1,6 @@
-// VS Code Dark Modern / Dark+ theme + language mapping for CodeMirror 6.
+// VS Code Dark+ / Light+ theme + language mapping for CodeMirror 6.
+// Colors are vscode.css tokens (var(--syn-*), var(--editor-*)), so the editor
+// follows the panel's data-theme without rebuilding the view.
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { HighlightStyle, StreamLanguage, syntaxHighlighting, LanguageSupport, type Language } from '@codemirror/language';
@@ -53,11 +55,12 @@ export function languageObjectFor(path: string): Language | null {
 }
 
 const C = {
-  keyword: '#569cd6', control: '#c586c0', string: '#ce9178', comment: '#6a9955', fn: '#dcdcaa',
-  type: '#4ec9b0', number: '#b5cea8', variable: '#9cdcfe', regexp: '#d16969', plain: '#d4d4d4',
+  keyword: 'var(--syn-keyword)', control: 'var(--syn-control)', string: 'var(--syn-string)', comment: 'var(--syn-comment)',
+  fn: 'var(--syn-fn)', type: 'var(--syn-type)', number: 'var(--syn-number)', variable: 'var(--syn-variable)',
+  regexp: 'var(--syn-regexp)', plain: 'var(--syn-plain)',
 };
 
-export const darkModernHighlight = HighlightStyle.define([
+export const vscodeHighlight = HighlightStyle.define([
   { tag: [t.keyword, t.modifier, t.operatorKeyword, t.definitionKeyword, t.self], color: C.keyword },
   { tag: [t.controlKeyword, t.moduleKeyword], color: C.control },
   { tag: [t.string, t.special(t.string), t.character, t.attributeValue], color: C.string },
@@ -70,33 +73,36 @@ export const darkModernHighlight = HighlightStyle.define([
   { tag: [t.regexp, t.escape], color: C.regexp },
   { tag: t.tagName, color: C.keyword },
   { tag: [t.attributeName], color: C.variable },
-  { tag: t.angleBracket, color: '#808080' },
+  { tag: t.angleBracket, color: 'var(--syn-punct)' },
   { tag: [t.heading, t.heading1, t.heading2, t.heading3, t.heading4, t.heading5, t.heading6], color: C.keyword, fontWeight: 'bold' },
   { tag: t.strong, fontWeight: 'bold' },
   { tag: t.emphasis, fontStyle: 'italic' },
-  { tag: [t.link, t.url], color: '#3794ff', textDecoration: 'underline' },
+  { tag: [t.link, t.url], color: 'var(--link)', textDecoration: 'underline' },
   { tag: t.quote, color: C.comment },
   { tag: t.meta, color: C.keyword },
   { tag: [t.operator, t.punctuation, t.separator, t.bracket, t.brace, t.paren, t.squareBracket, t.derefOperator], color: C.plain },
-  { tag: t.invalid, color: '#f44747' },
+  { tag: t.invalid, color: 'var(--syn-invalid)' },
 ]);
 
-export const darkModernTheme: Extension = [
+export const vscodeTheme: Extension = [
   EditorView.theme({
-    '&': { backgroundColor: '#1f1f1f', color: '#cccccc', height: '100%' },
-    '.cm-content': { caretColor: '#aeafad', fontFamily: "Consolas, 'Courier New', monospace", fontSize: '13px' },
-    '.cm-scroller': { fontFamily: "Consolas, 'Courier New', monospace", fontSize: '13px', overflow: 'auto' },
-    '&.cm-focused .cm-cursor, .cm-cursor': { borderLeftColor: '#aeafad' },
+    '&': { backgroundColor: 'var(--bg-editor)', color: 'var(--editor-fg)', height: '100%' },
+    '.cm-content': { caretColor: 'var(--editor-cursor)', fontFamily: 'var(--font-mono)', fontSize: '13px' },
+    '.cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: '13px', overflow: 'auto' },
+    '&.cm-focused .cm-cursor, .cm-cursor': { borderLeftColor: 'var(--editor-cursor)' },
     '&.cm-focused': { outline: 'none' },
-    '.cm-gutters': { backgroundColor: '#1f1f1f', color: '#6e7681', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.04)' },
-    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#cccccc' },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': { backgroundColor: '#264f78' },
-    '.cm-selectionMatch': { backgroundColor: 'rgba(38,79,120,0.5)' },
-    '.cm-matchingBracket': { backgroundColor: 'rgba(0,100,0,0.4)', outline: '1px solid #888' },
-    '.cm-searchMatch': { backgroundColor: '#613214' },
-    '.cm-panels': { backgroundColor: '#252526', color: '#cccccc' },
-    '.cm-tooltip': { backgroundColor: '#252526', border: '1px solid #454545' },
-  }, { dark: true }),
-  syntaxHighlighting(darkModernHighlight),
+    '.cm-gutters': { backgroundColor: 'var(--bg-editor)', color: 'var(--editor-gutter-fg)', border: 'none' },
+    '.cm-activeLine': { backgroundColor: 'var(--editor-line)' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--editor-gutter-active)' },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': { backgroundColor: 'var(--selection)' },
+    '.cm-selectionMatch': { backgroundColor: 'color-mix(in srgb, var(--selection) 60%, transparent)' },
+    '.cm-matchingBracket': { backgroundColor: 'var(--editor-bracket)', outline: '1px solid var(--border-strong)' },
+    '.cm-searchMatch': { backgroundColor: 'var(--match-bg)' },
+    '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--editor-find)' },
+    '.cm-panels': { backgroundColor: 'var(--bg-widget)', color: 'var(--text)' },
+    '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--border)' },
+    '.cm-panels.cm-panels-bottom': { borderTop: '1px solid var(--border)' },
+    '.cm-tooltip': { backgroundColor: 'var(--bg-widget)', border: '1px solid var(--border-widget)', color: 'var(--text)' },
+  }),
+  syntaxHighlighting(vscodeHighlight),
 ];

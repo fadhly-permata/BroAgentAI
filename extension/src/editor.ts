@@ -1,6 +1,6 @@
 // Editor: CodeMirror 6 dengan dukungan read_file_lines dan write_file + MTIME_CONFLICT detection
 import { EditorView, basicSetup } from 'codemirror';
-import { darkModernTheme, languageFor } from './code-theme.js';
+import { vscodeTheme, languageFor } from './code-theme.js';
 import { EditorState } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { javascript } from '@codemirror/lang-javascript';
@@ -11,6 +11,17 @@ import { markdown } from '@codemirror/lang-markdown';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { searchKeymap } from '@codemirror/search';
 import { bridge, BridgeErrorCode } from './bridge-client.js';
+import { applyTheme, type Theme } from './i18n.js';
+
+// Same theme as the side panel: its UI settings live in this origin's localStorage.
+const UI_SETTINGS_KEY = 'broagentai.ui';
+function applyStoredTheme(): void {
+  let theme: Theme = 'system';
+  try { theme = (JSON.parse(localStorage.getItem(UI_SETTINGS_KEY) || '{}').theme || 'system') as Theme; } catch { /* keep system */ }
+  applyTheme(theme);
+}
+applyStoredTheme();
+window.addEventListener('storage', (e) => { if (e.key === UI_SETTINGS_KEY) applyStoredTheme(); });
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -54,7 +65,7 @@ async function loadFile(path: string, targetLine = 0) {
       doc: content,
       extensions: [
         basicSetup,
-        darkModernTheme,
+        vscodeTheme,
         languageFor(path),
         keymap.of([
           ...defaultKeymap,
