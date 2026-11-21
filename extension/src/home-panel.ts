@@ -51,11 +51,14 @@ function workspaceRows(list: HomeWorkspace[], active: HomeWorkspace | null): str
   }
   return `<div class="home-ws-list" role="listbox" aria-label="${esc(t('homeWorkspace'))}">` + list.map((w, i) => {
     const on = w === active;
-    return `<button class="home-ws${on ? ' active' : ''}" data-hws="${i}" role="option" aria-selected="${on}" title="${esc(w.path)}">`
+    return `<div class="home-ws-row${on ? ' active' : ''}" data-hws="${i}" role="option" aria-selected="${on}" title="${esc(w.path)}">`
+      + `<button class="home-ws-btn" data-ws-select="${i}">`
       + `<span class="home-ws-ico">${icon(on ? 'folder-opened' : 'folder')}</span>`
       + `<span class="home-ws-text"><b>${esc(w.name)}</b><small>${esc(w.path)}</small></span>`
       + (on ? `<span class="home-ws-tag">${esc(t('homeActive'))}</span>` : '')
-      + `</button>`;
+      + `</button>`
+      + `<button class="home-ws-remove" data-ws-remove="${i}" title="Remove workspace" aria-label="Remove ${esc(w.name)}">${icon('trash')}</button>`
+      + `</div>`;
   }).join('') + `</div>`;
 }
 
@@ -118,8 +121,36 @@ export function initHome(dependencies: HomeDeps): void {
   const body = document.getElementById('homeBody');
   body?.addEventListener('click', (e) => {
     const el = e.target as HTMLElement;
-    const w = el.closest('[data-hws]') as HTMLElement | null;
-    if (w) { const ws = deps.getWorkspaces()[Number(w.dataset.hws)]; if (ws) void deps.setActive(ws); return; }
+    
+    // Handle workspace remove button
+    const removeBtn = el.closest('[data-ws-remove]') as HTMLElement | null;
+    if (removeBtn) {
+      e.stopPropagation();
+      const idx = Number(removeBtn.dataset.wsRemove);
+      const ws = deps.getWorkspaces()[idx];
+      if (ws && ws.id) {
+        // Import bridge dynamically to avoid circular dependency
+        import('./bridge-client.js').then(({ bridge }) => {
+          bridge.call('workspace.remove', { id: ws.id }).then(() => {
+            deps.toast('Workspace dihapus');
+            // Reload workspaces by triggering a refresh
+            window.location.reload();
+          }).catch((err: any) => {
+            deps.toast('Gagal hapus workspace: ' + (err?.message || err));
+          });
+        });
+      }
+      return;
+    }
+    
+    // Handle workspace select button
+    const selectBtn = el.closest('[data-ws-select]') as HTMLElement | null;
+    if (selectBtn) {
+      const ws = deps.getWorkspaces()[Number(selectBtn.dataset.wsSelect)];
+      if (ws) void deps.setActive(ws);
+      return;
+    }
+    
     const p = el.closest('[data-prov]') as HTMLElement | null;
     if (p) {
       selected = p.dataset.prov!;

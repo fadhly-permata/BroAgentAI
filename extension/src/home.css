@@ -17,21 +17,45 @@
 
 /* Workspace list: tree-style rows (name, dim path), selection like a focused list item. */
 .home-ws-list { display: flex; flex-direction: column; margin: 0 calc(-1 * var(--sp-2)); max-height: calc(8 * var(--row-h)); overflow-y: auto; }
-.home-ws {
-  height: var(--row-h); width: 100%; min-width: 0; flex: none;
-  padding: 0 var(--sp-2); gap: 6px; justify-content: flex-start;
+.home-ws-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--row-h);
+  width: 100%;
+  min-width: 0;
+  flex: none;
+}
+.home-ws-row.active { background: var(--selected); }
+.home-ws-row:hover { background: var(--hover); }
+.home-ws-btn {
+  height: var(--row-h); width: 100%; min-width: 0; flex: 1;
+  padding: 0 var(--sp-2) 0 var(--sp-2); gap: 6px; justify-content: flex-start;
   background: transparent; border: 1px solid transparent; border-radius: 0;
   color: var(--text); text-align: left; font-size: var(--font-size);
 }
-.home-ws:hover { background: var(--hover); }
-.home-ws.active { background: var(--selected); }
-.home-ws:focus-visible { outline: none; border-color: var(--focus); }
+.home-ws-btn:hover { background: transparent; }
+.home-ws-btn:focus-visible { outline: none; }
 .home-ws-ico { display: inline-flex; flex: none; color: var(--icon); }
 .home-ws-text { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex: 1; overflow: hidden; }
 .home-ws-text b, .home-ws-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-ws-text b { flex: none; max-width: 60%; font-weight: 400; color: var(--text); }
 .home-ws-text small { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--text-muted); }
 .home-ws-tag { flex: none; height: 16px; padding: 0 6px; border-radius: 8px; font-size: var(--fs-xs); line-height: 16px; background: var(--bg-badge); color: var(--badge-fg); }
+.home-ws-remove {
+  width: 22px; height: 22px; flex: none;
+  padding: 0;
+  background: transparent; border: 1px solid transparent; border-radius: 5px;
+  color: var(--icon);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.home-ws-row:hover .home-ws-remove { opacity: 1; }
+.home-ws-remove:hover { background: var(--toolbar-hover); color: var(--danger); }
+.home-ws-remove .ico { width: 14px; height: 14px; }
+@media (hover: none) { .home-ws-remove { opacity: 1; } }
 
 /* Empty state: a link row like the Welcome page "Open Folder..." entry. */
 .home-drop {

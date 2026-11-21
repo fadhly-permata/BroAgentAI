@@ -146,7 +146,7 @@
   color-scheme: light;
   --bg-editor: #ffffff;
   --bg-sidebar: #f3f3f3;
-  --bg-activity: #2c2c2c;
+  --bg-activity: #f3f3f3;
   --bg-titlebar: #dddddd;
   --bg-input: #ffffff;
   --bg-console: #ffffff;
@@ -198,9 +198,9 @@
   --text-error: #a1260d;
   --icon: #424242;
   --badge-fg: #333333;
-  --activity-fg: #ffffff;
-  --activity-fg-inactive: rgba(255, 255, 255, 0.4);
-  --activity-active-border: #ffffff;
+  --activity-fg: #424242;
+  --activity-fg-inactive: rgba(66, 66, 66, 0.55);
+  --activity-active-border: #424242;
   --activity-badge-bg: #007acc;
   --tab-fg: rgba(66, 66, 66, 0.75);
   --tab-active-fg: #424242;
