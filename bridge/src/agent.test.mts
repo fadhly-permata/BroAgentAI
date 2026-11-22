@@ -62,6 +62,7 @@ test("approvalKey: one key per tool, but shell keys bind shell, cwd and command"
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "rm -rf ." }, base));
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, cwd: "/ws/sub" }));
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, shellFamily: "powershell" }));
+  assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.start", { command: "npm test" }, base));
 });
 
 test("dependency.install always asks and is never remembered as pre-approved", async () => {
@@ -103,6 +104,8 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(tools.some((t: any) => t.name === "fs.readFile" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "git.push" && t.category === "sync"));
   assert.ok(tools.some((t: any) => t.name === "shell.run" && t.category === "execute"));
+  assert.ok(tools.some((t: any) => t.name === "shell.start" && t.category === "execute"));
+  assert.ok(tools.some((t: any) => t.name === "shell.poll" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "context.read" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "capabilities.recommend" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "dependency.plan" && t.category === "read"));
@@ -118,6 +121,8 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("## Project context (AGENTS.md)"));
   assert.ok(prompt.includes("- Use npm test."));
   assert.ok(prompt.includes("cannot change approval mode"));
+  assert.ok(prompt.includes("shell.start"));
+  assert.ok(prompt.includes("shell.poll"));
   assert.ok(prompt.includes("capabilities.recommend"));
   assert.ok(prompt.includes("dependency.install"));
   assert.ok(!prompt.includes("old context"));

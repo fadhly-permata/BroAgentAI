@@ -152,6 +152,40 @@ test("shell.run cancels a stable executionId", async () => {
   assert.equal(res.timedOut, false);
 });
 
+test("shell.start returns a background handle using the same execution contract", async () => {
+  const { request } = await fixture();
+  const started = await request("shell.start", {
+    command: win ? "Write-Output 'bg-ok'" : "echo bg-ok",
+    sessionId: "bg_session_1",
+    taskId: "bg_task_1",
+    timeoutMs: 10000,
+  });
+  assert.equal(started.error, undefined, started.error?.message);
+  const handle = started.result as any;
+  assert.equal(handle.status, "running");
+  assert.equal(handle.sessionId, "bg_session_1");
+  assert.equal(handle.taskId, "bg_task_1");
+  assert.match(handle.command, /bg\-ok/);
+
+  const status = await request("shell.status", {});
+  assert.equal((status.result as any).background.includes(handle.executionId), true);
+
+  let polled: any;
+  await waitFor(async () => {
+    const result = await request("shell.poll", { executionId: handle.executionId });
+    polled = result.result as any;
+    return polled.status !== "running";
+  });
+  assert.equal(polled.status, "completed");
+  assert.equal(polled.result.executionId, handle.executionId);
+  assert.equal(polled.result.exitCode, 0);
+  assert.equal(polled.result.stdout.trim(), "bg-ok");
+  assert.equal(polled.result.shellFamily, handle.shellFamily);
+
+  const output = await request("shell.output", { executionId: handle.executionId, stream: "stdout", offsetBytes: 0 });
+  assert.match((output.result as any).data, /bg\-ok/);
+});
+
 test("shell.run rejects work beyond the concurrency limit", async () => {
   const { request, run } = await fixture();
   const ids = ["busy_a_1", "busy_b_1"];

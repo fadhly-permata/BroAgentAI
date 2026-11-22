@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { redactSecrets } from "./context.ts";
 import { confinePath } from "./fs.ts";
 import { ErrorCode, isShellErrorCode } from "./rpc.ts";
-import type { DetectedShellInfo, ExecutionHistoryEntry, ExecutionResult, ExecutionTruncation, ShellFallbackInfo, ShellErrorCode, ShellHistory, ShellInfoReport, ShellOutput, ShellStatus } from "./rpc.ts";
+import type { BackgroundExecution, DetectedShellInfo, ExecutionHistoryEntry, ExecutionResult, ExecutionTruncation, ShellFallbackInfo, ShellErrorCode, ShellHistory, ShellInfoReport, ShellOutput, ShellStatus } from "./rpc.ts";
 import { WorkspaceError } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 
@@ -26,6 +26,7 @@ export const MAX_COMMAND_CHARS = 8 * 1024;
 export const MAX_SHELL_CONCURRENCY = 2;
 export const MAX_SHELL_ARCHIVE = 16;
 export const MAX_EXECUTION_HISTORY = 32;
+export const MAX_BACKGROUND_SESSIONS = 4;
 
 export const SHELL_OVERRIDE_KEYS = ["shell", "shellPath", "executable", "binary", "file"] as const;
 
@@ -84,6 +85,13 @@ interface ActiveExecution {
   token: string;
   cancelFile: string;
   cancel: (reason: TerminationReason) => void;
+}
+
+interface BackgroundRun {
+  handle: BackgroundExecution;
+  chunks: { stdout: Buffer[]; stderr: Buffer[] };
+  sizes: { stdout: number; stderr: number };
+  truncated: { stdout: boolean; stderr: boolean };
 }
 
 interface ArchivedOutput {
@@ -390,6 +398,18 @@ function killTree(pid: number | undefined): void {
 const activeExecutions = new Map<string, ActiveExecution>();
 const outputArchive = new Map<string, ArchivedOutput>();
 const executionHistory: ExecutionHistoryEntry[] = [];
+const backgroundRuns = new Map<string, BackgroundRun>();
+
+function snapshotBackground(run: BackgroundRun): BackgroundExecution {
+  return { ...run.handle };
+}
+
+function backgroundStatus(result: ExecutionResult): BackgroundExecution["status"] {
+  if (result.terminationReason === "timeout") return "timeout";
+  if (result.terminationReason === "cancelled") return "cancelled";
+  if (result.exitCode === 0) return "completed";
+  return "failed";
+}
 
 function recordExecutionHistory(entry: ExecutionHistoryEntry): void {
   executionHistory.push(entry);
@@ -419,7 +439,8 @@ export async function runShell(
   cwd: unknown,
   timeoutMs: unknown,
   rawParams: Record<string, unknown> = {},
-  onStart?: (info: { executionId: string; shell: string; cwd: string; sessionId?: string; taskId?: string }) => void,
+  onStart?: (info: { executionId: string; shell: string; environment: string; cwd: string; sessionId?: string; taskId?: string }) => void,
+  onChunk?: (stream: "stdout" | "stderr", chunk: Buffer) => void,
 ): Promise<ExecutionResult> {
   const active = store.active();
   if (!active) throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
@@ -487,7 +508,7 @@ export async function runShell(
       },
     };
     activeExecutions.set(executionId, activeEntry);
-    onStart?.({ executionId, shell: shell.family, cwd: workdir, sessionId, taskId });
+    onStart?.({ executionId, shell: shell.family, environment: shell.environment, cwd: workdir, sessionId, taskId });
 
     try {
       if (isWindows) {
@@ -545,6 +566,7 @@ export async function runShell(
       if (piece.length < chunk.length) outputTruncated[name] = true;
       chunks[name].push(piece);
       sizes[name] += piece.length;
+      onChunk?.(name, piece);
     };
     running.stdout!.on("data", collect("stdout"));
     running.stderr!.on("data", collect("stderr"));
@@ -660,6 +682,88 @@ export async function runShell(
   });
 }
 
+export async function startShellBackground(
+  store: WorkspaceStore,
+  command: unknown,
+  cwd: unknown,
+  timeoutMs: unknown,
+  rawParams: Record<string, unknown> = {},
+  onEvent?: (event: "shell.started" | "shell.completed", payload: BackgroundExecution) => void,
+): Promise<BackgroundExecution> {
+  assertNoShellOverride(rawParams);
+  while (backgroundRuns.size >= MAX_BACKGROUND_SESSIONS) {
+    const oldest = [...backgroundRuns.entries()].find(([, run]) => run.handle.status !== "running");
+    if (!oldest) throw shellFailure(ErrorCode.SHELL_BUSY, `background session limit reached (${MAX_BACKGROUND_SESSIONS})`);
+    backgroundRuns.delete(oldest[0]);
+  }
+
+  let run: BackgroundRun | undefined;
+  const timeout = typeof timeoutMs === "number" && timeoutMs > 0
+    ? Math.min(Math.floor(timeoutMs), MAX_SHELL_TIMEOUT_MS)
+    : DEFAULT_SHELL_TIMEOUT_MS;
+  const promise = runShell(store, command, cwd, timeoutMs, rawParams, (info) => {
+    const handle: BackgroundExecution = {
+      executionId: info.executionId,
+      ...(info.sessionId !== undefined ? { sessionId: info.sessionId } : {}),
+      ...(info.taskId !== undefined ? { taskId: info.taskId } : {}),
+      command: redactSecrets(String(command)),
+      status: "running",
+      shellFamily: info.shell,
+      environment: info.environment,
+      cwd: info.cwd,
+      startedAt: new Date().toISOString(),
+      timeoutMs: timeout,
+    };
+    run = {
+      handle,
+      chunks: { stdout: [], stderr: [] },
+      sizes: { stdout: 0, stderr: 0 },
+      truncated: { stdout: false, stderr: false },
+    };
+    backgroundRuns.set(handle.executionId, run);
+    onEvent?.("shell.started", snapshotBackground(run));
+  }, (stream, chunk) => {
+    if (!run) return;
+    const room = MAX_SHELL_OUTPUT_BYTES - run.sizes[stream];
+    if (room <= 0) { run.truncated[stream] = true; return; }
+    const piece = chunk.length > room ? chunk.subarray(0, room) : chunk;
+    if (piece.length < chunk.length) run.truncated[stream] = true;
+    run.chunks[stream].push(piece);
+    run.sizes[stream] += piece.length;
+  });
+
+  const active = run;
+  if (!active) {
+    await promise;
+    throw shellFailure(ErrorCode.SHELL_START_FAILED, "background execution did not start");
+  }
+
+  const finish = (result: ExecutionResult) => {
+    active.handle = {
+      ...active.handle,
+      status: backgroundStatus(result),
+      result,
+    };
+    onEvent?.("shell.completed", snapshotBackground(active));
+  };
+  promise.then(finish, (error) => {
+    active.handle = {
+      ...active.handle,
+      status: "failed",
+      error: redactSecrets(error instanceof Error ? error.message : String(error)),
+    };
+    onEvent?.("shell.completed", snapshotBackground(active));
+  });
+  return snapshotBackground(active);
+}
+
+export function shellPoll(executionId: unknown): BackgroundExecution {
+  const id = typeof executionId === "string" ? executionId : "";
+  const run = backgroundRuns.get(id);
+  if (!run) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, `unknown background execution: ${id || "(missing)"}`);
+  return snapshotBackground(run);
+}
+
 export function cancelShell(executionId: unknown): { executionId: string; cancelled: true } {
   const id = typeof executionId === "string" ? executionId : "";
   const entry = activeExecutions.get(id);
@@ -670,10 +774,28 @@ export function cancelShell(executionId: unknown): { executionId: string; cancel
 
 export function shellOutput(executionId: unknown, stream: unknown = "stdout", offsetBytes: unknown = 0): ShellOutput {
   const id = typeof executionId === "string" ? executionId : "";
-  const entry = outputArchive.get(id);
-  if (!entry) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, `unknown execution: ${id || "(missing)"}`);
   const name = stream === "stderr" ? "stderr" : stream === "stdout" || stream === undefined ? "stdout" : null;
   if (!name) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "stream must be stdout or stderr");
+  const background = backgroundRuns.get(id);
+  if (background?.handle.status === "running") {
+    const text = redactSecrets(Buffer.concat(background.chunks[name]).toString("utf8"));
+    const totalBytes = Buffer.byteLength(text, "utf8");
+    const offset = typeof offsetBytes === "number" && Number.isFinite(offsetBytes)
+      ? Math.max(0, Math.min(Math.floor(offsetBytes), totalBytes))
+      : 0;
+    const data = Buffer.from(text, "utf8").subarray(offset).toString("utf8");
+    return {
+      executionId: id,
+      stream: name,
+      offsetBytes: offset,
+      nextOffsetBytes: totalBytes,
+      data,
+      truncated: background.truncated[name],
+      totalBytes,
+    };
+  }
+  const entry = outputArchive.get(id);
+  if (!entry) throw new WorkspaceError(ErrorCode.INVALID_PARAMS, `unknown execution: ${id || "(missing)"}`);
   const text = entry[name];
   const totalBytes = Buffer.byteLength(text, "utf8");
   const offset = typeof offsetBytes === "number" && Number.isFinite(offsetBytes)
@@ -727,10 +849,16 @@ export function shellStatus(): ShellStatus {
     active: [...activeExecutions.keys()],
     archived: outputArchive.size,
     historyCount: executionHistory.length,
+    background: [...backgroundRuns.keys()],
   };
 }
 
 export async function shutdownShells(): Promise<void> {
   for (const entry of [...activeExecutions.values()]) entry.cancel("cancelled");
   await new Promise((resolve) => setTimeout(resolve, 25));
+  for (const run of backgroundRuns.values()) {
+    if (run.handle.status === "running") {
+      run.handle = { ...run.handle, status: "cancelled", error: "bridge shutdown" };
+    }
+  }
 }

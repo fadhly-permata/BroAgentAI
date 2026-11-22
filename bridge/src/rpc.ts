@@ -227,7 +227,26 @@ export interface ShellStatus {
   active: string[];
   archived: number;
   historyCount: number;
+  background: string[];
 }
+
+export interface BackgroundExecution {
+  executionId: string;
+  sessionId?: string;
+  taskId?: string;
+  command: string;
+  status: "running" | "completed" | "failed" | "cancelled" | "timeout";
+  shellFamily: string;
+  environment: string;
+  cwd: string;
+  startedAt: string;
+  timeoutMs: number;
+  result?: ExecutionResult;
+  error?: string;
+}
+
+export type ShellStartResult = BackgroundExecution;
+export type ShellPollResult = BackgroundExecution;
 
 export type CapabilityKind = "runtime" | "cli" | "package-manager" | "project-script" | "package";
 export type CapabilityStatus = "available" | "missing";

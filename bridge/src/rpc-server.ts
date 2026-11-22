@@ -23,7 +23,7 @@ import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
-import { cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellStatus, shutdownShells } from "./shell.ts";
+import { cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellPoll, shellStatus, shutdownShells, startShellBackground } from "./shell.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
@@ -409,6 +409,11 @@ export class RpcServer {
       const p = readParams(params);
       return runShell(this.#store, p.command, p.cwd, p.timeoutMs, p, (info) => this.#emit("shell.started", info));
     });
+    this.register("shell.start", (params) => {
+      const p = readParams(params);
+      return startShellBackground(this.#store, p.command, p.cwd, p.timeoutMs, p, (event, payload) => this.#emit(event, payload));
+    });
+    this.register("shell.poll", (params) => shellPoll(readParams(params).executionId));
     this.register("shell.cancel", (params) => cancelShell(readParams(params).executionId));
     this.register("shell.output", (params) => {
       const p = readParams(params);
