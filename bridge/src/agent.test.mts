@@ -107,6 +107,7 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(tools.some((t: any) => t.name === "shell.run" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "shell.start" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "shell.poll" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "shell.fallbackPlan" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "workflow.plan" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "workflow.run" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "context.read" && t.category === "read"));
@@ -126,6 +127,8 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("cannot change approval mode"));
   assert.ok(prompt.includes("shell.start"));
   assert.ok(prompt.includes("shell.poll"));
+  assert.ok(prompt.includes("shell.fallbackPlan"));
+  assert.ok(prompt.includes("Use fs.* and git.* by default"));
   assert.ok(prompt.includes("workflow.plan"));
   assert.ok(prompt.includes("workflow.run"));
   assert.ok(prompt.includes("do not preserve shell state"));

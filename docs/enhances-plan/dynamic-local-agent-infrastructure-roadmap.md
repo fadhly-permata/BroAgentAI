@@ -1252,8 +1252,8 @@ Execution rules:
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
-| B3.1 | Long-tail filesystem migration | existing typed filesystem tools | Shell fallback is adopted only after B1.7; typed primitives remain by default | Pending |
-| B3.2 | Long-tail Git operations | existing typed Git tools | Git CLI handles the long tail; structured Git tools are retained | Pending |
+| B3.1 | Long-tail filesystem migration | `bridge/src/fallback.ts`, existing typed filesystem tools | Shell fallback is adopted only after B1.7; typed primitives remain by default | Done |
+| B3.2 | Long-tail Git operations | `bridge/src/fallback.ts`, existing typed Git tools | Git CLI handles the long tail; structured Git tools are retained | Done |
 | B3.3 | Capability discovery and dependency policy | bridge capability layer | Existing capabilities are preferred; installation requires explicit approval and records side effects | Done |
 | B3.4 | Background and persistent sessions | `bridge/src/shell.ts` | Short and long-running tasks use the same execution contract | Done |
 | B3.5 | Workflow composition and recovery | `bridge/src/workflow.ts` | Conditional execution, controlled retries, and validation feedback are supported | Done |

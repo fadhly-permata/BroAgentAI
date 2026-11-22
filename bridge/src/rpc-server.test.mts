@@ -82,6 +82,18 @@ test("capability and dependency methods expose policy without installing silentl
   assert.equal(history.total, 0);
 });
 
+test("typed filesystem and Git RPC methods remain registered alongside shell fallbacks", () => {
+  const methods = server().methods();
+  const required = [
+    "fs.listDir", "fs.listTree", "fs.stat", "fs.readFile", "fs.readFileLines", "fs.searchFiles",
+    "fs.writeFile", "fs.createFile", "fs.mkdir", "fs.rename", "fs.delete",
+    "git.status", "git.diff", "git.branches", "git.stage", "git.unstage", "git.discard",
+    "git.commit", "git.createBranch", "git.checkout", "git.fetch", "git.pull", "git.push",
+    "shell.run", "shell.fallbackPlan",
+  ];
+  for (const method of required) assert.ok(methods.includes(method), method);
+});
+
 test("unknown method returns METHOD_NOT_FOUND with available methods", async () => {
   const s = server();
   const res = await s.handle({ id: 3, method: "nope.nope" });

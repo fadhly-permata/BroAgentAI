@@ -490,6 +490,27 @@ export interface WorkflowRunResult {
   steps: WorkflowStepResult[];
 }
 
+export type FallbackDomain = "fs" | "git";
+export interface FallbackSafety {
+  confinedCwd: true;
+  noShellOverride: true;
+  requiresApprovalIfWrite: boolean;
+  typedPrimitiveRetained: true;
+  benchmarkGate: "block-native-tool-removal";
+}
+export interface FallbackPlan {
+  domain: FallbackDomain;
+  operation: string;
+  status: "typed-primitive" | "shell-long-tail";
+  typedPrimitive: string | null;
+  shellCommand: string | null;
+  shellFamily: string;
+  environment: string;
+  cwd: string;
+  reason: string;
+  safety: FallbackSafety;
+}
+
 export type CapabilityKind = "runtime" | "cli" | "package-manager" | "project-script" | "package";
 export type CapabilityStatus = "available" | "missing";
 export type DependencyNeed = "json" | "search" | "http" | "git" | "build" | "python";

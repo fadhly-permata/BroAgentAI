@@ -25,6 +25,7 @@ import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
 import { cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellPoll, shellStatus, shutdownShells, startShellBackground } from "./shell.ts";
 import { planWorkflow, runWorkflow } from "./workflow.ts";
+import { fallbackPlan } from "./fallback.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
@@ -426,6 +427,7 @@ export class RpcServer {
 
     this.register("workflow.plan", (params) => planWorkflow(this.#store, readParams(params)));
     this.register("workflow.run", (params) => runWorkflow(this.#store, readParams(params), (event, payload) => this.#emit(event, payload)));
+    this.register("shell.fallbackPlan", (params) => fallbackPlan(this.#store, readParams(params)));
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
     this.register("tools.list", () => listTools(this));
