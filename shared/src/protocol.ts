@@ -60,6 +60,18 @@ export enum ErrorCode {
   PERMISSION_DENIED = -32009,
   OPERATION_CANCELLED = -32010,
   TIMEOUT = -32011,
+  GIT_NOT_REPO = -32015,
+  GIT_AUTH_FAILED = -32016,
+  GIT_CONFLICT = -32017,
+  GIT_OPERATION_FAILED = -32018,
+  MCP_UNTRUSTED = -32019,
+  MCP_NOT_READY = -32020,
+  MCP_ERROR = -32021,
+  NOT_ALLOWED = -32022,
+  SHELL_NOT_AVAILABLE = -32023,
+  SHELL_START_FAILED = -32024,
+  SHELL_UNSUPPORTED = -32025,
+  SHELL_CWD_INVALID = -32026,
 }
 
 // ============================================================================
@@ -250,4 +262,61 @@ export interface FsEntry {
   ignored?: boolean;
   /** Whether entry is binary (for files) */
   binary?: boolean;
+}
+
+// ============================================================================
+// Protocol v2
+// ============================================================================
+
+export const PROTOCOL_VERSION_V2 = 2;
+export const SUPPORTED_PROTOCOL_VERSIONS = [1, 2] as const;
+export const DEPRECATED_PROTOCOL_VERSIONS = [1] as const;
+
+export interface ProtocolInfo {
+  version: number;
+  supported: number[];
+  deprecated: number[];
+}
+
+export interface DetectedShellInfo {
+  family: string;
+  environment: string;
+  file: string;
+  platform: string;
+  arch: string;
+}
+
+export interface ApprovalContext {
+  command: string;
+  shellFamily: string;
+  environment: string;
+  workspacePath: string;
+  cwd: string;
+  risk: string;
+}
+
+export interface ExecutionTruncation {
+  stdout: boolean;
+  stderr: boolean;
+  stdoutBytes: number;
+  stderrBytes: number;
+  limitBytes: number;
+}
+
+export interface ExecutionResult {
+  executionId: string;
+  shell: string;
+  shellFamily: string;
+  environment: string;
+  cwd: string;
+  exitCode: number | null;
+  terminationReason: "completed" | "timeout" | "signal" | "error";
+  stdout: string;
+  stderr: string;
+  encoding: "utf8";
+  timedOut: boolean;
+  truncated: boolean;
+  truncation: ExecutionTruncation;
+  timeoutMs: number;
+  durationMs: number;
 }

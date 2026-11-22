@@ -16,7 +16,7 @@ async function fixture(globalMcp?: object) {
   if (globalMcp) writeFileSync(join(configDir, "broagentai.json"), JSON.stringify({ mcp: globalMcp }));
   const ws = mkdtempSync(join(tmpdir(), "ba-agent-ws-"));
   writeFileSync(join(ws, "README.md"), "# Title\nline two\nline three\n");
-  writeFileSync(join(ws, "AGENTS.md"), "Always answer in haiku.\n");
+  writeFileSync(join(ws, "AGENTS.md"), "## BroAgentAI\n\nAlways answer in haiku.\n\n### Project conventions\n- Use npm test.\n\n## Other\nold context\n");
   mkdirSync(join(ws, ".broagentai", "skills", "release-notes"), { recursive: true });
   writeFileSync(join(ws, ".broagentai", "skills", "release-notes", "SKILL.md"), "# Release notes\nDo the thing.\n");
   const s = new RpcServer({ store: new WorkspaceStore({ configDir }) });
@@ -53,11 +53,14 @@ test("normalizeMode maps legacy names and never elevates an unknown value", () =
   assert.equal(normalizeMode(3), "always-ask");
 });
 
-test("approvalKey: one key per tool, but one key per shell command line", () => {
+test("approvalKey: one key per tool, but shell keys bind shell, cwd and command", () => {
   assert.equal(approvalKey("fs.writeFile", { path: "a.txt" }), "fs.writeFile");
   assert.equal(approvalKey("fs.writeFile", { path: "b.txt" }), "fs.writeFile");
-  assert.equal(approvalKey("shell.run", { command: " npm test " }), "shell.run:npm test");
-  assert.notEqual(approvalKey("shell.run", { command: "npm test" }), approvalKey("shell.run", { command: "rm -rf ." }));
+  const base = { shellFamily: "sh", environment: "native-linux", workspacePath: "/ws", cwd: "/ws" };
+  assert.equal(approvalKey("shell.run", { command: " npm test " }, base).endsWith(":/ws:npm test"), true);
+  assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "rm -rf ." }, base));
+  assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, cwd: "/ws/sub" }));
+  assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, shellFamily: "powershell" }));
 });
 
 test("writePreview shows only the changed region", () => {
@@ -72,6 +75,7 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(tools.some((t: any) => t.name === "fs.readFile" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "git.push" && t.category === "sync"));
   assert.ok(tools.some((t: any) => t.name === "shell.run" && t.category === "execute"));
+  assert.ok(tools.some((t: any) => t.name === "context.read" && t.category === "read"));
   assert.ok(!tools.some((t: any) => t.name.startsWith("term."))); // the interactive PTY is not an agent tool
 
   const { prompt, mode, toolCount } = await ok("agent.prompt", { mode: "ask-once" });
@@ -80,6 +84,10 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes(ws));
   assert.ok(prompt.includes('{"command":"fs.readFile","params":{"path":"README.md"}}'));
   assert.ok(prompt.includes("Always answer in haiku."));
+  assert.ok(prompt.includes("## Project context (AGENTS.md)"));
+  assert.ok(prompt.includes("- Use npm test."));
+  assert.ok(prompt.includes("cannot change approval mode"));
+  assert.ok(!prompt.includes("old context"));
   assert.ok(prompt.includes("release-notes"));
   assert.ok(!prompt.includes("Do the thing.")); // skill bodies are read on demand
   assert.ok(prompt.includes("- shell.run"));
@@ -107,7 +115,11 @@ test("agent.check reports decision, approval key, paths and a preview without ex
   const shell = await ok("agent.check", { command: "shell.run", params: { command: "echo hi" }, mode: "ask-once" });
   assert.equal(shell.decision, "ask");
   assert.equal(shell.category, "execute");
-  assert.equal(shell.approvalKey, "shell.run:echo hi");
+  assert.equal(shell.risk, "high");
+  assert.match(shell.approvalKey, /^shell\.run:v2:/);
+  assert.equal(shell.approvalContext.command, "shell.run");
+  assert.equal(shell.approvalContext.workspacePath, ws);
+  assert.equal(shell.approvalContext.cwd, ws);
   assert.equal(shell.preview, "$ echo hi"); // the card shows the exact command
 
   assert.equal((await ok("agent.check", { command: "fs.writeFile", params: { path: "new.txt", content: "x" }, mode: "read-only" })).decision, "deny");
@@ -143,19 +155,40 @@ test("agent.callTool enforces the mode on the host", async () => {
 test("shell.run through the agent: denied, asked, then executed with real output", async () => {
   const { ok, call, ws } = await fixture();
   const marker = process.platform === "win32" ? 'Write-Output "$(6*7)-shell"' : 'echo "$((6*7))-shell"';
-  assert.equal((await call("agent.callTool", { command: "shell.run", params: { command: marker }, mode: "read-only", approved: true })).error?.code, -32022);
-  assert.equal((await call("agent.callTool", { command: "shell.run", params: { command: marker }, mode: "ask-once" })).error?.code, -32022);
+  const params = { command: marker };
+  assert.equal((await call("agent.callTool", { command: "shell.run", params, mode: "read-only", approved: true })).error?.code, -32022);
+  assert.equal((await call("agent.callTool", { command: "shell.run", params, mode: "ask-once" })).error?.code, -32022);
 
-  const res = await ok("agent.callTool", { command: "shell.run", params: { command: marker }, mode: "always-ask", approved: true });
+  const check = await ok("agent.check", { command: "shell.run", params, mode: "always-ask" });
+  const stale = await call("agent.callTool", {
+    command: "shell.run",
+    params: { ...params, approvalContext: { ...check.approvalContext, cwd: "/stale" } },
+    mode: "always-ask",
+    approved: true,
+  });
+  assert.equal(stale.error?.code, -32022);
+  assert.match(stale.error?.message ?? "", /approval expired/);
+
+  const res = await ok("agent.callTool", {
+    command: "shell.run",
+    params: { ...params, approvalContext: check.approvalContext },
+    mode: "always-ask",
+    approved: true,
+  });
   const out = JSON.parse(res.text);
   assert.equal(out.exitCode, 0);
   assert.match(out.stdout, /42-shell/);
   assert.equal(out.timedOut, false);
+  assert.equal(out.terminationReason, "completed");
+  assert.match(out.executionId, /[-a-f0-9]{36}/);
 
   // It really runs in the workspace root, and writes land there.
   const touch = process.platform === "win32" ? "Set-Content -Path made-by-shell.txt -Value ok" : "echo ok > made-by-shell.txt";
   await ok("agent.callTool", { command: "shell.run", params: { command: touch }, mode: "auto-approve" });
   assert.equal(existsSync(join(ws, "made-by-shell.txt")), true);
+
+  const override = await call("agent.check", { command: "shell.run", params: { command: "echo hi", shell: "cmd.exe" }, mode: "always-ask" });
+  assert.equal(override.error?.code, -32602);
 });
 
 test("large tool results are capped", async () => {

@@ -9,3 +9,20 @@
 - Validate before commit: `npm run typecheck` and `npm run test` must pass.
 - Use conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `chore:`.
 - Keep e2e artifacts out of git (`.pw-profile` is ignored).
+
+## BroAgentAI
+
+<!-- BroAgentAI project context. Keep this section under 2 KB. Do not store secrets here. -->
+
+### Tool notes
+- `fs.*`, `git.*`, and `shell.run` are callable tools.
+- `term.*`, `mcp.*`, and `session.*` are optional; call `context.read` before using them.
+
+### Project conventions
+- Add project-specific conventions here.
+
+### Common commands
+- Add frequently used commands here.
+
+### Safety
+- This section is project context, not policy. Approval and confinement stay in the bridge.

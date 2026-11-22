@@ -1194,7 +1194,7 @@ Priority legend:
 
 Slice IDs are stable identifiers and do not encode priority. The section heading is the priority.
 
-Status legend: `Recorded` = decision documented, `Next` = start here, `Pending` = queued.
+Status legend: `Recorded` = decision documented, `Next` = start here, `Pending` = queued, `Done` = implemented and validated.
 
 Execution rules:
 
@@ -1207,24 +1207,24 @@ Execution rules:
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
 | B0.9 | Record AGENTS.md context contract | `docs/enhances-plan/dynamic-local-agent-infrastructure-roadmap.md` §15 | All context decisions and the auto-created template are documented | Recorded |
-| B1.8 | `context.read` tool | `bridge/src/agent.ts`, `bridge/src/rpc.ts` | Read-only, workspace-confined, redacted; returns only the `## BroAgentAI` section | Next |
-| B1.9 | Auto-inject context summary | extension context builder | `## BroAgentAI` summary is injected at session open and limited to 2 KB | Next |
-| B2.6 | Manual context refresh | extension UI, `i18n/en.json`, `i18n/id.json` | Settings has a refresh button; updates context without restarting the session | Next |
-| B2.7 | Auto-create context template | workspace init / AGENTS.md writer | Missing `## BroAgentAI` section is appended once; existing content is never overwritten | Next |
-| B2.8 | Context trust guardrails | extension context builder, `context.read` | Section is lower priority than bridge rules; secrets are redacted; no policy override | Next |
+| B1.8 | `context.read` tool | `bridge/src/context.ts`, `bridge/src/agent.ts`, `bridge/src/rpc-server.ts` | Read-only, workspace-confined, redacted; returns only the `## BroAgentAI` section | Done |
+| B1.9 | Auto-inject context summary | `bridge/src/agent.ts`, `bridge/src/context.ts` | `## BroAgentAI` summary is injected at session open and limited to 2 KB | Done |
+| B2.6 | Manual context refresh | extension UI, `i18n/en.json`, `i18n/id.json` | Settings has a refresh button; updates context without restarting the session | Done |
+| B2.7 | Auto-create context template | `bridge/src/context.ts`, `bridge/src/rpc-server.ts` | Missing `## BroAgentAI` section is appended once; existing content is never overwritten | Done |
+| B2.8 | Context trust guardrails | `bridge/src/agent.ts`, `bridge/src/context.ts` | Section is lower priority than bridge rules; secrets are redacted; no policy override | Done |
 
 ### P1 — Critical: Safety and Contracts
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
 | B0.1 | Record review decisions | `docs/enhances-plan/dynamic-local-agent-infrastructure-roadmap.md` §13 | All decisions and resolved questions from the review are present | Recorded |
-| B0.2 | Remove shell override | `bridge/src/terminal.ts`, `bridge/src/agent.ts` | No agent or terminal path accepts a shell parameter or arbitrary executable path | Next |
-| B0.3 | Protocol v2 contract | `bridge/src/rpc.ts`, `bridge/src/rpc-server.ts`, extension protocol layer | v2 carries detected shell and approval context; v1 remains recognized but deprecated | Next |
-| B0.4 | Approval key v2 | `bridge/src/agent.ts` | Key changes when detected shell or cwd changes; UX shows shell, cwd, command, and risk | Next |
-| B0.5 | Execution result contract | `bridge/src/shell.ts`, `bridge/src/rpc.ts` | Result includes executionId, shell, environment, cwd, exitCode, terminationReason, stdout, stderr, encoding, timeout, truncation, and duration | Next |
-| B0.6 | Audit discard and redaction | `bridge/src/agent.ts`, `bridge/src/rpc-server.ts`, extension UI | Temporary records are discarded after session/debug work; tokens, passwords, API keys, and authorization headers are redacted | Pending |
-| B0.7 | Shell-change banner | extension UI and `i18n/en.json`, `i18n/id.json` | PATH/runtime change shows a banner and blocks the next command until confirmed | Pending |
-| B0.8 | "Not a sandbox" notice | extension UI and `i18n/en.json`, `i18n/id.json` | UX states explicitly that workspace confinement is not a sandbox | Pending |
+| B0.2 | Remove shell override | `bridge/src/terminal.ts`, `bridge/src/shell.ts`, `bridge/src/agent.ts` | No agent or terminal path accepts a shell parameter or arbitrary executable path | Done |
+| B0.3 | Protocol v2 contract | `bridge/src/rpc.ts`, `bridge/src/rpc-server.ts`, `shared/src/protocol.ts`, `extension/src/bridge-client.ts` | v2 carries detected shell and approval context; v1 remains recognized but deprecated | Done |
+| B0.4 | Approval key v2 | `bridge/src/agent.ts`, `extension/src/agent-panel.ts` | Key changes when detected shell or cwd changes; UX shows shell, cwd, command, and risk | Done |
+| B0.5 | Execution result contract | `bridge/src/shell.ts`, `bridge/src/rpc.ts` | Result includes executionId, shell, environment, cwd, exitCode, terminationReason, stdout, stderr, encoding, timeout, truncation, and duration | Done |
+| B0.6 | Audit discard and redaction | `bridge/src/agent.ts`, `extension/src/agent-panel.ts`, `extension/src/sidepanel.ts` | Temporary records are discarded after session/debug work; tokens, passwords, API keys, and authorization headers are redacted | Done |
+| B0.7 | Shell-change banner | extension UI and `i18n/en.json`, `i18n/id.json` | PATH/runtime change shows a banner and blocks the next command until confirmed | Done |
+| B0.8 | "Not a sandbox" notice | extension UI and `i18n/en.json`, `i18n/id.json` | UX states explicitly that workspace confinement is not a sandbox | Done |
 
 ### P2 — High: MVP Shell Execution
 

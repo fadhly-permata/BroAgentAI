@@ -184,3 +184,15 @@ export function agentMessageKind(text: string): AgentMessage | null {
   if (head.startsWith(NOTE_TAG + ' ')) return { kind: 'note' };
   return null;
 }
+
+const REDACTED = '[REDACTED]';
+
+/** Best-effort secret masking for UI logs, approval previews, and debug output. */
+export function redactSecrets(value: string): string {
+  return value
+    .replace(/^(authorization:\s*).+$/gim, `$1${REDACTED}`)
+    .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]{12,}\b/gi, `Bearer ${REDACTED}`)
+    .replace(/\b(https?:\/\/)[^/\s:@]+:[^/\s@]+@/g, `$1${REDACTED}@`)
+    .replace(/\b(api[_-]?key|apikey|token|password|passwd|secret|authorization)(\s*[:=]\s*)(["']?)([^\s"',;}\]]+)/gi, `$1$2$3${REDACTED}$3`)
+    .replace(/\b(sk|pk|ghp|gho|ghu|ghs|ghr|github_pat|AKIA|ASIA)_[A-Za-z0-9_-]{16,}\b/g, REDACTED);
+}

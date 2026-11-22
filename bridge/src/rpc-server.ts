@@ -15,12 +15,13 @@ import { listDir, listTree, statFile, readFile, readFileLines, writeFile, search
 import { commitCoAuthors } from "./co-authors.ts";
 import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
+import { ensureContextTemplate, readContext } from "./context.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
-import { runShell } from "./shell.ts";
+import { detectedShell, runShell } from "./shell.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
@@ -30,8 +31,19 @@ import {
 } from "./git.ts";
 import { SessionStore } from "./session-store.ts";
 
-/** Protocol version negotiated between extension and host. */
-export const PROTOCOL_VERSION = 1;
+/** Current protocol version. v1 is still recognized but deprecated. */
+export const PROTOCOL_VERSION = 2;
+export const SUPPORTED_PROTOCOL_VERSIONS = [1, 2] as const;
+export const DEPRECATED_PROTOCOL_VERSIONS = [1] as const;
+
+const PROTOCOL_INFO = {
+  version: PROTOCOL_VERSION,
+  supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+  deprecated: [...DEPRECATED_PROTOCOL_VERSIONS],
+};
+
+export const NOT_SANDBOX_NOTICE =
+  "Workspace confinement is not a sandbox. Shell commands run with your account rights and can access anything you can.";
 
 /** Version of the bridge host, reported by `system.info`. */
 export const HOST_VERSION = "0.1.0";
@@ -196,12 +208,17 @@ export class RpcServer {
     this.register("system.ping", () => ({
       hostVersion: this.#hostVersion,
       protocolVersion: PROTOCOL_VERSION,
+      protocol: PROTOCOL_INFO,
+      detectedShell: detectedShell(),
       hostName: HOST_NAME,
     }));
 
     this.register("system.info", () => ({
       hostVersion: this.#hostVersion,
       protocolVersion: PROTOCOL_VERSION,
+      protocol: PROTOCOL_INFO,
+      detectedShell: detectedShell(),
+      notSandbox: NOT_SANDBOX_NOTICE,
       hostName: HOST_NAME,
       platform: process.platform,
       arch: process.arch,
@@ -210,6 +227,11 @@ export class RpcServer {
       uptimeSeconds: Math.round(process.uptime()),
       configDir: this.#store.configDir,
       configPath: this.#store.configPath,
+    }));
+
+    this.register("shell.info", () => ({
+      ...detectedShell(),
+      notSandbox: NOT_SANDBOX_NOTICE,
     }));
 
     this.register("workspace.list", () => ({
@@ -340,8 +362,8 @@ export class RpcServer {
 
     // Terminal: a real PTY in the active workspace. Output arrives as events.
     this.register("term.create", (params) => {
-      const { cols, rows } = readParams(params);
-      return this.#terminals.create(cols, rows);
+      const p = readParams(params ?? {});
+      return this.#terminals.create(p.cols, p.rows, p);
     });
     this.register("term.input", (params) => {
       const { sessionId, data } = readParams(params);
@@ -369,8 +391,8 @@ export class RpcServer {
 
     // One-shot shell command for the agent. Not confined to the workspace; see shell.ts.
     this.register("shell.run", (params) => {
-      const { command, cwd, timeoutMs } = readParams(params);
-      return runShell(this.#store, command, cwd, timeoutMs);
+      const p = readParams(params);
+      return runShell(this.#store, p.command, p.cwd, p.timeoutMs, p);
     });
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
@@ -405,6 +427,22 @@ export class RpcServer {
 
     this.register("config.get", () => {
       return loadMergedConfig(this.#store);
+    });
+
+    this.register("context.read", () => {
+      const active = this.#store.active();
+      if (!active) {
+        throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+      }
+      return readContext(active.path);
+    });
+
+    this.register("context.ensureTemplate", () => {
+      const active = this.#store.active();
+      if (!active) {
+        throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+      }
+      return ensureContextTemplate(active.path);
     });
 
     this.register("instructions.list", () => {

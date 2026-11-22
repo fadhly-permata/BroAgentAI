@@ -3,7 +3,8 @@ import { renderExplorer, resetExplorerState, ExplorerOptions } from './explorer.
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
 import { initMcp, refreshMcp } from './mcp-panel.js';
-import { initAgent, showAgent, launchAgentSession, stopAgentSession, agentSessionState, onAgentSessionChange, refreshProviderControls } from './agent-panel.js';
+import { initAgent, showAgent, launchAgentSession, stopAgentSession, refreshAgentContext, agentSessionState, onAgentSessionChange, refreshProviderControls } from './agent-panel.js';
+import { redactSecrets } from './agent-parser.js';
 import { initHome, renderHome } from './home-panel.js';
 import { initPlugins, renderPlugins } from './plugins-panel.js';
 import { refreshProviders, watchProviders } from './providers/registry.js';
@@ -44,6 +45,33 @@ function renderWs(){
   head.textContent=activeWs?activeWs.name:t('noWorkspace');
   head.title=activeWs?activeWs.path:'';
   renderHome();
+}
+
+async function ensureProjectContext(){
+  try{
+    await bridge.call('context.ensureTemplate');
+  }catch(err){
+    console.warn('Project context template check failed', err);
+  }
+}
+
+async function updateContextStatus(){
+  const el=$('contextStatus');
+  try{
+    const context:any=await bridge.call('context.read');
+    if(!context?.found){ el.textContent=context?.warning || t('contextMissing'); return; }
+    el.textContent=`${t('contextBytes')} ${context.bytes}${context.truncated?' · '+t('contextTruncated'):''}`;
+  }catch{
+    el.textContent=t('contextUnavailable');
+  }
+}
+
+function updateProtocolStatus() {
+  const el = $('protocolStatus');
+  if (!el) return;
+  const info = bridge.protocol;
+  const suffix = bridge.protocolDeprecated ? ' · ' + t('protocolDeprecated') : '';
+  el.textContent = `${t('protocolLabel')} ${info.version} (${info.supported.join(', ')})${suffix}`;
 }
 
 function updateHostStatus(status: 'offline' | 'ready' | 'error') {
@@ -135,6 +163,7 @@ async function setActiveWorkspace(ws:any){
   try{
     await bridge.call('workspace.setActive', { id: ws.id });
     activeWs=ws; resetExplorerState(); renderWs(); await renderTree(); refreshScm();
+    await ensureProjectContext(); await updateContextStatus();
     $('searchResults').innerHTML=''; $('searchInfo').textContent='';
     toast('Workspace aktif: '+ws.name);
   }catch(err:any){ toast('Gagal set aktif: '+(err?.message||err)); }
@@ -174,19 +203,22 @@ async function connectBridge(){
   try{
     await bridge.connect();
     updateHostStatus('ready');
+    updateProtocolStatus();
     await loadWorkspaces();
+    await ensureProjectContext();
+    await updateContextStatus();
   }catch(err){
     console.warn('Bridge connection failed:', err);
     updateHostStatus('offline');
   }
 }
-function switchTab(t:string){ 
-  document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t)); 
-  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t)); 
-  if(t==='settings') refreshMcp(); 
-  if(t==='agent') showAgent(); 
-  if(t==='scm') refreshScm(); 
-  if(t==='terminal') showTerminal(); 
+function switchTab(t:string){
+  document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t));
+  if(t==='settings'){ refreshMcp(); void updateContextStatus(); }
+  if(t==='agent') showAgent();
+  if(t==='scm') refreshScm();
+  if(t==='terminal') showTerminal();
 }
 let modalCb:(()=>void)|null=null;
 /** Called once when the modal closes (OK, Cancel, X, Escape or a newer modal); used by confirmModal. */
@@ -321,7 +353,7 @@ async function runDiagnostics() {
   try {
     const info = await bridge.call('system.info');
     const config = await bridge.call('config.get');
-    diagEl.textContent = `Host Info:\n${JSON.stringify(info, null, 2)}\n\nConfig:\n${JSON.stringify(config, null, 2)}`;
+    diagEl.textContent = redactSecrets(`Host Info:\n${JSON.stringify(info, null, 2)}\n\nConfig:\n${JSON.stringify(config, null, 2)}`);
   } catch (err: any) {
     diagEl.textContent = `Diagnostics failed: ${err.message}`;
   }
@@ -444,6 +476,16 @@ on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; save
 applyUISettings();
 
 on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')});
+on('contextRefreshBtn','click',async()=>{
+  try{
+    const result=await refreshAgentContext();
+    await updateContextStatus();
+    if(result.found) toast(result.delivered?t('contextRefreshedSent'):t('contextRefreshed'));
+    else toast(t('contextMissing'));
+  }catch(err:any){
+    toast(t('contextRefreshFailed')+': '+(err?.message||err));
+  }
+});
 on('newFileBtn','click',()=>newFile());
 on('collapseTree','click',()=>{renderTree()});
 on('searchCollapse','click',()=>{const groups=document.querySelectorAll('#searchResults .search-group'); const fold=[...groups].some(g=>!g.classList.contains('collapsed')); groups.forEach(g=>{g.classList.toggle('collapsed',fold); g.querySelector('.search-file')?.setAttribute('aria-expanded',String(!fold));})});

@@ -62,6 +62,10 @@ export const ErrorCode = {
   MCP_NOT_READY: -32020,
   MCP_ERROR: -32021,
   NOT_ALLOWED: -32022,
+  SHELL_NOT_AVAILABLE: -32023,
+  SHELL_START_FAILED: -32024,
+  SHELL_UNSUPPORTED: -32025,
+  SHELL_CWD_INVALID: -32026,
 } as const;
 
 /** Union of every {@link ErrorCode} value. */
@@ -84,4 +88,58 @@ export interface AppConfig {
     ignore: string[];
     maxFileBytes: number;
   };
+}
+
+/** Protocol compatibility advertised by the host. */
+export interface ProtocolInfo {
+  version: number;
+  supported: number[];
+  deprecated: number[];
+}
+
+/** Deterministically detected shell; the only source of shell selection. */
+export interface DetectedShellInfo {
+  family: string;
+  environment: string;
+  file: string;
+  platform: string;
+  arch: string;
+}
+
+/** Context bound into an approval so shell/cwd changes cannot reuse it. */
+export interface ApprovalContext {
+  command: string;
+  shellFamily: string;
+  environment: string;
+  workspacePath: string;
+  cwd: string;
+  risk: string;
+}
+
+/** Per-stream output accounting for a one-shot execution. */
+export interface ExecutionTruncation {
+  stdout: boolean;
+  stderr: boolean;
+  stdoutBytes: number;
+  stderrBytes: number;
+  limitBytes: number;
+}
+
+/** Stable result contract for `shell.run`, also usable by future executors. */
+export interface ExecutionResult {
+  executionId: string;
+  shell: string;
+  shellFamily: string;
+  environment: string;
+  cwd: string;
+  exitCode: number | null;
+  terminationReason: "completed" | "timeout" | "signal" | "error";
+  stdout: string;
+  stderr: string;
+  encoding: "utf8";
+  timedOut: boolean;
+  truncated: boolean;
+  truncation: ExecutionTruncation;
+  timeoutMs: number;
+  durationMs: number;
 }

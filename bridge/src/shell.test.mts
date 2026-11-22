@@ -39,6 +39,11 @@ test("shell.run returns stdout, stderr and the exit code", async () => {
   assert.equal(ok.exitCode, 0);
   assert.equal(ok.stdout.trim(), "needle here");
   assert.equal(ok.shell, win ? "powershell" : "sh");
+  assert.equal(ok.shellFamily, win ? "powershell" : "sh");
+  assert.equal(ok.encoding, "utf8");
+  assert.equal(ok.terminationReason, "completed");
+  assert.match(ok.executionId, /[-a-f0-9]{36}/);
+  assert.deepEqual(ok.truncation, { stdout: false, stderr: false, stdoutBytes: Buffer.byteLength(ok.stdout), stderrBytes: 0, limitBytes: 256 * 1024 });
 
   const failed = await run({ command: win ? "[Console]::Error.WriteLine('bad'); exit 3" : "echo bad >&2; exit 3" });
   assert.equal(failed.exitCode, 3);
@@ -51,7 +56,7 @@ test("shell.run starts in the workspace root, or a confined sub-directory", asyn
   const pwd = win ? "(Get-Location).Path" : "pwd";
   assert.equal(realpathSync((await run({ command: pwd })).stdout.trim()), realpathSync(ws));
   assert.equal(realpathSync((await run({ command: pwd, cwd: "sub" })).stdout.trim()), realpathSync(join(ws, "sub")));
-  assert.equal((await call({ command: pwd, cwd: "../.." })).error?.code, -32001);
+  assert.equal((await call({ command: pwd, cwd: "../.." })).error?.code, -32026);
 });
 
 test("shell.run kills a command that exceeds its timeout", async () => {
@@ -60,6 +65,7 @@ test("shell.run kills a command that exceeds its timeout", async () => {
   const res = await run({ command: win ? "Start-Sleep -Seconds 30" : "sleep 30", timeoutMs: 1500 });
   assert.equal(res.timedOut, true);
   assert.equal(res.exitCode, null);
+  assert.equal(res.terminationReason, "timeout");
   assert.ok(Date.now() - started < 15000, "timeout did not stop the command");
 });
 
@@ -72,6 +78,8 @@ test("shell.run caps output and validates input", async () => {
   assert.equal((await call({ command: "" })).error?.code, -32602);
   assert.equal((await call({ command: ["ls"] })).error?.code, -32602);
   assert.equal((await call({ command: "x".repeat(9000) })).error?.code, -32602);
+  assert.equal((await call({ command: "echo hi", shell: "cmd.exe" })).error?.code, -32602);
+  assert.equal((await call({ command: "echo hi", executable: "/bin/bash" })).error?.code, -32602);
 });
 
 test("shell.run requires an active workspace", async () => {

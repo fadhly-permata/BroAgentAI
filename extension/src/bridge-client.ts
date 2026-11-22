@@ -28,6 +28,24 @@ interface RpcEvent {
 
 type RpcResponse = RpcSuccess | RpcFailure | RpcEvent;
 
+export const PROTOCOL_VERSION_V2 = 2;
+export const SUPPORTED_PROTOCOL_VERSIONS = [1, 2] as const;
+export const DEPRECATED_PROTOCOL_VERSIONS = [1] as const;
+
+export interface BridgeProtocolInfo {
+  version: number;
+  supported: number[];
+  deprecated: number[];
+}
+
+export interface DetectedShellInfo {
+  family: string;
+  environment: string;
+  file: string;
+  platform: string;
+  arch: string;
+}
+
 /** Error from the bridge, carrying the stable numeric code from shared/protocol.ts. */
 export class BridgeError extends Error {
   code: string | number;
@@ -45,6 +63,11 @@ export const BridgeErrorCode = {
   METHOD_NOT_FOUND: -32601,
   MTIME_CONFLICT: -32005,
   OPERATION_CANCELLED: -32010,
+  NOT_ALLOWED: -32022,
+  SHELL_NOT_AVAILABLE: -32023,
+  SHELL_START_FAILED: -32024,
+  SHELL_UNSUPPORTED: -32025,
+  SHELL_CWD_INVALID: -32026,
 } as const;
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -55,6 +78,20 @@ class BridgeClient {
   private handlers: Handler[] = [];
   private seq = 0;
   private connectPromise: Promise<void> | null = null;
+  private protocolInfo: BridgeProtocolInfo | null = null;
+
+  get protocol(): BridgeProtocolInfo {
+    return this.protocolInfo ?? {
+      version: PROTOCOL_VERSION_V2,
+      supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+      deprecated: [...DEPRECATED_PROTOCOL_VERSIONS],
+    };
+  }
+
+  get protocolDeprecated(): boolean {
+    const version = this.protocolInfo?.version ?? PROTOCOL_VERSION_V2;
+    return DEPRECATED_PROTOCOL_VERSIONS.includes(version as 1);
+  }
 
   onEvent(h: Handler) { this.handlers.push(h); }
 
@@ -92,7 +129,8 @@ class BridgeClient {
           this.pending.clear();
         });
 
-        this.call('system.ping', {}).then(() => {
+        this.call('system.ping', {}).then((info: any) => {
+          this.protocolInfo = normalizeProtocolInfo(info);
           resolve();
         }).catch(() => {
           try { this.port?.disconnect(); } catch { /* already gone */ }
@@ -130,6 +168,29 @@ class BridgeClient {
       }, timeoutMs);
     });
   }
+}
+
+function normalizeProtocolInfo(info: any): BridgeProtocolInfo {
+  if (!info || typeof info !== 'object') {
+    return {
+      version: PROTOCOL_VERSION_V2,
+      supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+      deprecated: [...DEPRECATED_PROTOCOL_VERSIONS],
+    };
+  }
+  const raw = info.protocol && typeof info.protocol === 'object' ? info.protocol : info;
+  const version = typeof raw.version === 'number' ? raw.version
+    : typeof info.protocolVersion === 'number' ? info.protocolVersion
+    : PROTOCOL_VERSION_V2;
+  return {
+    version,
+    supported: Array.isArray(raw.supported) && raw.supported.every((v: unknown) => typeof v === 'number')
+      ? raw.supported
+      : [...SUPPORTED_PROTOCOL_VERSIONS],
+    deprecated: Array.isArray(raw.deprecated) && raw.deprecated.every((v: unknown) => typeof v === 'number')
+      ? raw.deprecated
+      : [...DEPRECATED_PROTOCOL_VERSIONS],
+  };
 }
 
 export const bridge = new BridgeClient();
