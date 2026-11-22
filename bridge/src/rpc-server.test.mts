@@ -54,6 +54,34 @@ test("environment info and refresh stay redacted", async () => {
   assert.equal(typeof refreshed.pathEntryCount, "number");
 });
 
+test("capability and dependency methods expose policy without installing silently", async () => {
+  const s = server();
+  const report = (await s.handle({ id: 6, method: "capabilities.discover", params: {} })).result as any;
+  assert.equal(report.policy.preferExisting, true);
+  assert.equal(report.policy.autoInstall, false);
+  assert.equal(report.policy.explicitApprovalForInstall, true);
+  assert.ok(Array.isArray(report.capabilities));
+
+  const planned = await s.handle({
+    id: 7,
+    method: "dependency.plan",
+    params: { need: "json", scope: "temporary", reason: "JSON support needed", force: true },
+  });
+  assert.equal(planned.error, undefined, planned.error?.message);
+  const requestId = (planned.result as any).requestId;
+  assert.equal(typeof requestId, "string");
+
+  const denied = await s.handle({
+    id: 8,
+    method: "dependency.install",
+    params: { requestId, approved: false },
+  });
+  assert.equal(denied.error?.code, -32028);
+
+  const history = (await s.handle({ id: 9, method: "dependency.history", params: {} })).result as any;
+  assert.equal(history.total, 0);
+});
+
 test("unknown method returns METHOD_NOT_FOUND with available methods", async () => {
   const s = server();
   const res = await s.handle({ id: 3, method: "nope.nope" });

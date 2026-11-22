@@ -64,6 +64,33 @@ test("approvalKey: one key per tool, but shell keys bind shell, cwd and command"
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, shellFamily: "powershell" }));
 });
 
+test("dependency.install always asks and is never remembered as pre-approved", async () => {
+  const { ok, call } = await fixture();
+  const plan = await ok("dependency.plan", {
+    need: "json",
+    scope: "temporary",
+    reason: "JSON support needed",
+    force: true,
+  });
+  const check = await ok("agent.check", {
+    command: "dependency.install",
+    params: { requestId: plan.requestId },
+    mode: "auto-approve",
+  });
+  assert.equal(check.decision, "ask");
+  assert.equal(check.rememberApproval, false);
+  assert.match(check.preview, /npm install/);
+  assert.match(check.approvalKey, /^dependency\.install:v2:/);
+
+  const denied = await call("agent.callTool", {
+    command: "dependency.install",
+    params: { requestId: plan.requestId },
+    mode: "auto-approve",
+    approved: false,
+  });
+  assert.equal(denied.error?.code, -32022);
+});
+
 test("writePreview shows only the changed region", () => {
   assert.equal(writePreview("a\nb\nc\n", "a\nb\nc\n"), "(no change)");
   assert.equal(writePreview("a\nb\nc", "a\nB\nc"), "@@ line 2 @@\n a\n-b\n+B\n c");
@@ -77,6 +104,9 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(tools.some((t: any) => t.name === "git.push" && t.category === "sync"));
   assert.ok(tools.some((t: any) => t.name === "shell.run" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "context.read" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "capabilities.recommend" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "dependency.plan" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "dependency.install" && t.category === "execute"));
   assert.ok(!tools.some((t: any) => t.name.startsWith("term."))); // the interactive PTY is not an agent tool
 
   const { prompt, mode, toolCount } = await ok("agent.prompt", { mode: "ask-once" });
@@ -88,6 +118,8 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("## Project context (AGENTS.md)"));
   assert.ok(prompt.includes("- Use npm test."));
   assert.ok(prompt.includes("cannot change approval mode"));
+  assert.ok(prompt.includes("capabilities.recommend"));
+  assert.ok(prompt.includes("dependency.install"));
   assert.ok(!prompt.includes("old context"));
   assert.ok(prompt.includes("release-notes"));
   assert.ok(!prompt.includes("Do the thing.")); // skill bodies are read on demand

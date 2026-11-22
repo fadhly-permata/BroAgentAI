@@ -17,6 +17,7 @@ import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { ensureContextTemplate, readContext } from "./context.ts";
 import { discoverEnvironment, refreshEnvironment } from "./environment.ts";
+import { clearDependencyHistory, dependencyHistory, discoverCapabilities, installDependency, planDependency, recommendCapabilities } from "./capabilities.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
@@ -240,6 +241,13 @@ export class RpcServer {
 
     this.register("environment.info", () => discoverEnvironment());
     this.register("environment.refresh", () => refreshEnvironment());
+
+    this.register("capabilities.discover", (params) => discoverCapabilities(this.#store, readParams(params ?? {})));
+    this.register("capabilities.recommend", (params) => recommendCapabilities(readParams(params).need, this.#store, readParams(params)));
+    this.register("dependency.plan", (params) => planDependency(this.#store, readParams(params)));
+    this.register("dependency.install", (params) => installDependency(this.#store, readParams(params)));
+    this.register("dependency.history", (params) => dependencyHistory(readParams(params ?? {})));
+    this.register("dependency.history.clear", (params) => clearDependencyHistory(readParams(params ?? {})));
 
     this.register("workspace.list", () => ({
       workspaces: this.#store.list(),

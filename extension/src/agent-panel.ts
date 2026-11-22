@@ -1283,7 +1283,7 @@ async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
   }
   if (check.decision === 'ask') {
     // ask-once: an approval is remembered under the key the bridge returned.
-    const remember = currentMode === 'ask-once';
+    const remember = currentMode === 'ask-once' && check.rememberApproval !== false;
     if (remember && active.allowed.has(check.approvalKey)) {
       approved = true;
       decision = 'approved earlier';

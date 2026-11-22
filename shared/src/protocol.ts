@@ -73,6 +73,8 @@ export enum ErrorCode {
   SHELL_UNSUPPORTED = -32025,
   SHELL_CWD_INVALID = -32026,
   SHELL_BUSY = -32027,
+  DEPENDENCY_APPROVAL_REQUIRED = -32028,
+  DEPENDENCY_INSTALL_FAILED = -32029,
 }
 
 export const SHELL_ERROR_CODES = [
@@ -402,4 +404,95 @@ export interface ShellStatus {
   active: string[];
   archived: number;
   historyCount: number;
+}
+
+export type CapabilityKind = "runtime" | "cli" | "package-manager" | "project-script" | "package";
+export type CapabilityStatus = "available" | "missing";
+export type DependencyNeed = "json" | "search" | "http" | "git" | "build" | "python";
+export type DependencyScope = "temporary" | "project" | "global";
+export type DependencyManager = "npm" | "pip";
+
+export interface CapabilityInfo {
+  name: string;
+  kind: CapabilityKind;
+  status: CapabilityStatus;
+  version?: string;
+  source: "environment" | "project";
+  satisfies: DependencyNeed[];
+}
+
+export interface DependencyPolicy {
+  preferExisting: true;
+  autoInstall: false;
+  explicitApprovalForInstall: true;
+  sideEffectsRecorded: true;
+  order: string[];
+}
+
+export interface CapabilityReport {
+  generatedAt: string;
+  environment: EnvironmentInfo;
+  capabilities: CapabilityInfo[];
+  checked: number;
+  limit: number;
+  policy: DependencyPolicy;
+}
+
+export interface CapabilityRecommendation {
+  need: DependencyNeed;
+  existing: string[];
+  installAllowed: boolean;
+  options: Array<{ package: string; manager: DependencyManager; reason: string }>;
+  policy: DependencyPolicy;
+}
+
+export interface DependencyPlan {
+  requestId: string;
+  need: DependencyNeed;
+  package: string;
+  manager: DependencyManager;
+  scope: DependencyScope;
+  command: string;
+  reason: string;
+  declaredSideEffects: string[];
+  existingCapability: string | null;
+  explicitApprovalRequired: true;
+}
+
+export interface DependencySideEffect {
+  id: string;
+  requestId: string;
+  need: DependencyNeed;
+  package: string;
+  manager: DependencyManager;
+  scope: DependencyScope;
+  command: string;
+  status: "installed" | "failed";
+  exitCode: number | null;
+  startedAt: string;
+  durationMs: number;
+  declaredSideEffects: string[];
+  observedSideEffects: string[];
+  approved: true;
+  sessionId?: string;
+  taskId?: string;
+}
+
+export interface DependencyHistory {
+  entries: DependencySideEffect[];
+  total: number;
+  limit: number;
+}
+
+export interface DependencyInstallResult {
+  plan: DependencyPlan;
+  executionId: string;
+  status: "installed" | "failed";
+  exitCode: number | null;
+  sideEffectId: string;
+  declaredSideEffects: string[];
+  observedSideEffects: string[];
+  stdout: string;
+  stderr: string;
+  error?: string;
 }
