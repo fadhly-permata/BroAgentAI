@@ -139,7 +139,7 @@
       <p id="modeHint" class="hint"></p>
     </div>
 
-    <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><p id="apContext" class="hint hidden"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><p id="apNote" class="hint"></p><div class="btn-row"><button id="apAllow" class="primary">Allow</button><button id="apDeny" class="danger">Deny</button></div></div>
+    <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><p id="apContext" class="hint hidden"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><p id="apNote" class="hint"></p><div class="btn-row"><button id="apAllow" class="primary" data-i18n="allow">Allow</button><button id="apDeny" class="danger" data-i18n="deny">Deny</button></div></div>
 
     <div class="log-section">
       <div class="log-head"><span class="section-title" data-i18n="activity">Aktivitas</span><div class="log-tools"><select id="logFilter" class="compact" aria-label="Filter"><option value="all" data-i18n="all">Semua</option><option value="ok" data-i18n="success">Sukses</option><option value="denied" data-i18n="denied">Ditolak</option><option value="error" data-i18n="error">Error</option></select><button id="copyLog" class="action" data-i18n-title="copy" title="Copy"><i data-icon="copy"></i></button><button id="clearLog" class="action" data-i18n-title="clear" title="Clear"><i data-icon="clear-all"></i></button></div></div>
@@ -191,6 +191,7 @@
     <div class="kv"><span class="kv-key" data-i18n="versionLabel">Version</span><b class="kv-val">0.1.0-dev</b></div>
     <div class="kv"><span class="kv-key" data-i18n="extIdLabel">Extension ID</span><code id="extId" class="kv-val"></code></div>
     <div class="kv"><span class="kv-key" data-i18n="protocolLabel">Protocol</span><span id="protocolStatus" class="kv-val"></span></div>
+    <div class="kv"><span class="kv-key" data-i18n="shellLabel">Shell</span><span id="shellStatus" class="kv-val"></span></div>
     <div class="btn-row"><button id="diagBtn"><i data-icon="stethoscope"></i><span data-i18n="diagnostics">Diagnostik</span></button><button id="restart2Btn"><i data-icon="debug-restart"></i><span data-i18n="restartCompanion">Restart Companion</span></button></div>
     <pre id="diagOut" class="code-block hidden"></pre>
   </div>

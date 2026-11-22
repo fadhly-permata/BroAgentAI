@@ -16,12 +16,13 @@ import { commitCoAuthors } from "./co-authors.ts";
 import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { ensureContextTemplate, readContext } from "./context.ts";
+import { discoverEnvironment, refreshEnvironment } from "./environment.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
-import { cancelShell, detectShell, detectedShell, refreshShell, runShell, shellOutput, shellStatus, shutdownShells } from "./shell.ts";
+import { cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellStatus, shutdownShells } from "./shell.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
@@ -219,6 +220,7 @@ export class RpcServer {
       protocolVersion: PROTOCOL_VERSION,
       protocol: PROTOCOL_INFO,
       detectedShell: detectedShell(),
+      environment: discoverEnvironment(),
       notSandbox: NOT_SANDBOX_NOTICE,
       hostName: HOST_NAME,
       platform: process.platform,
@@ -230,14 +232,14 @@ export class RpcServer {
       configPath: this.#store.configPath,
     }));
 
-    this.register("shell.info", () => {
-      refreshShell();
-      return {
-        ...detectedShell(),
-        notSandbox: NOT_SANDBOX_NOTICE,
-        ...shellStatus(),
-      };
-    });
+    this.register("shell.info", () => ({
+      ...shellInfoReport(),
+      notSandbox: NOT_SANDBOX_NOTICE,
+      ...shellStatus(),
+    }));
+
+    this.register("environment.info", () => discoverEnvironment());
+    this.register("environment.refresh", () => refreshEnvironment());
 
     this.register("workspace.list", () => ({
       workspaces: this.#store.list(),
@@ -405,6 +407,8 @@ export class RpcServer {
       return shellOutput(p.executionId, p.stream, p.offsetBytes);
     });
     this.register("shell.status", () => shellStatus());
+    this.register("shell.history", (params) => shellHistory(readParams(params ?? {})));
+    this.register("shell.history.clear", (params) => clearShellHistory(readParams(params ?? {})));
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
     this.register("tools.list", () => listTools(this));
@@ -418,7 +422,7 @@ export class RpcServer {
     });
     this.register("agent.callTool", (params) => {
       const p = readParams(params);
-      return callTool(this, p.command, p.params, p.mode, p.approved);
+      return callTool(this, p.command, p.params, p.mode, p.approved, { sessionId: p.sessionId, taskId: p.taskId });
     });
     // Cross-context session resume (spec 8.1): persist a handoff snapshot by Session ID
     // so the same task can resume in another window/profile. See session-store.ts.

@@ -1116,7 +1116,14 @@ function hideApproval(): void {
 }
 
 function shellSignatureOf(info: any): string {
-  return [info?.family, info?.environment, info?.file, info?.platform, info?.arch].join('|');
+  return [info?.family, info?.version, info?.environment, info?.file, info?.platform, info?.arch].join('|');
+}
+
+function riskText(value: unknown, category: unknown): string {
+  const risk = String(value ?? category ?? '').toLowerCase();
+  if (risk === 'read') return t('riskRead');
+  if (risk === 'high') return t('riskHigh');
+  return t('riskWrite');
 }
 
 function hideShellBanner(): void {
@@ -1158,23 +1165,23 @@ async function ensureShellStable(active: Session): Promise<boolean> {
 
 function askApproval(check: any, params: Record<string, unknown>, remember: boolean): Promise<'allow' | 'deny'> {
   const ctx = check.approvalContext;
-  $('apRisk').textContent = String(check.risk || check.category).toUpperCase();
+  $('apRisk').textContent = riskText(check.risk, check.category).toUpperCase();
   $('apRisk').className = 'risk risk-' + (check.category === 'read' ? 'read' : 'write');
   $('apTool').textContent = check.command;
   $('apSummary').textContent = check.category === 'execute'
-    ? 'Perintah shell. Berjalan dengan hak akunmu dan TIDAK dibatasi ke workspace.'
-    : (check.source === 'mcp' ? 'MCP tool. ' : '') + (check.paths?.length ? 'Path: ' + check.paths.join(', ') : 'Tidak ada path spesifik.');
+    ? t('approvalShellSummary')
+    : (check.source === 'mcp' ? t('approvalMcp') + ' ' : '') + (check.paths?.length ? t('approvalPaths').replace('{0}', check.paths.join(', ')) : t('approvalNoPaths'));
   $('apContext').textContent = ctx
-    ? `${t('approvalContextLabel')}: ${ctx.shellFamily} (${ctx.environment}) · ${t('workspace')}: ${ctx.workspacePath} · cwd: ${ctx.cwd} · ${t('riskLabel')}: ${ctx.risk}`
+    ? `${t('approvalContextLabel')}: ${ctx.shellFamily} (${ctx.environment}) · ${t('workspace')}: ${ctx.workspacePath} · cwd: ${ctx.cwd} · ${t('riskLabel')}: ${riskText(ctx.risk, check.category)}`
     : '';
   $('apContext').classList.toggle('hidden', !ctx);
   $('apDiff').textContent = redactSecrets(check.preview || '');
   $('apDiff').classList.toggle('hidden', !check.preview);
   const shown = redactSecrets(JSON.stringify(params, null, 2));
-  $('apParams').textContent = shown.length > 4000 ? shown.slice(0, 4000) + '\n... (dipotong)' : shown;
+  $('apParams').textContent = shown.length > 4000 ? shown.slice(0, 4000) + t('approvalTruncated') : shown;
   $('apNote').textContent = !remember ? ''
-    : check.category === 'execute' ? 'Tanya sekali: perintah yang persis sama tidak akan ditanyakan lagi di sesi ini.'
-    : `Tanya sekali: ${check.command} tidak akan ditanyakan lagi di sesi ini.`;
+    : check.category === 'execute' ? t('askOnceShell')
+    : t('askOnceTool').replace('{0}', check.command);
   $('approvalCard').classList.remove('hidden');
   return new Promise((resolve) => {
     pendingApproval = (decision) => { hideApproval(); resolve(decision); };
@@ -1281,7 +1288,7 @@ async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
       approved = true;
       decision = 'approved earlier';
     } else {
-      setPhase('approval', `Menunggu persetujuan ${command}`);
+      setPhase('approval', t('waitingApproval').replace('{0}', command));
       const answer = await askApproval(check, params, remember);
       if (session !== active) return; // session stopped while waiting
       if (answer === 'deny') {

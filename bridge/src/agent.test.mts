@@ -192,6 +192,39 @@ test("shell.run through the agent: denied, asked, then executed with real output
   assert.equal(override.error?.code, -32602);
 });
 
+test("agent.callTool links a shell execution to a session and task", async () => {
+  const { ok, call } = await fixture();
+  const marker = process.platform === "win32" ? "Write-Output linked" : "echo linked";
+  const res = await ok("agent.callTool", {
+    command: "shell.run",
+    params: { command: marker },
+    mode: "auto-approve",
+    sessionId: "session_link_1",
+    taskId: "task_link_1",
+  });
+  assert.equal(res.sessionId, "session_link_1");
+  assert.equal(res.taskId, "task_link_1");
+  const out = JSON.parse(res.text);
+  assert.equal(out.sessionId, "session_link_1");
+  assert.equal(out.taskId, "task_link_1");
+  assert.match(out.stdout, /linked/);
+
+  const history = await ok("shell.history", { sessionId: "session_link_1", taskId: "task_link_1" });
+  assert.equal(history.total, 1);
+  assert.equal(history.entries[0].executionId, out.executionId);
+  assert.equal(history.entries[0].sessionId, "session_link_1");
+  assert.equal(history.entries[0].taskId, "task_link_1");
+  assert.equal("stdout" in history.entries[0], false);
+  const cleared = await ok("shell.history.clear", { sessionId: "session_link_1" });
+  assert.equal(cleared.cleared, 1);
+  assert.equal((await ok("shell.history", { sessionId: "session_link_1" })).total, 0);
+  assert.equal((await call("agent.callTool", {
+    command: "shell.run",
+    params: { command: marker, sessionId: "../escape" },
+    mode: "auto-approve",
+  })).error?.code, -32602);
+});
+
 test("large tool results are capped", async () => {
   const { ok, ws } = await fixture();
   writeFileSync(join(ws, "big.txt"), "y".repeat(200 * 1024));

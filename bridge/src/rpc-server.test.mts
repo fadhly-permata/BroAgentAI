@@ -30,6 +30,30 @@ test("system.info reports platform and config paths", async () => {
   assert.ok(info.configPath.endsWith("config.json"));
 });
 
+test("shell.info reports shell metadata and read-only status", async () => {
+  const s = server();
+  const res = await s.handle({ id: 3, method: "shell.info" });
+  const info = res.result as any;
+  assert.equal(typeof info.family, "string");
+  assert.equal(typeof info.version, "string");
+  assert.equal(info.encoding, "utf8");
+  assert.ok(Array.isArray(info.fallbacks));
+  assert.equal(typeof info.maxConcurrency, "number");
+  assert.equal(typeof info.notSandbox, "string");
+});
+
+test("environment info and refresh stay redacted", async () => {
+  const s = server();
+  const info = (await s.handle({ id: 4, method: "environment.info" })).result as any;
+  assert.equal(info.credentialsExposed, false);
+  assert.equal(typeof info.credentialKeysDetected, "number");
+  assert.equal(typeof info.pathEntryCount, "number");
+  assert.equal(info.profilePolicy, "no-profile");
+  const refreshed = (await s.handle({ id: 5, method: "environment.refresh" })).result as any;
+  assert.equal(refreshed.credentialsExposed, false);
+  assert.equal(typeof refreshed.pathEntryCount, "number");
+});
+
 test("unknown method returns METHOD_NOT_FOUND with available methods", async () => {
   const s = server();
   const res = await s.handle({ id: 3, method: "nope.nope" });

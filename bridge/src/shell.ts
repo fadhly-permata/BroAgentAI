@@ -14,8 +14,8 @@ import { join } from "node:path";
 
 import { redactSecrets } from "./context.ts";
 import { confinePath } from "./fs.ts";
-import { ErrorCode } from "./rpc.ts";
-import type { DetectedShellInfo, ExecutionResult, ExecutionTruncation, ShellOutput, ShellStatus } from "./rpc.ts";
+import { ErrorCode, isShellErrorCode } from "./rpc.ts";
+import type { DetectedShellInfo, ExecutionHistoryEntry, ExecutionResult, ExecutionTruncation, ShellFallbackInfo, ShellErrorCode, ShellHistory, ShellInfoReport, ShellOutput, ShellStatus } from "./rpc.ts";
 import { WorkspaceError } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 
@@ -25,8 +25,31 @@ export const MAX_SHELL_OUTPUT_BYTES = 256 * 1024;
 export const MAX_COMMAND_CHARS = 8 * 1024;
 export const MAX_SHELL_CONCURRENCY = 2;
 export const MAX_SHELL_ARCHIVE = 16;
+export const MAX_EXECUTION_HISTORY = 32;
 
 export const SHELL_OVERRIDE_KEYS = ["shell", "shellPath", "executable", "binary", "file"] as const;
+
+const EXECUTION_TAG_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function executionTag(value: unknown, label: "sessionId" | "taskId"): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !EXECUTION_TAG_RE.test(value)) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, `${label} must be 1-64 chars of [A-Za-z0-9_-]`);
+  }
+  return value;
+}
+
+export function shellFailure(code: ShellErrorCode, message: string): WorkspaceError {
+  return new WorkspaceError(code, message);
+}
+
+export function normalizeShellError(error: unknown, message: string): WorkspaceError {
+  if (error instanceof WorkspaceError && isShellErrorCode(error.code)) return error;
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "ENOENT") return shellFailure(ErrorCode.SHELL_NOT_AVAILABLE, message);
+  if (code === "ENOTDIR") return shellFailure(ErrorCode.SHELL_CWD_INVALID, message);
+  return shellFailure(ErrorCode.SHELL_START_FAILED, message);
+}
 
 export type ShellFamily = "powershell" | "bash" | "zsh" | "sh";
 export type ExecutionEnvironment = "native-windows" | "native-macos" | "native-linux" | "native-unknown";
@@ -55,6 +78,9 @@ interface DetectOptions {
 
 interface ActiveExecution {
   executionId: string;
+  sessionId?: string;
+  taskId?: string;
+  command: string;
   token: string;
   cancelFile: string;
   cancel: (reason: TerminationReason) => void;
@@ -62,6 +88,8 @@ interface ActiveExecution {
 
 interface ArchivedOutput {
   executionId: string;
+  sessionId?: string;
+  taskId?: string;
   stdout: string;
   stderr: string;
   truncation: ExecutionTruncation;
@@ -169,11 +197,62 @@ export function detectShell(options: DetectOptions = {}): ShellInfo {
       return info;
     }
   }
-  throw new WorkspaceError(ErrorCode.SHELL_NOT_AVAILABLE, `no supported shell available for ${platform}`);
+  throw shellFailure(ErrorCode.SHELL_NOT_AVAILABLE, `no supported shell available for ${platform}`);
 }
 
 export function refreshShell(): ShellInfo {
   return detectShell({ refresh: true });
+}
+
+const versionCache = new Map<string, string>();
+
+function shellVersion(shell: ShellInfo): string {
+  const cached = versionCache.get(shell.file);
+  if (cached) return cached;
+  const args = shell.family === "powershell"
+    ? shell.args("$PSVersionTable.PSVersion.ToString()")
+    : shell.family === "bash"
+      ? shell.args('printf "%s" "$BASH_VERSION"')
+      : shell.family === "zsh"
+        ? shell.args('printf "%s" "$ZSH_VERSION"')
+        : ["--version"];
+  let version = "unknown";
+  try {
+    const output = execFileSync(shell.file, args, {
+      encoding: "utf8",
+      timeout: 3000,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    version = output.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "unknown";
+  } catch {
+    version = "unknown";
+  }
+  versionCache.set(shell.file, version);
+  return version;
+}
+
+function shellFallbacks(shell: ShellInfo): ShellFallbackInfo[] {
+  const platform = process.platform;
+  const candidates = [...SHELL_REGISTRY[environmentFor(platform)]].sort((a, b) => a.priority - b.priority);
+  const fallbacks: ShellFallbackInfo[] = [];
+  for (const candidate of candidates) {
+    const resolved = resolveCommand(candidate.file, process.env, platform);
+    if (!resolved) continue;
+    const file = typeof resolved === "string" ? resolved : candidate.file;
+    if (file !== shell.file) fallbacks.push({ family: candidate.family, file });
+  }
+  return fallbacks;
+}
+
+export function shellInfoReport(): ShellInfoReport {
+  const shell = refreshShell();
+  return {
+    ...detectedShell(),
+    version: shellVersion(shell),
+    encoding: "utf8",
+    fallbacks: shellFallbacks(shell),
+  };
 }
 
 /** Metadata shared by `system.info`, `shell.info`, approvals, and results. */
@@ -308,17 +387,20 @@ function killTree(pid: number | undefined): void {
   }
 }
 
-function spawnErrorCode(error: NodeJS.ErrnoException): ErrorCode {
-  if (error.code === "ENOENT") return ErrorCode.SHELL_NOT_AVAILABLE;
-  return ErrorCode.SHELL_START_FAILED;
-}
-
 const activeExecutions = new Map<string, ActiveExecution>();
 const outputArchive = new Map<string, ArchivedOutput>();
+const executionHistory: ExecutionHistoryEntry[] = [];
+
+function recordExecutionHistory(entry: ExecutionHistoryEntry): void {
+  executionHistory.push(entry);
+  while (executionHistory.length > MAX_EXECUTION_HISTORY) executionHistory.shift();
+}
 
 function archiveOutput(result: ExecutionResult): void {
   outputArchive.set(result.executionId, {
     executionId: result.executionId,
+    sessionId: result.sessionId,
+    taskId: result.taskId,
     stdout: redactSecrets(result.stdout),
     stderr: redactSecrets(result.stderr),
     truncation: result.truncation,
@@ -337,11 +419,13 @@ export async function runShell(
   cwd: unknown,
   timeoutMs: unknown,
   rawParams: Record<string, unknown> = {},
-  onStart?: (info: { executionId: string; shell: string; cwd: string }) => void,
+  onStart?: (info: { executionId: string; shell: string; cwd: string; sessionId?: string; taskId?: string }) => void,
 ): Promise<ExecutionResult> {
   const active = store.active();
   if (!active) throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
   assertNoShellOverride(rawParams);
+  const sessionId = executionTag(rawParams.sessionId, "sessionId");
+  const taskId = executionTag(rawParams.taskId, "taskId");
   if (typeof command !== "string" || command.trim() === "") {
     throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "command must be a non-empty string");
   }
@@ -354,12 +438,12 @@ export async function runShell(
     workdir = cwd === undefined || cwd === null || cwd === "" ? active.path : confinePath(active.path, String(cwd));
   } catch (error) {
     if (error instanceof WorkspaceError && error.code === ErrorCode.PATH_ESCAPE) {
-      throw new WorkspaceError(ErrorCode.SHELL_CWD_INVALID, error.message);
+      throw shellFailure(ErrorCode.SHELL_CWD_INVALID, error.message);
     }
     throw error;
   }
   if (!existsSync(workdir) || !statSync(workdir).isDirectory()) {
-    throw new WorkspaceError(ErrorCode.SHELL_CWD_INVALID, "cwd must be an existing directory inside the workspace");
+    throw shellFailure(ErrorCode.SHELL_CWD_INVALID, "cwd must be an existing directory inside the workspace");
   }
 
   const timeout = typeof timeoutMs === "number" && timeoutMs > 0
@@ -369,7 +453,7 @@ export async function runShell(
   const shell = detectShell();
   const executionId = requestedExecutionId(rawParams.executionId);
   if (activeExecutions.size >= MAX_SHELL_CONCURRENCY) {
-    throw new WorkspaceError(ErrorCode.SHELL_BUSY, `shell concurrency limit reached (${MAX_SHELL_CONCURRENCY})`);
+    throw shellFailure(ErrorCode.SHELL_BUSY, `shell concurrency limit reached (${MAX_SHELL_CONCURRENCY})`);
   }
   const token = randomUUID().replace(/-/g, "");
   const isWindows = process.platform === "win32";
@@ -384,6 +468,9 @@ export async function runShell(
 
     const activeEntry: ActiveExecution = {
       executionId,
+      sessionId,
+      taskId,
+      command,
       token,
       cancelFile,
       cancel: (next) => {
@@ -400,7 +487,7 @@ export async function runShell(
       },
     };
     activeExecutions.set(executionId, activeEntry);
-    onStart?.({ executionId, shell: shell.family, cwd: workdir });
+    onStart?.({ executionId, shell: shell.family, cwd: workdir, sessionId, taskId });
 
     try {
       if (isWindows) {
@@ -426,10 +513,23 @@ export async function runShell(
         });
       }
     } catch (error) {
-      const err = error as NodeJS.ErrnoException;
       activeExecutions.delete(executionId);
       rmSync(cancelFile, { force: true });
-      reject(new WorkspaceError(spawnErrorCode(err), `failed to start ${shell.file}: ${err.message}`));
+      recordExecutionHistory({
+        executionId, sessionId, taskId,
+        command: redactSecrets(command),
+        shell: shell.family,
+        cwd: workdir,
+        startedAt: new Date(started).toISOString(),
+        durationMs: Date.now() - started,
+        exitCode: null,
+        terminationReason: "error",
+        timedOut: false,
+        truncated: false,
+        stdoutBytes: 0,
+        stderrBytes: 0,
+      });
+      reject(normalizeShellError(error, `failed to start ${shell.file}: ${(error as Error).message}`));
       return;
     }
 
@@ -458,11 +558,25 @@ export async function runShell(
       if (fallback) clearTimeout(fallback);
       activeExecutions.delete(executionId);
       rmSync(cancelFile, { force: true });
+      recordExecutionHistory({
+        executionId, sessionId, taskId,
+        command: redactSecrets(command),
+        shell: shell.family,
+        cwd: workdir,
+        startedAt: new Date(started).toISOString(),
+        durationMs: Date.now() - started,
+        exitCode: null,
+        terminationReason: "error",
+        timedOut: false,
+        truncated: false,
+        stdoutBytes: sizes.stdout,
+        stderrBytes: sizes.stderr,
+      });
       reject(error);
     };
 
     running.on("error", (error) => {
-      settleFail(new WorkspaceError(spawnErrorCode(error), `failed to run command: ${error.message}`));
+      settleFail(normalizeShellError(error, `failed to run command: ${error.message}`));
     });
 
     running.on("close", (code, signal) => {
@@ -481,11 +595,11 @@ export async function runShell(
         const parsed = parseWindowsMarker(stdout, token);
         stdout = parsed.stdout;
         if (parsed.status === "unavailable") {
-          settleFail(new WorkspaceError(ErrorCode.SHELL_UNSUPPORTED, "Windows Job Objects are unavailable; shell execution refused"));
+          settleFail(shellFailure(ErrorCode.SHELL_UNSUPPORTED, "Windows Job Objects are unavailable; shell execution refused"));
           return;
         }
         if (parsed.status === "error") {
-          settleFail(new WorkspaceError(ErrorCode.SHELL_START_FAILED, stderr.trim() || "Windows Job Object wrapper failed"));
+          settleFail(shellFailure(ErrorCode.SHELL_START_FAILED, stderr.trim() || "Windows Job Object wrapper failed"));
           return;
         }
         if (parsed.status === "cancelled") finalReason = "cancelled";
@@ -506,6 +620,8 @@ export async function runShell(
       };
       const result: ExecutionResult = {
         executionId,
+        sessionId,
+        taskId,
         shell: shell.family,
         shellFamily: shell.family,
         environment: shell.environment,
@@ -521,6 +637,23 @@ export async function runShell(
         timeoutMs: timeout,
         durationMs: Date.now() - started,
       };
+      settled = true;
+      recordExecutionHistory({
+        executionId,
+        sessionId,
+        taskId,
+        command: redactSecrets(command),
+        shell: shell.family,
+        cwd: workdir,
+        startedAt: new Date(started).toISOString(),
+        durationMs: result.durationMs,
+        exitCode: result.exitCode,
+        terminationReason: result.terminationReason,
+        timedOut: result.timedOut,
+        truncated: result.truncated,
+        stdoutBytes: sizes.stdout,
+        stderrBytes: sizes.stderr,
+      });
       archiveOutput(result);
       resolvePromise(result);
     });
@@ -558,11 +691,42 @@ export function shellOutput(executionId: unknown, stream: unknown = "stdout", of
   };
 }
 
+export function shellHistory(params: Record<string, unknown> = {}): ShellHistory {
+  const sessionId = executionTag(params.sessionId, "sessionId");
+  const taskId = executionTag(params.taskId, "taskId");
+  const limit = typeof params.limit === "number" && Number.isFinite(params.limit)
+    ? Math.max(1, Math.min(Math.floor(params.limit), MAX_EXECUTION_HISTORY))
+    : MAX_EXECUTION_HISTORY;
+  const matching = executionHistory.filter((entry) =>
+    (sessionId === undefined || entry.sessionId === sessionId) &&
+    (taskId === undefined || entry.taskId === taskId));
+  return {
+    entries: matching.slice(-limit).reverse(),
+    total: matching.length,
+    limit: MAX_EXECUTION_HISTORY,
+  };
+}
+
+export function clearShellHistory(params: Record<string, unknown> = {}): { cleared: number } {
+  const sessionId = executionTag(params.sessionId, "sessionId");
+  const taskId = executionTag(params.taskId, "taskId");
+  const before = executionHistory.length;
+  for (let index = executionHistory.length - 1; index >= 0; index--) {
+    const entry = executionHistory[index]!;
+    if ((sessionId === undefined || entry.sessionId === sessionId) &&
+        (taskId === undefined || entry.taskId === taskId)) {
+      executionHistory.splice(index, 1);
+    }
+  }
+  return { cleared: before - executionHistory.length };
+}
+
 export function shellStatus(): ShellStatus {
   return {
     maxConcurrency: MAX_SHELL_CONCURRENCY,
     active: [...activeExecutions.keys()],
     archived: outputArchive.size,
+    historyCount: executionHistory.length,
   };
 }
 

@@ -72,6 +72,20 @@ export const ErrorCode = {
 /** Union of every {@link ErrorCode} value. */
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
+export const SHELL_ERROR_CODES = [
+  ErrorCode.SHELL_NOT_AVAILABLE,
+  ErrorCode.SHELL_START_FAILED,
+  ErrorCode.SHELL_UNSUPPORTED,
+  ErrorCode.SHELL_CWD_INVALID,
+  ErrorCode.SHELL_BUSY,
+] as const;
+
+export type ShellErrorCode = (typeof SHELL_ERROR_CODES)[number];
+
+export function isShellErrorCode(code: number): code is ShellErrorCode {
+  return (SHELL_ERROR_CODES as readonly number[]).includes(code);
+}
+
 /** A registered workspace as persisted in the host app config. */
 export interface WorkspaceInfo {
   id: string;
@@ -107,6 +121,32 @@ export interface DetectedShellInfo {
   arch: string;
 }
 
+export interface ShellFallbackInfo {
+  family: string;
+  file: string;
+}
+
+export interface ShellInfoReport extends DetectedShellInfo {
+  version: string;
+  encoding: "utf8";
+  fallbacks: ShellFallbackInfo[];
+}
+
+export interface EnvironmentInfo {
+  pathSource: "PATH" | "Path" | "none";
+  pathOrigin: "inherited" | "none";
+  pathEntryCount: number;
+  pathEntryKinds: {
+    absolute: number;
+    relative: number;
+    missing: number;
+  };
+  profilePolicy: "no-profile";
+  shellProfilesLoaded: false;
+  credentialKeysDetected: number;
+  credentialsExposed: false;
+}
+
 /** Context bound into an approval so shell/cwd changes cannot reuse it. */
 export interface ApprovalContext {
   command: string;
@@ -129,6 +169,8 @@ export interface ExecutionTruncation {
 /** Stable result contract for `shell.run`, also usable by future executors. */
 export interface ExecutionResult {
   executionId: string;
+  sessionId?: string;
+  taskId?: string;
   shell: string;
   shellFamily: string;
   environment: string;
@@ -145,6 +187,29 @@ export interface ExecutionResult {
   durationMs: number;
 }
 
+export interface ExecutionHistoryEntry {
+  executionId: string;
+  sessionId?: string;
+  taskId?: string;
+  command: string;
+  shell: string;
+  cwd: string;
+  startedAt: string;
+  durationMs: number;
+  exitCode: number | null;
+  terminationReason: ExecutionResult["terminationReason"];
+  timedOut: boolean;
+  truncated: boolean;
+  stdoutBytes: number;
+  stderrBytes: number;
+}
+
+export interface ShellHistory {
+  entries: ExecutionHistoryEntry[];
+  total: number;
+  limit: number;
+}
+
 export interface ShellOutput {
   executionId: string;
   stream: "stdout" | "stderr";
@@ -159,4 +224,5 @@ export interface ShellStatus {
   maxConcurrency: number;
   active: string[];
   archived: number;
+  historyCount: number;
 }

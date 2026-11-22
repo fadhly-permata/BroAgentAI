@@ -74,6 +74,18 @@ function updateProtocolStatus() {
   el.textContent = `${t('protocolLabel')} ${info.version} (${info.supported.join(', ')})${suffix}`;
 }
 
+async function updateShellStatus(){
+  const el=$('shellStatus');
+  if(!el) return;
+  try{
+    const info:any=await bridge.call('shell.info');
+    const fallbacks=(info.fallbacks||[]).map((f:any)=>`${f.family}: ${f.file}`).join(', ');
+    el.textContent=`${info.family} ${info.version || ''} · ${info.encoding || 'utf8'}${fallbacks?' · '+t('shellFallbacks')+': '+fallbacks:''}`;
+  }catch{
+    el.textContent=t('shellUnavailable');
+  }
+}
+
 function updateHostStatus(status: 'offline' | 'ready' | 'error') {
   const pill = $('hostPill');
   const tKey = status === 'offline' ? 'hostOffline' : status === 'ready' ? 'hostOnline' : 'hostError';
@@ -204,6 +216,7 @@ async function connectBridge(){
     await bridge.connect();
     updateHostStatus('ready');
     updateProtocolStatus();
+    void updateShellStatus();
     await loadWorkspaces();
     await ensureProjectContext();
     await updateContextStatus();
@@ -215,7 +228,7 @@ async function connectBridge(){
 function switchTab(t:string){
   document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t));
-  if(t==='settings'){ refreshMcp(); void updateContextStatus(); }
+  if(t==='settings'){ refreshMcp(); void updateContextStatus(); void updateShellStatus(); }
   if(t==='agent') showAgent();
   if(t==='scm') refreshScm();
   if(t==='terminal') showTerminal();

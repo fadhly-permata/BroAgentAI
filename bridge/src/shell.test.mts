@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
-import { detectShell, shellFor } from "./shell.ts";
+import { detectShell, normalizeShellError, shellFor, shellInfoReport } from "./shell.ts";
+import { ErrorCode } from "./rpc.ts";
+import { WorkspaceError } from "./workspace.ts";
 
 const win = process.platform === "win32";
 
@@ -60,6 +62,34 @@ test("detectShell uses deterministic priority, caches, and reports missing shell
     (error: any) => error?.code === -32023,
   );
   assert.equal(detectShell().file.length > 0, true);
+});
+
+test("shell errors normalize to stable RPC codes", () => {
+  const missing = Object.assign(new Error("spawn missing"), { code: "ENOENT" });
+  assert.equal(normalizeShellError(missing, "missing shell").code, ErrorCode.SHELL_NOT_AVAILABLE);
+  assert.equal(normalizeShellError(missing, "missing shell").message, "missing shell");
+
+  const denied = Object.assign(new Error("spawn denied"), { code: "EACCES" });
+  assert.equal(normalizeShellError(denied, "failed to start").code, ErrorCode.SHELL_START_FAILED);
+
+  const unsupported = new WorkspaceError(ErrorCode.SHELL_UNSUPPORTED, "unsupported");
+  assert.equal(normalizeShellError(unsupported, "failed to start").code, ErrorCode.SHELL_UNSUPPORTED);
+
+  const notDirectory = Object.assign(new Error("not a directory"), { code: "ENOTDIR" });
+  assert.equal(normalizeShellError(notDirectory, "invalid cwd").code, ErrorCode.SHELL_CWD_INVALID);
+});
+
+test("shellInfoReport exposes read-only version, encoding, and fallbacks", () => {
+  const info = shellInfoReport();
+  assert.equal(info.family, detectShell().family);
+  assert.equal(typeof info.version, "string");
+  assert.ok(info.version.length > 0);
+  assert.equal(info.encoding, "utf8");
+  assert.ok(Array.isArray(info.fallbacks));
+  for (const fallback of info.fallbacks) {
+    assert.equal(typeof fallback.family, "string");
+    assert.equal(typeof fallback.file, "string");
+  }
 });
 
 test("shell.run returns stdout, stderr and the exit code", async () => {
@@ -152,6 +182,30 @@ test("shell.output exposes bounded continuation from the redacted archive", asyn
   const secret = await run({ command: win ? "Write-Output 'token=hunter2secret'" : "echo token=hunter2secret" });
   const redacted = await request("shell.output", { executionId: secret.executionId, stream: "stdout" });
   assert.doesNotMatch((redacted.result as any).data, /hunter2secret/);
+});
+
+test("shell.run keeps bounded session-linked history with redacted commands", async () => {
+  const { request, run, call } = await fixture();
+  const res = await run({
+    command: win ? "Write-Output 'token=hunter2secret'" : "echo token=hunter2secret",
+    sessionId: "session_history_1",
+    taskId: "task_history_1",
+  });
+  assert.equal(res.sessionId, "session_history_1");
+  assert.equal(res.taskId, "task_history_1");
+
+  const history = await request("shell.history", { sessionId: "session_history_1", limit: 2 });
+  assert.equal(history.error, undefined, history.error?.message);
+  const payload = history.result as any;
+  assert.equal(payload.limit, 32);
+  assert.equal(payload.total, 1);
+  assert.equal(payload.entries[0].executionId, res.executionId);
+  assert.doesNotMatch(JSON.stringify(payload), /hunter2secret/);
+  assert.equal("stdout" in payload.entries[0], false);
+
+  const status = await request("shell.status", {});
+  assert.ok((status.result as any).historyCount <= 32);
+  assert.equal((await call({ command: "echo hi", taskId: "../escape" })).error?.code, -32602);
 });
 
 test("shell.run caps output and validates input", async () => {

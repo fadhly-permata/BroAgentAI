@@ -1242,11 +1242,11 @@ Execution rules:
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
-| B2.1 | Read-only shell info | `bridge/src/shell.ts`, `bridge/src/rpc.ts`, extension UI | `shell.info` or `system.info` reports shell family, version, encoding, and fallbacks | Pending |
-| B2.2 | Bounded environment discovery | environment discovery module | PATH origin and profile policy are discovered, cached, refreshable, and do not expose credentials | Pending |
-| B2.3 | Error normalization | `bridge/src/rpc.ts` | `SHELL_NOT_AVAILABLE`, `SHELL_START_FAILED`, `SHELL_UNSUPPORTED`, and `SHELL_CWD_INVALID` are used consistently | Pending |
-| B2.4 | Session and history linking | `bridge/src/agent.ts`, `bridge/src/rpc-server.ts` | Executions are associated with a task/session and history remains bounded | Pending |
-| B2.5 | UX and i18n polish | extension UI, `i18n/en.json`, `i18n/id.json` | Approval context, shell-change banner, and safety notice are translated consistently | Pending |
+| B2.1 | Read-only shell info | `bridge/src/shell.ts`, `bridge/src/rpc.ts`, extension UI | `shell.info` or `system.info` reports shell family, version, encoding, and fallbacks | Done |
+| B2.2 | Bounded environment discovery | environment discovery module | PATH origin and profile policy are discovered, cached, refreshable, and do not expose credentials | Done |
+| B2.3 | Error normalization | `bridge/src/rpc.ts` | `SHELL_NOT_AVAILABLE`, `SHELL_START_FAILED`, `SHELL_UNSUPPORTED`, and `SHELL_CWD_INVALID` are used consistently | Done |
+| B2.4 | Session and history linking | `bridge/src/agent.ts`, `bridge/src/rpc-server.ts` | Executions are associated with a task/session and history remains bounded | Done |
+| B2.5 | UX and i18n polish | extension UI, `i18n/en.json`, `i18n/id.json` | Approval context, shell-change banner, and safety notice are translated consistently | Done |
 
 ### P4 — Low: Post-MVP Expansion
 
