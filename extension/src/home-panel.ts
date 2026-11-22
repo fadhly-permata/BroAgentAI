@@ -57,7 +57,7 @@ function workspaceRows(list: HomeWorkspace[], active: HomeWorkspace | null): str
       + `<span class="home-ws-text"><b>${esc(w.name)}</b><small>${esc(w.path)}</small></span>`
       + (on ? `<span class="home-ws-tag">${esc(t('homeActive'))}</span>` : '')
       + `</button>`
-      + `<button class="home-ws-remove" data-ws-remove="${i}" title="Remove workspace" aria-label="Remove ${esc(w.name)}">${icon('trash')}</button>`
+      + `<button class="home-ws-remove" data-ws-remove="${i}" title="${esc(t('removeWorkspace'))}" aria-label="${esc(t('removeWorkspace').replace('{0}', w.name))}">${icon('trash')}</button>`
       + `</div>`;
   }).join('') + `</div>`;
 }
@@ -132,11 +132,11 @@ export function initHome(dependencies: HomeDeps): void {
         // Import bridge dynamically to avoid circular dependency
         import('./bridge-client.js').then(({ bridge }) => {
           bridge.call('workspace.remove', { id: ws.id }).then(() => {
-            deps.toast('Workspace dihapus');
+            deps.toast(t('workspaceRemoved'));
             // Reload workspaces by triggering a refresh
             window.location.reload();
           }).catch((err: any) => {
-            deps.toast('Gagal hapus workspace: ' + (err?.message || err));
+            deps.toast(t('failedRemoveWorkspace').replace('{0}', err?.message || String(err)));
           });
         });
       }

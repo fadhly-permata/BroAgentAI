@@ -2,6 +2,7 @@
 import './context-menu.css';
 import { bridge } from './bridge-client.js';
 import { icon } from './icons.js';
+import { t } from './i18n.js';
 import { ROOT, baseName, baseSelection, joinRel, parentDir, targetDir, toAbsolute, validateName } from './context-menu-paths.js';
 
 export interface ExplorerMenuDeps {
@@ -156,7 +157,7 @@ function dialog(o: DialogOpts): Promise<string | null> {
     const actions = document.createElement('div');
     actions.className = 'ba-dlg-actions';
     const cancel = document.createElement('button');
-    cancel.textContent = 'Cancel';
+    cancel.textContent = t('cancel');
     const ok = document.createElement('button');
     ok.textContent = o.confirmLabel;
     ok.className = o.danger ? 'danger' : 'primary';
@@ -198,17 +199,17 @@ const errMsg = (err: unknown) => (err as { message?: string })?.message || Strin
 
 async function create(kind: 'file' | 'folder', dir: string, deps: ExplorerMenuDeps) {
   const name = await dialog({
-    title: kind === 'file' ? 'New File' : 'New Folder',
+    title: kind === 'file' ? t('newFile') : t('newFolder'),
     message: `in ${dir === ROOT ? 'workspace' : dir}`,
     input: { value: '' },
-    confirmLabel: 'Create',
+    confirmLabel: t('create'),
     validate: validateName,
   });
   if (name === null) return;
   const path = joinRel(dir, name);
   try {
     await bridge.call(kind === 'file' ? 'fs.createFile' : 'fs.mkdir', { path });
-    deps.toast((kind === 'file' ? 'File dibuat: ' : 'Folder dibuat: ') + path);
+    deps.toast(t(kind === 'file' ? 'fileCreated' : 'folderCreated').replace('{0}', path));
     await deps.refresh();
   } catch (err) {
     deps.toast(`Gagal membuat ${kind === 'file' ? 'file' : 'folder'}: ${errMsg(err)}`);
@@ -218,10 +219,10 @@ async function create(kind: 'file' | 'folder', dir: string, deps: ExplorerMenuDe
 async function rename(path: string, deps: ExplorerMenuDeps) {
   const current = baseName(path);
   const name = await dialog({
-    title: 'Rename',
+    title: t('rename'),
     message: path,
     input: { value: current, select: baseSelection(current) },
-    confirmLabel: 'Rename',
+    confirmLabel: t('rename'),
     validate: validateName,
   });
   if (name === null || name === current) return;
@@ -232,35 +233,35 @@ async function rename(path: string, deps: ExplorerMenuDeps) {
     deps.onRenamed?.(path, to);
     await deps.refresh();
   } catch (err) {
-    deps.toast('Gagal rename: ' + errMsg(err));
+    deps.toast(t('failedRename').replace('{0}', errMsg(err)));
   }
 }
 
 async function remove(path: string, isDirectory: boolean, deps: ExplorerMenuDeps) {
   const ok = await dialog({
-    title: 'Delete',
+    title: t('delete'),
     message: path,
-    note: isDirectory ? 'Folder harus kosong; folder berisi tidak bisa dihapus.' : 'Tindakan ini tidak bisa dibatalkan.',
-    confirmLabel: 'Delete',
+    note: isDirectory ? t('deleteEmptyFolder') : t('cannotUndoAction'),
+    confirmLabel: t('delete'),
     danger: true,
   });
   if (ok === null) return;
   try {
     await bridge.call('fs.delete', { path });
-    deps.toast('Deleted: ' + path);
+    deps.toast(t('deletedPath').replace('{0}', path));
     deps.onDeleted?.(path);
     await deps.refresh();
   } catch (err) {
-    deps.toast('Gagal delete: ' + errMsg(err));
+    deps.toast(t('failedDelete').replace('{0}', errMsg(err)));
   }
 }
 
 async function copy(text: string, deps: ExplorerMenuDeps) {
   try {
     await navigator.clipboard.writeText(text);
-    deps.toast('Path disalin: ' + text);
+    deps.toast(t('pathCopied').replace('{0}', text));
   } catch (err) {
-    deps.toast('Gagal menyalin: ' + errMsg(err));
+    deps.toast(t('failedCopy').replace('{0}', errMsg(err)));
   }
 }
 
@@ -271,14 +272,14 @@ export function showExplorerMenu(e: MouseEvent, target: ExplorerMenuTarget, deps
   const dir = targetDir(path, isDirectory);
   const root = deps.workspaceRoot();
   openMenu(e, [
-    { label: 'New File', icon: 'new-file', act: () => void create('file', dir, deps) },
-    { label: 'New Folder', icon: 'new-folder', act: () => void create('folder', dir, deps) },
+    { label: t('newFile'), icon: 'new-file', act: () => void create('file', dir, deps) },
+    { label: t('newFolder'), icon: 'new-folder', act: () => void create('folder', dir, deps) },
     'sep',
-    { label: 'Rename', disabled: isRoot, act: () => void rename(path, deps) },
+    { label: t('rename'), disabled: isRoot, act: () => void rename(path, deps) },
     'sep',
-    { label: 'Copy Path', icon: 'copy', disabled: !root, act: () => void copy(toAbsolute(root!, path), deps) },
-    { label: 'Copy Relative Path', icon: 'copy', disabled: isRoot, act: () => void copy(path, deps) },
+    { label: t('copyPath'), icon: 'copy', disabled: !root, act: () => void copy(toAbsolute(root!, path), deps) },
+    { label: t('copyRelativePath'), icon: 'copy', disabled: isRoot, act: () => void copy(path, deps) },
     'sep',
-    { label: 'Delete', icon: 'trash', disabled: isRoot, act: () => void remove(path, isDirectory, deps) },
+    { label: t('delete'), icon: 'trash', disabled: isRoot, act: () => void remove(path, isDirectory, deps) },
   ]);
 }
