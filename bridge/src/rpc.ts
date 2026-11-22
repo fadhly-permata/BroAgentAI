@@ -248,6 +248,71 @@ export interface BackgroundExecution {
 export type ShellStartResult = BackgroundExecution;
 export type ShellPollResult = BackgroundExecution;
 
+export type WorkflowWhen = "always" | "success" | "failure";
+export interface WorkflowExpectation {
+  exitCode?: number;
+  stdoutContains?: string;
+  stderrContains?: string;
+  notStdoutContains?: string;
+  notStderrContains?: string;
+}
+export interface WorkflowStepInput {
+  id: string;
+  command: string;
+  cwd?: string;
+  timeoutMs?: number;
+  when?: WorkflowWhen;
+  retries?: number;
+  retryDelayMs?: number;
+  expect?: WorkflowExpectation;
+}
+export interface WorkflowStep extends WorkflowStepInput {
+  when: WorkflowWhen;
+  retries: number;
+  retryDelayMs: number;
+}
+export interface WorkflowLimits {
+  maxSteps: number;
+  maxRetries: number;
+  maxAttempts: number;
+  maxRetryDelayMs: number;
+}
+export interface WorkflowPlan {
+  planId: string;
+  steps: WorkflowStep[];
+  declaredCommands: string[];
+  limits: WorkflowLimits;
+}
+export interface WorkflowAttempt {
+  executionId: string;
+  exitCode: number | null;
+  terminationReason: ExecutionResult["terminationReason"];
+  timedOut: boolean;
+  truncated: boolean;
+  stdout: string;
+  stderr: string;
+  passed: boolean;
+  failureReason?: string;
+}
+export interface WorkflowStepResult {
+  id: string;
+  command: string;
+  status: "passed" | "failed" | "skipped";
+  when: WorkflowWhen;
+  attempts: WorkflowAttempt[];
+}
+export interface WorkflowRunResult {
+  runId: string;
+  planId: string;
+  status: "completed" | "recovered" | "failed";
+  sessionId?: string;
+  taskId?: string;
+  startedAt: string;
+  durationMs: number;
+  summary: { total: number; passed: number; failed: number; skipped: number; retries: number };
+  steps: WorkflowStepResult[];
+}
+
 export type CapabilityKind = "runtime" | "cli" | "package-manager" | "project-script" | "package";
 export type CapabilityStatus = "available" | "missing";
 export type DependencyNeed = "json" | "search" | "http" | "git" | "build" | "python";

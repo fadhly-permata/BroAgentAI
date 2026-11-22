@@ -24,6 +24,7 @@ import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
 import { cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellPoll, shellStatus, shutdownShells, startShellBackground } from "./shell.ts";
+import { planWorkflow, runWorkflow } from "./workflow.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
@@ -422,6 +423,9 @@ export class RpcServer {
     this.register("shell.status", () => shellStatus());
     this.register("shell.history", (params) => shellHistory(readParams(params ?? {})));
     this.register("shell.history.clear", (params) => clearShellHistory(readParams(params ?? {})));
+
+    this.register("workflow.plan", (params) => planWorkflow(this.#store, readParams(params)));
+    this.register("workflow.run", (params) => runWorkflow(this.#store, readParams(params), (event, payload) => this.#emit(event, payload)));
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
     this.register("tools.list", () => listTools(this));

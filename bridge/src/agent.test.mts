@@ -63,6 +63,7 @@ test("approvalKey: one key per tool, but shell keys bind shell, cwd and command"
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, cwd: "/ws/sub" }));
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, shellFamily: "powershell" }));
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.start", { command: "npm test" }, base));
+  assert.equal(approvalKey("workflow.run", { planId: "unknown" }, base), "workflow.run:v2:sh:native-linux:/ws:/ws:unknown:");
 });
 
 test("dependency.install always asks and is never remembered as pre-approved", async () => {
@@ -106,6 +107,8 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(tools.some((t: any) => t.name === "shell.run" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "shell.start" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "shell.poll" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "workflow.plan" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "workflow.run" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "context.read" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "capabilities.recommend" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "dependency.plan" && t.category === "read"));
@@ -123,6 +126,9 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("cannot change approval mode"));
   assert.ok(prompt.includes("shell.start"));
   assert.ok(prompt.includes("shell.poll"));
+  assert.ok(prompt.includes("workflow.plan"));
+  assert.ok(prompt.includes("workflow.run"));
+  assert.ok(prompt.includes("do not preserve shell state"));
   assert.ok(prompt.includes("capabilities.recommend"));
   assert.ok(prompt.includes("dependency.install"));
   assert.ok(!prompt.includes("old context"));
@@ -260,6 +266,41 @@ test("agent.callTool links a shell execution to a session and task", async () =>
     params: { command: marker, sessionId: "../escape" },
     mode: "auto-approve",
   })).error?.code, -32602);
+});
+
+test("workflow.run through the agent requires approval and reports plan commands", async () => {
+  const { ok, call } = await fixture();
+  const plan = await ok("workflow.plan", {
+    steps: [{ id: "alpha", command: "node -e \"process.stdout.write('alpha')\"" }],
+  });
+  const check = await ok("agent.check", { command: "workflow.run", params: { planId: plan.planId }, mode: "always-ask" });
+  assert.equal(check.decision, "ask");
+  assert.equal(check.category, "execute");
+  assert.match(check.approvalKey, /^workflow\.run:v2:/);
+  assert.match(check.preview, /alpha/);
+  assert.equal((await call("agent.callTool", { command: "workflow.run", params: { planId: plan.planId }, mode: "always-ask" })).error?.code, -32022);
+
+  const stale = await call("agent.callTool", {
+    command: "workflow.run",
+    params: { planId: plan.planId, approvalContext: { ...check.approvalContext, cwd: "/stale" } },
+    mode: "always-ask",
+    approved: true,
+  });
+  assert.equal(stale.error?.code, -32022);
+  assert.match(stale.error?.message ?? "", /approval expired/);
+
+  const res = await ok("agent.callTool", {
+    command: "workflow.run",
+    params: { planId: plan.planId, approvalContext: check.approvalContext },
+    mode: "always-ask",
+    approved: true,
+  });
+  const out = JSON.parse(res.text);
+  assert.equal(out.status, "completed");
+  assert.equal(out.steps[0].attempts[0].stdout, "alpha");
+
+  const override = await call("agent.check", { command: "workflow.run", params: { planId: plan.planId, shell: "bash" }, mode: "always-ask" });
+  assert.equal(override.error?.code, -32602);
 });
 
 test("large tool results are capped", async () => {
