@@ -21,7 +21,7 @@ import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
-import { detectedShell, runShell } from "./shell.ts";
+import { cancelShell, detectShell, detectedShell, refreshShell, runShell, shellOutput, shellStatus, shutdownShells } from "./shell.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
@@ -114,6 +114,7 @@ export class RpcServer {
   async shutdown(): Promise<void> {
     this.#watcher?.close();
     this.#terminals.closeAll();
+    await shutdownShells();
     await this.#mcp.stopAll();
   }
 
@@ -229,10 +230,14 @@ export class RpcServer {
       configPath: this.#store.configPath,
     }));
 
-    this.register("shell.info", () => ({
-      ...detectedShell(),
-      notSandbox: NOT_SANDBOX_NOTICE,
-    }));
+    this.register("shell.info", () => {
+      refreshShell();
+      return {
+        ...detectedShell(),
+        notSandbox: NOT_SANDBOX_NOTICE,
+        ...shellStatus(),
+      };
+    });
 
     this.register("workspace.list", () => ({
       workspaces: this.#store.list(),
@@ -392,8 +397,14 @@ export class RpcServer {
     // One-shot shell command for the agent. Not confined to the workspace; see shell.ts.
     this.register("shell.run", (params) => {
       const p = readParams(params);
-      return runShell(this.#store, p.command, p.cwd, p.timeoutMs, p);
+      return runShell(this.#store, p.command, p.cwd, p.timeoutMs, p, (info) => this.#emit("shell.started", info));
     });
+    this.register("shell.cancel", (params) => cancelShell(readParams(params).executionId));
+    this.register("shell.output", (params) => {
+      const p = readParams(params);
+      return shellOutput(p.executionId, p.stream, p.offsetBytes);
+    });
+    this.register("shell.status", () => shellStatus());
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
     this.register("tools.list", () => listTools(this));

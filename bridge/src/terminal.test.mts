@@ -4,7 +4,7 @@ import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcServer } from "./rpc-server.ts";
-import { terminalShellFor } from "./shell.ts";
+import { detectShell, terminalShellFor } from "./shell.ts";
 import { WorkspaceStore } from "./workspace.ts";
 
 let hasPty = true;
@@ -77,8 +77,10 @@ test("term.create requires an active workspace", async () => {
 
 test("terminal shell is detection-only and rejects overrides", async () => {
   const detected = terminalShellFor();
-  assert.equal(detected.file, process.platform === "win32" ? "powershell.exe" : "/bin/sh");
-  assert.equal(detected.family, process.platform === "win32" ? "powershell" : "sh");
+  const expected = detectShell();
+  assert.equal(detected.file, expected.file);
+  assert.equal(detected.family, expected.family);
+  assert.equal(detected.environment, expected.environment);
 
   const { s, call } = await fixture();
   try {

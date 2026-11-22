@@ -72,6 +72,7 @@ export enum ErrorCode {
   SHELL_START_FAILED = -32024,
   SHELL_UNSUPPORTED = -32025,
   SHELL_CWD_INVALID = -32026,
+  SHELL_BUSY = -32027,
 }
 
 // ============================================================================
@@ -310,7 +311,7 @@ export interface ExecutionResult {
   environment: string;
   cwd: string;
   exitCode: number | null;
-  terminationReason: "completed" | "timeout" | "signal" | "error";
+  terminationReason: "completed" | "timeout" | "cancelled" | "signal" | "error";
   stdout: string;
   stderr: string;
   encoding: "utf8";
@@ -319,4 +320,20 @@ export interface ExecutionResult {
   truncation: ExecutionTruncation;
   timeoutMs: number;
   durationMs: number;
+}
+
+export interface ShellOutput {
+  executionId: string;
+  stream: "stdout" | "stderr";
+  offsetBytes: number;
+  nextOffsetBytes: number;
+  data: string;
+  truncated: boolean;
+  totalBytes: number;
+}
+
+export interface ShellStatus {
+  maxConcurrency: number;
+  active: string[];
+  archived: number;
 }

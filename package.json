@@ -21,6 +21,7 @@
     "test": "npm run test --workspaces --if-present",
     "e2e": "npm run build && npm run e2e -w @broagentai/extension && npm run e2e:native -w @broagentai/extension",
     "check": "npm run typecheck && npm run test && npm run build",
+    "bench:shell": "npm run bench -w @broagentai/bridge",
     "release": "node scripts/release.mjs"
   },
   "engines": {

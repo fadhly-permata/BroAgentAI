@@ -1230,13 +1230,13 @@ Execution rules:
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
-| B1.1 | Shell registry and detection | `bridge/src/shell.ts` | Deterministic priority, cached result, no agent parameter; missing shells return structured errors | Pending |
-| B1.2 | MVP shell wrappers | `bridge/src/shell.ts` | `pwsh`/`powershell.exe`, `zsh`/`bash`/`sh`, and `bash`/`sh` pass quoting, exit-code, encoding, and cwd fixtures | Pending |
-| B1.3 | Process-tree cleanup | `bridge/src/shell.ts`, `bridge/src/terminal.ts` | Job Objects on Windows, process groups on POSIX; Windows execution refused if Job Objects are unavailable; detached children tested | Pending |
-| B1.4 | Timeout and cancellation | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Stable executionId cancels a running command and reports termination reason | Pending |
-| B1.5 | Bounded concurrency | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Concurrent runs are bounded; excess work is queued or rejected with a structured error | Pending |
-| B1.6 | Output bounds and continuation | `bridge/src/shell.ts`, `bridge/src/rpc.ts` | Truncation metadata and controlled output continuation or artifact access are available | Pending |
-| B1.7 | Benchmark gate | test and benchmark harness | Representative workloads are equal to or faster than native tools; slower blocks native-tool removal | Pending |
+| B1.1 | Shell registry and detection | `bridge/src/shell.ts` | Deterministic priority, cached result, no agent parameter; missing shells return structured errors | Done |
+| B1.2 | MVP shell wrappers | `bridge/src/shell.ts` | `pwsh`/`powershell.exe`, `zsh`/`bash`/`sh`, and `bash`/`sh` pass quoting, exit-code, encoding, and cwd fixtures | Done |
+| B1.3 | Process-tree cleanup | `bridge/src/shell.ts`, `bridge/src/terminal.ts` | Job Objects on Windows, process groups on POSIX; Windows execution refused if Job Objects are unavailable; detached children tested | Done |
+| B1.4 | Timeout and cancellation | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Stable executionId cancels a running command and reports termination reason | Done |
+| B1.5 | Bounded concurrency | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Concurrent runs are bounded; excess work is queued or rejected with a structured error | Done |
+| B1.6 | Output bounds and continuation | `bridge/src/shell.ts`, `bridge/src/rpc.ts` | Truncation metadata and controlled output continuation or artifact access are available | Done |
+| B1.7 | Benchmark gate | test and benchmark harness | Representative workloads are equal to or faster than native tools; slower blocks native-tool removal | Done |
 
 ### P3 — Medium: Observability and Rollout
 

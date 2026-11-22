@@ -68,6 +68,7 @@ export const BridgeErrorCode = {
   SHELL_START_FAILED: -32024,
   SHELL_UNSUPPORTED: -32025,
   SHELL_CWD_INVALID: -32026,
+  SHELL_BUSY: -32027,
 } as const;
 
 const DEFAULT_TIMEOUT_MS = 15000;

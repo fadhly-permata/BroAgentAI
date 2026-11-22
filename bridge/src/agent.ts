@@ -19,7 +19,7 @@ import type { ApprovalContext } from "./rpc.ts";
 import { WorkspaceError } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 import type { McpManager } from "./mcp.ts";
-import { assertNoShellOverride, detectedShell, shellFor } from "./shell.ts";
+import { assertNoShellOverride, detectShell, detectedShell, shellFor } from "./shell.ts";
 
 /**
  * Approval modes.
@@ -69,8 +69,9 @@ export function decide(category: ToolCategory, mode: AgentMode): Decision {
  */
 export function approvalKey(command: string, params: Record<string, unknown>, context?: Partial<ApprovalContext>): string {
   if (command !== "shell.run") return command;
-  const shell = context?.shellFamily ?? shellFor().family;
-  const environment = context?.environment ?? shellFor().environment;
+  const detected = detectShell();
+  const shell = context?.shellFamily ?? detected.family;
+  const environment = context?.environment ?? detected.environment;
   const workspace = context?.workspacePath ?? "";
   const cwd = context?.cwd ?? String(params.cwd ?? ".");
   const line = String(params.command ?? "").trim();
@@ -147,6 +148,13 @@ export const BUILTIN_TOOLS: ToolDescriptor[] = [
     category: "execute",
     description: `Run one non-interactive ${shellFor().name} command in the workspace root and get stdout, stderr and the exit code. Use it for tests, builds, linters, package managers or anything the other tools cannot do. No stdin; default timeout 60 s.`,
     params: '{"command": "npm test", "cwd": "optional/sub/dir", "timeoutMs": 60000}',
+    source: "builtin",
+  },
+  {
+    name: "shell.output",
+    category: "read",
+    description: "Read a bounded continuation slice from a completed shell.run output archive.",
+    params: '{"executionId": "from shell.run result", "stream": "stdout", "offsetBytes": 0}',
     source: "builtin",
   },
 ];
@@ -346,7 +354,7 @@ export async function buildPrompt(host: ToolInvoker, mode: unknown, handoff = fa
     `- Path: ${active.path}`,
     `- OS: ${platform()}`,
     `- Git branch: ${branch}`,
-    `- Shell: ${shellFor().name} (write shell.run commands for this shell)`,
+    `- Shell: ${detectShell().family} (write shell.run commands for this shell)`,
     `- Approval mode: ${agentMode}`,
     "",
     "## Project context (AGENTS.md)",

@@ -8,6 +8,7 @@ import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
 import { AGENT_MODES, approvalKey, decide, normalizeMode, writePreview } from "./agent.ts";
 import type { ToolCategory } from "./agent.ts";
+import { detectShell } from "./shell.ts";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/mcp-fixture-server.mjs", import.meta.url));
 
@@ -91,7 +92,7 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("release-notes"));
   assert.ok(!prompt.includes("Do the thing.")); // skill bodies are read on demand
   assert.ok(prompt.includes("- shell.run"));
-  assert.match(prompt, new RegExp(`- Shell: ${process.platform === "win32" ? "powershell" : "sh"}`));
+  assert.match(prompt, new RegExp(`- Shell: ${detectShell().family}`));
   assert.match(prompt, /READY/);
 
   // A handoff prompt must not ask for READY: the AI continues the moved task.
