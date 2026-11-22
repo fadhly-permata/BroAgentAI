@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
-import { detectShell, normalizeShellError, shellFor, shellInfoReport } from "./shell.ts";
+import { additionalShellPlan, detectShell, normalizeShellError, shellFor, shellInfoReport } from "./shell.ts";
 import { ErrorCode } from "./rpc.ts";
 import { WorkspaceError } from "./workspace.ts";
 
@@ -64,6 +64,17 @@ test("detectShell uses deterministic priority, caches, and reports missing shell
   assert.equal(detectShell().file.length > 0, true);
 });
 
+test("detectShell keeps pwsh and Windows PowerShell families distinct", () => {
+  const pwsh = detectShell({ platform: "win32", probe: (file) => file === "pwsh.exe" });
+  assert.equal(pwsh.family, "pwsh");
+  assert.equal(pwsh.file, "pwsh.exe");
+  assert.deepEqual(pwsh.args("Write-Output hi").slice(0, 4), ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+
+  const powershell = detectShell({ platform: "win32", probe: (file) => file === "powershell.exe" });
+  assert.equal(powershell.family, "powershell");
+  assert.equal(powershell.file, "powershell.exe");
+});
+
 test("shell errors normalize to stable RPC codes", () => {
   const missing = Object.assign(new Error("spawn missing"), { code: "ENOENT" });
   assert.equal(normalizeShellError(missing, "missing shell").code, ErrorCode.SHELL_NOT_AVAILABLE);
@@ -92,12 +103,42 @@ test("shellInfoReport exposes read-only version, encoding, and fallbacks", () =>
   }
 });
 
+test("additionalShellPlan evaluates deferred environments without enabling them", () => {
+  const windows = additionalShellPlan({ platform: "win32", probe: (file) => file === "cmd.exe" });
+  assert.equal(windows.enabled, false);
+  assert.equal(windows.policy, "evaluation-only");
+  assert.equal(windows.mvpGate, "B1.7-benchmark-and-MVP-matrix");
+  assert.deepEqual(windows.environments.map((entry) => entry.id), ["cmd", "wsl", "git-bash"]);
+  const cmd = windows.environments.find((entry) => entry.id === "cmd");
+  assert.ok(cmd);
+  assert.equal(cmd.available, true);
+  assert.equal(cmd.file, "cmd.exe");
+  assert.equal(cmd.status, "deferred");
+  assert.ok(cmd.requirements.length > 0);
+
+  const mac = additionalShellPlan({ platform: "darwin", probe: (file) => file === "fish" });
+  assert.deepEqual(mac.environments.map((entry) => entry.id), ["fish", "nushell"]);
+  const fish = mac.environments.find((entry) => entry.id === "fish");
+  assert.ok(fish);
+  assert.equal(fish.available, true);
+  assert.equal(fish.file, "fish");
+
+  for (const entry of windows.environments) {
+    assert.equal(entry.status, "deferred");
+    assert.equal(entry.environment, "native-windows");
+  }
+  for (const entry of mac.environments) {
+    assert.equal(entry.status, "deferred");
+    assert.equal(entry.environment, "native-macos");
+  }
+});
+
 test("shell.run returns stdout, stderr and the exit code", async () => {
   const { run } = await fixture();
   const ok = await run({ command: win ? "Select-String -Path notes.txt -Pattern needle | ForEach-Object Line" : "grep needle notes.txt" });
   assert.equal(ok.exitCode, 0);
   assert.equal(ok.stdout.trim(), "needle here");
-  assert.equal(win ? ok.shell === "powershell" : ["bash", "zsh", "sh"].includes(ok.shell), true);
+  assert.equal(win ? ["pwsh", "powershell"].includes(ok.shell) : ["bash", "zsh", "sh"].includes(ok.shell), true);
   assert.equal(ok.shellFamily, ok.shell);
   assert.equal(ok.encoding, "utf8");
   assert.equal(ok.terminationReason, "completed");

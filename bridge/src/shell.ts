@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { redactSecrets } from "./context.ts";
 import { confinePath } from "./fs.ts";
 import { ErrorCode, isShellErrorCode } from "./rpc.ts";
-import type { BackgroundExecution, DetectedShellInfo, ExecutionHistoryEntry, ExecutionResult, ExecutionTruncation, ShellFallbackInfo, ShellErrorCode, ShellHistory, ShellInfoReport, ShellOutput, ShellStatus } from "./rpc.ts";
+import type { AdditionalShellEvaluation, AdditionalShellId, AdditionalShellPlan, BackgroundExecution, DetectedShellInfo, ExecutionHistoryEntry, ExecutionResult, ExecutionTruncation, ShellFallbackInfo, ShellErrorCode, ShellHistory, ShellInfoReport, ShellOutput, ShellStatus } from "./rpc.ts";
 import { WorkspaceError } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 
@@ -52,9 +52,13 @@ export function normalizeShellError(error: unknown, message: string): WorkspaceE
   return shellFailure(ErrorCode.SHELL_START_FAILED, message);
 }
 
-export type ShellFamily = "powershell" | "bash" | "zsh" | "sh";
+export type ShellFamily = "pwsh" | "powershell" | "bash" | "zsh" | "sh";
 export type ExecutionEnvironment = "native-windows" | "native-macos" | "native-linux" | "native-unknown";
 export type TerminationReason = ExecutionResult["terminationReason"];
+
+export function isPowerShellFamily(family: string): boolean {
+  return family === "pwsh" || family === "powershell";
+}
 
 export interface ShellInfo {
   name: ShellFamily;
@@ -115,7 +119,7 @@ function encodePowerShell(command: string): string {
 }
 
 function shellArgs(family: ShellFamily, command: string): string[] {
-  if (family === "powershell") {
+  if (isPowerShellFamily(family)) {
     return [
       "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
       encodePowerShell(`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${command}`),
@@ -149,7 +153,7 @@ export function shellFor(platform: NodeJS.Platform = process.platform): ShellInf
 
 const SHELL_REGISTRY: Record<ExecutionEnvironment, ShellCandidate[]> = {
   "native-windows": [
-    { family: "powershell", file: "pwsh.exe", priority: 1 },
+    { family: "pwsh", file: "pwsh.exe", priority: 1 },
     { family: "powershell", file: "powershell.exe", priority: 2 },
   ],
   "native-macos": [
@@ -217,7 +221,7 @@ const versionCache = new Map<string, string>();
 function shellVersion(shell: ShellInfo): string {
   const cached = versionCache.get(shell.file);
   if (cached) return cached;
-  const args = shell.family === "powershell"
+  const args = isPowerShellFamily(shell.family)
     ? shell.args("$PSVersionTable.PSVersion.ToString()")
     : shell.family === "bash"
       ? shell.args('printf "%s" "$BASH_VERSION"')
@@ -253,6 +257,100 @@ function shellFallbacks(shell: ShellInfo): ShellFallbackInfo[] {
   return fallbacks;
 }
 
+interface AdditionalShellCandidate {
+  id: AdditionalShellId;
+  files: string[];
+  environments: ExecutionEnvironment[];
+  requirements: string[];
+}
+
+const ADDITIONAL_SHELL_REGISTRY: AdditionalShellCandidate[] = [
+  {
+    id: "cmd",
+    files: ["cmd.exe"],
+    environments: ["native-windows"],
+    requirements: [
+      "separate quoting, exit-code and encoding fixtures",
+      "separate Windows process-tree and cancellation wrapper",
+    ],
+  },
+  {
+    id: "wsl",
+    files: ["wsl.exe"],
+    environments: ["native-windows"],
+    requirements: [
+      "distribution selection and Windows-to-Linux path translation",
+      "separate encoding, cancellation and cleanup fixtures",
+    ],
+  },
+  {
+    id: "git-bash",
+    files: ["C:\\Program Files\\Git\\bin\\bash.exe", "C:\\Program Files\\Git\\usr\\bin\\bash.exe"],
+    environments: ["native-windows"],
+    requirements: [
+      "MSYS path translation and executable resolution",
+      "separate quoting, encoding and cleanup fixtures",
+    ],
+  },
+  {
+    id: "fish",
+    files: ["fish"],
+    environments: ["native-macos", "native-linux"],
+    requirements: [
+      "separate quoting and exit-code fixtures",
+      "separate process-group cleanup and encoding fixtures",
+    ],
+  },
+  {
+    id: "nushell",
+    files: ["nu"],
+    environments: ["native-macos", "native-linux"],
+    requirements: [
+      "separate structured-quoting and exit-code fixtures",
+      "separate process-group cleanup and encoding fixtures",
+    ],
+  },
+];
+
+export function additionalShellPlan(options: DetectOptions = {}): AdditionalShellPlan {
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  const probe = options.probe ?? ((file: string) => resolveCommand(file, env, platform));
+  const environment = environmentFor(platform);
+  const candidates = ADDITIONAL_SHELL_REGISTRY.filter((candidate) => candidate.environments.includes(environment));
+  const evaluated: AdditionalShellEvaluation[] = candidates.map((candidate) => {
+    let file: string | null = null;
+    for (const candidateFile of candidate.files) {
+      let resolved: string | boolean | null | undefined = false;
+      try {
+        resolved = probe(candidateFile);
+      } catch {
+        resolved = false;
+      }
+      if (resolved) {
+        file = typeof resolved === "string" ? resolved : candidateFile;
+        break;
+      }
+    }
+    return {
+      id: candidate.id,
+      available: file !== null,
+      file,
+      environment,
+      status: "deferred",
+      reason: "MVP matrix must pass on every target platform before execution is enabled",
+      requirements: candidate.requirements,
+    };
+  });
+  return {
+    generatedAt: new Date().toISOString(),
+    enabled: false,
+    policy: "evaluation-only",
+    mvpGate: "B1.7-benchmark-and-MVP-matrix",
+    environments: evaluated,
+  };
+}
+
 export function shellInfoReport(): ShellInfoReport {
   const shell = refreshShell();
   return {
@@ -282,7 +380,7 @@ export function terminalShellFor(options: DetectOptions = {}): { family: ShellFa
     family: shell.family,
     environment: shell.environment,
     file: shell.file,
-    args: shell.family === "powershell" ? ["-NoLogo", "-NoProfile"] : [],
+    args: isPowerShellFamily(shell.family) ? ["-NoLogo", "-NoProfile"] : [],
   };
 }
 

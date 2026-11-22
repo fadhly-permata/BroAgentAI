@@ -1,7 +1,7 @@
 import { confinePath } from "./fs.ts";
 import { ErrorCode } from "./rpc.ts";
 import type { FallbackPlan, FallbackSafety } from "./rpc.ts";
-import { assertNoShellOverride, detectedShell, MAX_COMMAND_CHARS } from "./shell.ts";
+import { assertNoShellOverride, detectedShell, isPowerShellFamily, MAX_COMMAND_CHARS } from "./shell.ts";
 import { WorkspaceError } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 
@@ -65,31 +65,31 @@ function powershell(value: string): string {
 const LONG_TAIL_FS: Record<string, FallbackTemplate> = {
   bulkRename: {
     write: true,
-    command: (family) => family === "powershell"
+    command: (family) => isPowerShellFamily(family)
       ? "Get-ChildItem -File | Rename-Item -NewName { $_.Name -replace 'old','new' }"
       : "for f in *; do [ -f \"$f\" ] && mv -- \"$f\" \"${f/old/new}\"; done",
   },
   bulkCopy: {
     write: true,
-    command: (family) => family === "powershell"
+    command: (family) => isPowerShellFamily(family)
       ? "Get-ChildItem -File | Copy-Item -Destination backup"
       : "cp -R -- src backup",
   },
   jsonTransform: {
     write: true,
-    command: (family) => family === "powershell"
+    command: (family) => isPowerShellFamily(family)
       ? "Get-Content -Raw data.json | ConvertFrom-Json | ConvertTo-Json | Set-Content data.json"
       : "node -e \"const fs=require('fs');const p='data.json';fs.writeFileSync(p,JSON.stringify(JSON.parse(fs.readFileSync(p,'utf8')),null,2))\"",
   },
   crossFileEdit: {
     write: true,
-    command: (family) => family === "powershell"
+    command: (family) => isPowerShellFamily(family)
       ? "Get-ChildItem -Recurse -File -Filter *.ts | ForEach-Object { (Get-Content $_.FullName) -replace 'old','new' | Set-Content $_.FullName }"
       : "rg -l 'old' -g '*.ts' | xargs sed -i 's/old/new/g'",
   },
   largeTreeSearch: {
     write: false,
-    command: (family) => family === "powershell"
+    command: (family) => isPowerShellFamily(family)
       ? "Get-ChildItem -Recurse -File | Select-String -Pattern 'needle'"
       : "rg -n 'needle' .",
   },
@@ -102,7 +102,7 @@ const LONG_TAIL_GIT: Record<string, FallbackTemplate> = {
   reflog: { write: false, command: () => "git reflog -n 20" },
   blame: {
     write: false,
-    command: (family, params) => `git blame -- '${family === "powershell" ? powershell(textParam(params, "path", /^[A-Za-z0-9._/\\ -]{1,200}$/)) : textParam(params, "path", /^[A-Za-z0-9._/\\ -]{1,200}$/)}'`,
+    command: (family, params) => `git blame -- '${isPowerShellFamily(family) ? powershell(textParam(params, "path", /^[A-Za-z0-9._/\\ -]{1,200}$/)) : textParam(params, "path", /^[A-Za-z0-9._/\\ -]{1,200}$/)}'`,
   },
   bisect: { write: true, command: () => "git bisect start" },
   rebaseContinue: { write: true, command: () => "git rebase --continue" },

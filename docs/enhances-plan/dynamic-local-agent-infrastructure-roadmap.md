@@ -1257,7 +1257,7 @@ Execution rules:
 | B3.3 | Capability discovery and dependency policy | bridge capability layer | Existing capabilities are preferred; installation requires explicit approval and records side effects | Done |
 | B3.4 | Background and persistent sessions | `bridge/src/shell.ts` | Short and long-running tasks use the same execution contract | Done |
 | B3.5 | Workflow composition and recovery | `bridge/src/workflow.ts` | Conditional execution, controlled retries, and validation feedback are supported | Done |
-| B3.6 | Additional shells and environments | `bridge/src/shell.ts` | `cmd`, fish, Nushell, WSL, and Git Bash are evaluated only after MVP validation | Pending |
+| B3.6 | Additional shells and environments | `bridge/src/shell.ts` | `cmd`, fish, Nushell, WSL, and Git Bash are evaluated only after MVP validation | Done |
 
 ## 15. AGENTS.md Context Contract
 

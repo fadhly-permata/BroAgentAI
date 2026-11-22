@@ -108,6 +108,7 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(tools.some((t: any) => t.name === "shell.start" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "shell.poll" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "shell.fallbackPlan" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "shell.environmentPlan" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "workflow.plan" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "workflow.run" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "context.read" && t.category === "read"));
@@ -128,6 +129,7 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("shell.start"));
   assert.ok(prompt.includes("shell.poll"));
   assert.ok(prompt.includes("shell.fallbackPlan"));
+  assert.ok(prompt.includes("shell.environmentPlan"));
   assert.ok(prompt.includes("Use fs.* and git.* by default"));
   assert.ok(prompt.includes("workflow.plan"));
   assert.ok(prompt.includes("workflow.run"));
@@ -179,6 +181,9 @@ test("agent.check reports decision, approval key, paths and a preview without ex
 test("agent.callTool enforces the mode on the host", async () => {
   const { ok, call, ws } = await fixture();
   assert.match((await ok("agent.callTool", { command: "fs.readFile", params: { path: "README.md" }, mode: "read-only" })).text, /line two/);
+  const envPlan = await ok("agent.callTool", { command: "shell.environmentPlan", params: {}, mode: "read-only" });
+  assert.equal(JSON.parse(envPlan.text).enabled, false);
+  assert.equal((await call("agent.callTool", { command: "shell.environmentPlan", params: { shell: "cmd.exe" }, mode: "read-only" })).error?.code, -32602);
 
   const write = { command: "fs.writeFile", params: { path: "out.txt", content: "hello" } };
   assert.equal((await call("agent.callTool", { ...write, mode: "read-only", approved: true })).error?.code, -32022); // approval cannot beat read-only

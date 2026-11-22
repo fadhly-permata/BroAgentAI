@@ -407,6 +407,24 @@ export interface ShellStatus {
   background: string[];
 }
 
+export type AdditionalShellId = "cmd" | "fish" | "nushell" | "wsl" | "git-bash";
+export interface AdditionalShellEvaluation {
+  id: AdditionalShellId;
+  available: boolean;
+  file: string | null;
+  environment: string;
+  status: "deferred";
+  reason: string;
+  requirements: string[];
+}
+export interface AdditionalShellPlan {
+  generatedAt: string;
+  enabled: false;
+  policy: "evaluation-only";
+  mvpGate: "B1.7-benchmark-and-MVP-matrix";
+  environments: AdditionalShellEvaluation[];
+}
+
 export interface BackgroundExecution {
   executionId: string;
   sessionId?: string;

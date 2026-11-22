@@ -89,7 +89,7 @@ test("typed filesystem and Git RPC methods remain registered alongside shell fal
     "fs.writeFile", "fs.createFile", "fs.mkdir", "fs.rename", "fs.delete",
     "git.status", "git.diff", "git.branches", "git.stage", "git.unstage", "git.discard",
     "git.commit", "git.createBranch", "git.checkout", "git.fetch", "git.pull", "git.push",
-    "shell.run", "shell.fallbackPlan",
+    "shell.run", "shell.fallbackPlan", "shell.environmentPlan",
   ];
   for (const method of required) assert.ok(methods.includes(method), method);
 });

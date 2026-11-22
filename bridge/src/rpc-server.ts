@@ -23,7 +23,7 @@ import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
-import { cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellPoll, shellStatus, shutdownShells, startShellBackground } from "./shell.ts";
+import { additionalShellPlan, cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellPoll, shellStatus, shutdownShells, startShellBackground } from "./shell.ts";
 import { planWorkflow, runWorkflow } from "./workflow.ts";
 import { fallbackPlan } from "./fallback.ts";
 import { TerminalManager } from "./terminal.ts";
@@ -240,6 +240,8 @@ export class RpcServer {
       notSandbox: NOT_SANDBOX_NOTICE,
       ...shellStatus(),
     }));
+
+    this.register("shell.environmentPlan", () => additionalShellPlan());
 
     this.register("environment.info", () => discoverEnvironment());
     this.register("environment.refresh", () => refreshEnvironment());
