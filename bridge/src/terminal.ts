@@ -7,6 +7,7 @@
  */
 
 import { ErrorCode } from "./rpc.ts";
+import { assertNoShellOverride, terminalShellFor } from "./shell.ts";
 import { WorkspaceError } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 
@@ -18,8 +19,6 @@ export const MAX_INPUT_BYTES = 64 * 1024;
 const FLUSH_INTERVAL_MS = 16;
 /** One event never carries more than this many characters. */
 const MAX_EVENT_CHARS = 64 * 1024;
-/** Override the shell (used by tests and by users who prefer another shell). */
-export const SHELL_ENV = "BROAGENTAI_SHELL";
 
 export type EmitEvent = (event: string, data: unknown) => void;
 
@@ -37,6 +36,8 @@ interface Session {
   pty: PtyProcess;
   cwd: string;
   shell: string;
+  shellFamily: string;
+  environment: string;
   pending: string;
   timer: NodeJS.Timeout | null;
   exited: boolean;
@@ -46,13 +47,8 @@ export interface TerminalInfo {
   sessionId: string;
   cwd: string;
   shell: string;
-}
-
-function defaultShell(env: NodeJS.ProcessEnv): { file: string; args: string[] } {
-  const override = env[SHELL_ENV];
-  if (override) return { file: override, args: [] };
-  if (process.platform === "win32") return { file: "powershell.exe", args: ["-NoLogo"] };
-  return { file: env.SHELL || "/bin/bash", args: [] };
+  shellFamily: string;
+  environment: string;
 }
 
 function clampDimension(value: unknown, fallback: number): number {
@@ -71,8 +67,9 @@ export class TerminalManager {
     this.#emit = emit;
   }
 
-  /** Start a shell in the active workspace root. */
-  async create(cols?: unknown, rows?: unknown): Promise<TerminalInfo> {
+  /** Start the detected shell in the active workspace root. */
+  async create(cols?: unknown, rows?: unknown, params: Record<string, unknown> = {}): Promise<TerminalInfo> {
+    assertNoShellOverride(params);
     const active = this.#store.active();
     if (!active) throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
     if (this.#sessions.size >= MAX_TERMINALS) {
@@ -91,7 +88,7 @@ export class TerminalManager {
       );
     }
 
-    const shell = defaultShell(process.env);
+    const shell = terminalShellFor();
     let pty: PtyProcess;
     try {
       pty = spawn(shell.file, shell.args, {
@@ -109,7 +106,7 @@ export class TerminalManager {
     }
 
     const session: Session = {
-      id: `t${this.#nextId++}`, pty, cwd: active.path, shell: shell.file, pending: "", timer: null, exited: false,
+      id: `t${this.#nextId++}`, pty, cwd: active.path, shell: shell.file, shellFamily: shell.family, environment: shell.environment, pending: "", timer: null, exited: false,
     };
     this.#sessions.set(session.id, session);
 
@@ -124,7 +121,7 @@ export class TerminalManager {
       this.#emit("term.exit", { sessionId: session.id, exitCode });
     });
 
-    return { sessionId: session.id, cwd: session.cwd, shell: session.shell };
+    return { sessionId: session.id, cwd: session.cwd, shell: session.shell, shellFamily: session.shellFamily, environment: session.environment };
   }
 
   #flush(session: Session): void {
@@ -167,7 +164,13 @@ export class TerminalManager {
   }
 
   list(): TerminalInfo[] {
-    return [...this.#sessions.values()].map((s) => ({ sessionId: s.id, cwd: s.cwd, shell: s.shell }));
+    return [...this.#sessions.values()].map((s) => ({
+      sessionId: s.id,
+      cwd: s.cwd,
+      shell: s.shell,
+      shellFamily: s.shellFamily,
+      environment: s.environment,
+    }));
   }
 
   /** Kill every session (bridge shutdown). */

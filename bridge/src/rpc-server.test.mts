@@ -15,7 +15,9 @@ test("system.ping returns host + protocol version", async () => {
   const s = server();
   const res = await s.handle({ id: 1, method: "system.ping" });
   assert.equal(res.id, 1);
-  assert.equal((res.result as any).protocolVersion, 1);
+  assert.equal((res.result as any).protocolVersion, 2);
+  assert.deepEqual((res.result as any).protocol.supported, [1, 2]);
+  assert.deepEqual((res.result as any).protocol.deprecated, [1]);
   assert.equal((res.result as any).hostName, "com.broagentai.host");
 });
 

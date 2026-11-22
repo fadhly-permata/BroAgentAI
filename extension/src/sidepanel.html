@@ -120,6 +120,8 @@
   <div class="panel-head"><h2 data-i18n="agent">Agent</h2><span id="agentPill" class="pill pill-warn"><span class="dot"></span><span id="agentSession" data-i18n="noSession">Belum ada sesi</span></span><button id="agentNoticeShow" class="action hidden" data-i18n-title="agentNoticeShow" title="Show info"><i data-icon="info"></i></button></div>
   <div class="panel-body">
     <div id="agentNotice" class="callout callout-info notice"><i data-icon="agent" class="callout-ico"></i><button id="agentNoticeClose" class="action notice-x" data-i18n-title="dismiss" title="Dismiss"><i data-icon="close"></i></button><div><strong data-i18n="monitoringAgent">Monitoring &amp; Approval Agent</strong><p data-i18n="agentDesc">Chat tetap di tab AI Anda. Panel ini menjalankan perintah tool dari AI, meminta persetujuan bila perlu, dan mencatat semuanya.</p></div></div>
+    <div class="callout callout-warn"><i data-icon="warning"></i><div><strong data-i18n="shellTrustTitle">Bukan sandbox</strong><p data-i18n="shellTrustDesc">Pembatasan workspace berlaku untuk path fs.* dan Git, bukan process. Perintah shell berjalan dengan hak akun Anda.</p></div></div>
+    <div id="shellBanner" class="callout callout-warn hidden"><i data-icon="warning"></i><div><strong data-i18n="shellChangeTitle">Shell berubah</strong><p id="shellBannerText" data-i18n="shellChangeDesc">Shell terdeteksi berubah. Konfirmasi sebelum perintah berikutnya.</p></div><button id="shellBannerConfirm" class="mini" data-i18n="shellConfirm">Confirm</button></div>
 
     <div class="section">
       <div class="kv chat-detect"><span class="kv-key" data-i18n="chatTab">Tab chat</span><strong id="detectedChat" class="kv-val">-</strong></div>
@@ -137,7 +139,7 @@
       <p id="modeHint" class="hint"></p>
     </div>
 
-    <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><p id="apNote" class="hint"></p><div class="btn-row"><button id="apAllow" class="primary">Allow</button><button id="apDeny" class="danger">Deny</button></div></div>
+    <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><p id="apContext" class="hint hidden"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><p id="apNote" class="hint"></p><div class="btn-row"><button id="apAllow" class="primary">Allow</button><button id="apDeny" class="danger">Deny</button></div></div>
 
     <div class="log-section">
       <div class="log-head"><span class="section-title" data-i18n="activity">Aktivitas</span><div class="log-tools"><select id="logFilter" class="compact" aria-label="Filter"><option value="all" data-i18n="all">Semua</option><option value="ok" data-i18n="success">Sukses</option><option value="denied" data-i18n="denied">Ditolak</option><option value="error" data-i18n="error">Error</option></select><button id="copyLog" class="action" data-i18n-title="copy" title="Copy"><i data-icon="copy"></i></button><button id="clearLog" class="action" data-i18n-title="clear" title="Clear"><i data-icon="clear-all"></i></button></div></div>
@@ -188,12 +190,14 @@
     <h3 data-i18n="companionHost">Companion Host</h3>
     <div class="kv"><span class="kv-key" data-i18n="versionLabel">Version</span><b class="kv-val">0.1.0-dev</b></div>
     <div class="kv"><span class="kv-key" data-i18n="extIdLabel">Extension ID</span><code id="extId" class="kv-val"></code></div>
+    <div class="kv"><span class="kv-key" data-i18n="protocolLabel">Protocol</span><span id="protocolStatus" class="kv-val"></span></div>
     <div class="btn-row"><button id="diagBtn"><i data-icon="stethoscope"></i><span data-i18n="diagnostics">Diagnostik</span></button><button id="restart2Btn"><i data-icon="debug-restart"></i><span data-i18n="restartCompanion">Restart Companion</span></button></div>
     <pre id="diagOut" class="code-block hidden"></pre>
   </div>
 
   <div id="set-agent" class="set-panel">
     <h3 data-i18n="agentSettings">Agent</h3>
+    <div class="setting"><label class="setting-title" data-i18n="contextTitle">Project context</label><p class="setting-desc" data-i18n="contextRefreshDesc">Re-read the BroAgentAI section of AGENTS.md. An active session receives the refreshed context without a restart.</p><div class="btn-row"><button id="contextRefreshBtn" class="mini"><i data-icon="refresh"></i><span data-i18n="contextRefresh">Refresh context</span></button></div><p id="contextStatus" class="muted"></p></div>
     <div class="setting"><label class="setting-title" for="agentDelay" data-i18n="agentDelayLabel">Jeda sebelum tiap kirim</label><p class="setting-desc" data-i18n="agentDelayDesc">Detik yang ditunggu agent sebelum mengetik hasil tool ke chat.</p><div class="num-row"><input type="number" id="agentDelay" value="0" min="0" max="300" step="0.5" class="input-sm"><span class="muted" data-i18n="seconds">detik</span></div></div>
   </div>
 

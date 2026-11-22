@@ -104,14 +104,14 @@ function renderGroups(): void {
     // Like VS Code: empty groups are hidden, except Changes which says "none".
     if (items.length === 0 && group.kind !== 'changes') return '';
     const bulk = items.length === 0 || group.kind === 'conflict' ? ''
-      : group.kind === 'staged' ? `<button class="action" data-act="unstage-all" title="Unstage all" aria-label="Unstage all">${icon('remove')}</button>`
-      : `<button class="action" data-act="stage-all" data-group="${group.kind}" title="Stage all" aria-label="Stage all">${icon('add')}</button>`;
+      : group.kind === 'staged' ? `<button class="action" data-act="unstage-all" title="${escapeHtml(t('unstageAll'))}" aria-label="${escapeHtml(t('unstageAll'))}">${icon('remove')}</button>`
+      : `<button class="action" data-act="stage-all" data-group="${group.kind}" title="${escapeHtml(t('stageAll'))}" aria-label="${escapeHtml(t('stageAll'))}">${icon('add')}</button>`;
     const rows = items.map((f) => {
       const mark = letter(group.kind, f);
       const actions =
-        group.kind === 'staged' ? button('Diff', 'diff-staged', f.path, 'diff') + button('Unstage', 'unstage', f.path, 'remove')
-        : group.kind === 'conflict' ? button('Diff', 'diff', f.path, 'diff')
-        : button('Diff', 'diff', f.path, 'diff') + button('Discard', 'discard', f.path, 'discard', 'danger') + button('Stage', 'stage', f.path, 'add');
+        group.kind === 'staged' ? button(t('diff'), 'diff-staged', f.path, 'diff') + button(t('unstage'), 'unstage', f.path, 'remove')
+        : group.kind === 'conflict' ? button(t('diff'), 'diff', f.path, 'diff')
+        : button(t('diff'), 'diff', f.path, 'diff') + button(t('discard'), 'discard', f.path, 'discard', 'danger') + button(t('stage'), 'stage', f.path, 'add');
       const name = f.path.split('/').pop() || f.path;
       return `<div class="scm-row" data-scm-file="${escapeHtml(f.path)}" data-letter="${escapeHtml(mark)}" title="${escapeHtml(f.origPath ? f.origPath + ' -> ' + f.path : f.path)}">`
         + `<span class="ba-tree-icon">${fileIcon(name)}</span><span class="scm-path">${pathHtml(f)}</span>`
@@ -122,9 +122,9 @@ function renderGroups(): void {
       + `<div class="scm-group-head" data-act="toggle-group" data-group="${group.kind}" role="button" aria-expanded="${!fold}">`
       + `<span class="twist">${icon('chevron-right')}</span><span class="scm-group-title">${escapeHtml(t(group.title))}</span>`
       + `<span class="scm-actions">${bulk}</span><span class="count-badge">${items.length}</span></div>`
-      + `<div class="scm-rows">${rows || '<p class="scm-empty">Tidak ada perubahan.</p>'}</div></div>`;
+      + `<div class="scm-rows">${rows || `<p class="scm-empty">${escapeHtml(t('noChanges'))}</p>`}</div></div>`;
   }).join('');
-  $('scmGroups').innerHTML = html + (status?.truncated ? '<p class="muted scm-note">Daftar dipotong (terlalu banyak perubahan).</p>' : '');
+  $('scmGroups').innerHTML = html + (status?.truncated ? `<p class="muted scm-note">${escapeHtml(t('changesTruncated'))}</p>` : '');
 }
 
 /**
@@ -179,7 +179,7 @@ function showState(message: string, canInit: boolean): void {
   state.innerHTML = `<p>${escapeHtml(message)}</p>` + (canInit ? '<button id="scmInit" class="primary">Init repository</button>' : '');
   document.getElementById('scmInit')?.addEventListener('click', () => run(async () => {
     await bridge.call('git.init');
-    deps.toast('Repository dibuat');
+    deps.toast(t('repositoryCreated'));
     await refreshScm();
   }));
 }
@@ -250,9 +250,9 @@ const expanded = new Map<string, CommitFiles | null | Error>();
 
 function filesHtml(hash: string): string {
   const state = expanded.get(hash);
-  if (state === null || state === undefined) return '<p class="scm-empty">Memuat file...</p>';
-  if (state instanceof Error) return `<p class="scm-empty err">Gagal memuat file: ${escapeHtml(state.message)}</p>`;
-  if (state.files.length === 0) return '<p class="scm-empty">Tidak ada perubahan file.</p>';
+  if (state === null || state === undefined) return `<p class="scm-empty">${escapeHtml(t('loadingFiles'))}</p>`;
+  if (state instanceof Error) return `<p class="scm-empty err">${escapeHtml(t('failedLoadingFiles').replace('{0}', escapeHtml(state.message)))}</p>`;
+  if (state.files.length === 0) return `<p class="scm-empty">${escapeHtml(t('noFileChanges'))}</p>`;
   const rows = state.files.map((f) => {
     const slash = f.path.lastIndexOf('/');
     const name = slash < 0 ? f.path : f.path.slice(slash + 1);
@@ -265,13 +265,13 @@ function filesHtml(hash: string): string {
       + `<span class="scm-path"><span class="scm-name">${escapeHtml(name)}</span>${dir ? `<span class="scm-dir">${escapeHtml(dir)}</span>` : ''}</span>`
       + `<span class="scm-letter" data-letter="${letter}">${letter}</span></div>`;
   }).join('');
-  return rows + (state.truncated ? '<p class="scm-empty">Daftar file dipotong (terlalu banyak).</p>' : '');
+  return rows + (state.truncated ? `<p class="scm-empty">${escapeHtml(t('filesTruncated'))}</p>` : '');
 }
 
 function renderGraph(): void {
   const graphEl = $('scmGraph');
   if (!status?.isRepo || currentCommits.length === 0) {
-    graphEl.innerHTML = '<p class="scm-empty">Belum ada commit.</p>';
+    graphEl.innerHTML = `<p class="scm-empty">${escapeHtml(t('noCommits'))}</p>`;
     return;
   }
   const rows = layoutGraph(currentCommits);
@@ -302,7 +302,7 @@ function renderGraph(): void {
       + `${filesHtml(commit.hash)}</div></div>`;
   }).join('');
   const more = currentCommits.length >= graphLimit && graphLimit < GRAPH_MAX
-    ? '<button class="mini scm-graph-more" data-act="graph-more">Muat lebih banyak</button>' : '';
+    ? `<button class="mini scm-graph-more" data-act="graph-more">${escapeHtml(t('loadMore'))}</button>` : '';
   graphEl.innerHTML = `<div class="scm-graph-rows">${html}</div>${more}`;
 }
 
@@ -361,7 +361,7 @@ async function loadGraph(): Promise<void> {
     renderGraph();
   } catch (err: any) {
     if (seq !== graphSeq) return;
-    $('scmGraph').innerHTML = `<p class="scm-empty err">Gagal memuat graph: ${escapeHtml(String(err?.message || err))}</p>`;
+    $('scmGraph').innerHTML = `<p class="scm-empty err">${escapeHtml(t('failedLoadingGraph').replace('{0}', escapeHtml(String(err?.message || err))))}</p>`;
   }
 }
 
@@ -385,7 +385,7 @@ export async function refreshScm(): Promise<void> {
     status = null;
     currentCommits = [];
     renderBadge();
-    showState('Pilih workspace untuk melihat status Git.', false);
+    showState(t('selectWorkspaceForGit'), false);
     return;
   }
   try {
@@ -394,8 +394,8 @@ export async function refreshScm(): Promise<void> {
     if (seq !== refreshSeq) return; // a newer refresh already painted
     status = next;
     renderBadge();
-    if (!next.gitAvailable) return showState('Git tidak ditemukan di PATH. Install Git lalu klik Refresh.', false);
-    if (!next.isRepo) return showState(next.reason || 'Workspace ini bukan repository Git.', !/parent/i.test(next.reason || ''));
+    if (!next.gitAvailable) return showState(t('gitNotAvailable'), false);
+    if (!next.isRepo) return showState(next.reason || t('notARepo'), !/parent/i.test(next.reason || ''));
 
     $('scmState').classList.add('hidden');
     $('scmBody').classList.remove('hidden');
@@ -410,12 +410,12 @@ export async function refreshScm(): Promise<void> {
     $('repoPublish').classList.toggle('hidden', !!next.upstream || next.remotes.length === 0 || next.detached);
     $('conflictBanner').classList.toggle('hidden', !next.operation);
     $('conflictText').textContent = next.operation
-      ? `${next.operation} sedang berlangsung - selesaikan konflik di file lalu stage + commit, atau Abort.` : '';
+      ? `${t('operationInProgress').replace('{0}', next.operation)}` : '';
     const hasRemote = next.remotes.length > 0;
     for (const id of ['fetchBtn', 'pullBtn', 'pushBtn']) {
       const btn = $(id) as HTMLButtonElement;
       btn.disabled = !hasRemote || !!next.operation;
-      btn.title = hasRemote ? t(id.replace('Btn', '')) : 'Repository ini belum punya remote';
+      btn.title = hasRemote ? t(id.replace('Btn', '')) : t('noRemote');
     }
     renderGroups();
     renderCommitButton();
@@ -425,13 +425,13 @@ export async function refreshScm(): Promise<void> {
     status = null;
     currentCommits = [];
     renderBadge();
-    showState('Gagal membaca status Git: ' + (err?.message || err), false);
+    showState(t('gitStatusFailed').replace('{0}', err?.message || err), false);
   }
 }
 
 /** Run one action; any bridge error becomes a toast instead of an unhandled rejection. */
 async function run(action: () => Promise<void>): Promise<void> {
-  try { await action(); } catch (err: any) { deps.toast('Git: ' + (err?.message || err)); }
+  try { await action(); } catch (err: any) { deps.toast(t('gitError').replace('{0}', String(err?.message || err))); }
 }
 
 function paint(next: GitStatus): void {
@@ -485,12 +485,12 @@ async function onGroupClick(e: Event): Promise<void> {
   }
   if (act === 'discard') {
     const file = status.files.find((f) => f.path === path);
-    const what = file?.untracked ? 'File untracked ini akan DIHAPUS dari disk.' : 'Perubahan yang belum di-stage akan dibuang.';
-    deps.openModal('Discard perubahan?', `<p><code>${escapeHtml(path)}</code></p><p>${what} Aksi ini tidak bisa dibatalkan.</p>`, () => {
+    const what = file?.untracked ? t('untrackedWillDelete') : t('unstagedWillDiscard');
+    deps.openModal(t('discardChangesTitle'), `<p><code>${escapeHtml(path)}</code></p><p>${what} Aksi ini tidak bisa dibatalkan.</p>`, () => {
       run(async () => {
         paint(await bridge.call('git.discard', { paths: [path] }));
         deps.onFilesChanged();
-        deps.toast('Perubahan dibuang: ' + path);
+        deps.toast(t('changesDiscarded').replace('{0}', path));
       });
     });
   }
@@ -526,9 +526,9 @@ export function initScm(dependencies: ScmDeps): void {
     const res: any = await bridge.call('git.commit', { message: box.value });
     box.value = '';
     fitCommitBox();
-    $('commitOut').textContent = `Commit ${res.hash} - ${res.summary}`;
+    $('commitOut').textContent = t('commitOutput').replace('{0}', res.hash).replace('{1}', res.summary);
     paint(res.status);
-    deps.toast('Commit dibuat: ' + res.hash);
+    deps.toast(t('commitCreated').replace('{0}', res.hash));
   });
   $('commitHeadBtn').addEventListener('click', () => {
     if (!($('commitHeadBtn') as HTMLButtonElement).disabled) commit();
@@ -546,10 +546,10 @@ export function initScm(dependencies: ScmDeps): void {
     if (!branch) return;
     try {
       await bridge.call('git.checkout', { branch });
-      deps.toast('Pindah ke branch ' + branch);
+      deps.toast(t('switchedBranch').replace('{0}', branch));
       deps.onFilesChanged();
     } catch (err: any) {
-      deps.toast('Git: ' + (err?.message || err));
+      deps.toast(t('gitError').replace('{0}', String(err?.message || err)));
     }
     await refreshScm(); // also resets the select when the switch was refused
   });
@@ -561,7 +561,7 @@ export function initScm(dependencies: ScmDeps): void {
       deps.toast(label + '...');
       deps.toast(done(await action()));
     } catch (err: any) {
-      deps.toast('Git: ' + (err?.message || err));
+      deps.toast(t('gitError').replace('{0}', String(err?.message || err)));
     }
     if (touchesFiles) deps.onFilesChanged();
     await refreshScm();
@@ -572,25 +572,24 @@ export function initScm(dependencies: ScmDeps): void {
     if (!status?.isRepo || !status.upstream) return;
     const { behind, ahead, upstream } = status;
     deps.openModal(t('syncChanges'),
-      `<p>Branch <b>${escapeHtml(status.branch || '')}</b> &harr; <b>${escapeHtml(upstream)}</b>: `
-      + `${behind} commit di-pull (ff-only), lalu ${ahead} commit di-push.</p><p class="muted">Force-push tidak tersedia.</p>`,
+      `<p>${t('syncDescription').replace('{0}', escapeHtml(status.branch || '')).replace('{1}', escapeHtml(upstream)).replace('{2}', String(behind)).replace('{3}', String(ahead))}</p><p class="muted">${t('forcePushUnavailable')}</p>`,
       () => sync('Sync', async () => {
         if (behind > 0) await bridge.call('git.pull', { mode: 'ff-only' }, 130000);
         if (ahead > 0) await bridge.call('git.push', {}, 130000);
-      }, () => 'Sync selesai'));
+      }, () => t('syncComplete')));
   };
 
   $('fetchBtn').addEventListener('click', () => sync('Fetch', () => bridge.call('git.fetch', {}, 130000),
-    (res) => `Fetch selesai - up ${res.ahead}, down ${res.behind}`, false));
+    (res) => t('fetchComplete').replace('{0}', String(res.ahead)).replace('{1}', String(res.behind)), false));
 
   $('pullBtn').addEventListener('click', () => {
     if (!status?.isRepo) return;
-    deps.openModal('Pull - konfirmasi',
+    deps.openModal(t('pullConfirm'),
       `<p>Branch: <b>${escapeHtml(status.branch || '(detached)')}</b> &larr; <b>${escapeHtml(status.upstream || 'tanpa upstream')}</b> - up ${status.ahead}, down ${status.behind}</p>` +
       '<label>Mode <select id="pullMode"><option value="ff-only">ff-only (aman, tidak pernah konflik)</option><option value="merge">merge</option><option value="rebase">rebase</option></select></label>',
       () => {
         const mode = (document.getElementById('pullMode') as HTMLSelectElement)?.value || 'ff-only';
-        sync('Pull ' + mode, () => bridge.call('git.pull', { mode }, 130000), () => 'Pull ' + mode + ' selesai');
+        sync('Pull ' + mode, () => bridge.call('git.pull', { mode }, 130000), () => t('pullComplete').replace('{0}', mode));
       });
   });
 
@@ -599,26 +598,26 @@ export function initScm(dependencies: ScmDeps): void {
     const target = status.upstream
       ? `ke <b>${escapeHtml(status.upstream)}</b> - ${status.ahead} commit akan di-push`
       : `branch baru akan dipublish ke <b>${escapeHtml((status.remotes.includes('origin') ? 'origin' : status.remotes[0]) + '/' + (status.branch || ''))}</b> dan dijadikan upstream`;
-    deps.openModal('Push - konfirmasi',
+    deps.openModal(t('pushConfirm'),
       `<p>Branch: <b>${escapeHtml(status.branch || '(detached)')}</b> ${target}.</p><p class="muted">Force-push tidak tersedia.</p>`,
       () => sync('Push', () => bridge.call('git.push', {}, 130000),
-        (res) => res.publishedTo ? 'Branch dipublish ke ' + res.publishedTo : 'Push selesai'));
+        (res) => res.publishedTo ? t('branchPublished').replace('{0}', res.publishedTo) : t('pushComplete')));
   });
 
   $('scmAbort').addEventListener('click', () => {
     if (!status?.operation) return;
-    deps.openModal('Abort ' + status.operation + '?', '<p>Repository dikembalikan ke keadaan sebelum ' + escapeHtml(status.operation) + '. Resolusi konflik yang belum di-commit akan hilang.</p>',
-      () => sync('Abort', () => bridge.call('git.abort'), () => 'Dibatalkan'));
+    deps.openModal(t('abortTitle').replace('{0}', status.operation), `<p>${t('abortDescription').replace('{0}', escapeHtml(status.operation))}</p>`,
+      () => sync('Abort', () => bridge.call('git.abort'), () => t('aborted')));
   });
 
   $('newBranchBtn').addEventListener('click', () => {
     if (!status?.isRepo) return;
-    deps.openModal('Create branch', '<input id="brName" class="input" placeholder="feat/nama-branch">', () => {
+    deps.openModal(t('createBranch'), `<input id="brName" class="input" placeholder="${t('branchPlaceholder')}">`, () => {
       const name = (document.getElementById('brName') as HTMLInputElement)?.value.trim();
       if (!name) return;
       run(async () => {
         await bridge.call('git.createBranch', { name });
-        deps.toast('Branch dibuat: ' + name);
+        deps.toast(t('branchCreated').replace('{0}', name));
         await refreshScm();
       });
     });

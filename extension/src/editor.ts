@@ -11,7 +11,7 @@ import { keymap } from '@codemirror/view';
 import { defaultKeymap, historyKeymap } from '@codemirror/commands';
 import { searchKeymap } from '@codemirror/search';
 import { bridge, BridgeErrorCode } from './bridge-client.js';
-import { applyTheme, type Theme } from './i18n.js';
+import { applyTheme, t, type Theme } from './i18n.js';
 import { installContextMenuGuard } from './context-guard.js';
 import { createWorkbench, type EditorTab } from './file-preview.js';
 import { openDiffTab } from './diff-view.js';
@@ -38,7 +38,7 @@ const fileTabs = new Map<string, { view: EditorView | null; mtime: number | null
 // createWorkbench paints once before it returns; onChange waits until `workbench` exists.
 let workbenchReady = false;
 const workbench = createWorkbench(document.body, {
-  emptyHtml: 'Tidak ada file yang terbuka.<br>Buka file dari Explorer, Search atau Source Control di side panel.',
+  emptyHtml: t('editorEmpty'),
   onChange: () => {
     if (!workbenchReady) return;
     const active = workbench.active();
@@ -74,8 +74,8 @@ function revealLine(tab: EditorTab, lineNo: number): void {
 async function saveFile(tab: EditorTab): Promise<void> {
   const state = fileTabs.get(tab.key);
   const path = tab.spec.path;
-  if (!state?.view) { tab.setStatus('Tidak ada file yang dibuka.'); return; }
-  tab.setStatus('Menyimpan...');
+  if (!state?.view) { tab.setStatus(t('noOpenFile')); return; }
+  tab.setStatus(t('saving'));
   const content = state.view.state.doc.toString();
   try {
     // Content + mtime so a file changed on disk since it was opened is not overwritten silently.
@@ -84,24 +84,24 @@ async function saveFile(tab: EditorTab): Promise<void> {
     const res: any = await bridge.call('fs.writeFile', req);
     state.mtime = typeof res.mtime === 'number' ? res.mtime : null;
     tab.setDirty(false);
-    tab.setStatus(`Tersimpan: ${path} - ${fileInfo(content)}`);
+    tab.setStatus(t('savedPath').replace('{0}', path).replace('{1}', fileInfo(content)));
   } catch (e: any) {
     if (e.code !== BridgeErrorCode.MTIME_CONFLICT) {
-      tab.setStatus(`GAGAL menyimpan: ${e.message} - file di disk TIDAK berubah.`);
+      tab.setStatus(t('saveFailed').replace('{0}', e.message));
       return;
     }
-    tab.setStatus('KONFLIK: File telah diubah di tempat lain. Simpan dibatalkan untuk mencegah kehilangan data.');
-    if (!confirm('File telah diubah di tempat lain sejak Anda membukanya. Apakah Anda ingin menimpa perubahan tersebut?')) {
-      tab.setStatus('Simpan dibatalkan oleh pengguna.');
+    tab.setStatus(t('saveConflict'));
+    if (!confirm(t('overwriteChangedFile'))) {
+      tab.setStatus(t('saveCancelled'));
       return;
     }
     try {
       const res: any = await bridge.call('fs.writeFile', { path, content });
       state.mtime = typeof res.mtime === 'number' ? res.mtime : null;
       tab.setDirty(false);
-      tab.setStatus(`Tersimpan (force): ${path}`);
+      tab.setStatus(t('savedForce').replace('{0}', path));
     } catch (err: any) {
-      tab.setStatus(`GAGAL menyimpan: ${err.message}`);
+      tab.setStatus(t('saveFailed').replace('{0}', err.message));
     }
   }
 }
@@ -119,13 +119,13 @@ function openFileTab(target: EditorTarget): EditorTab {
   fileTabs.set(key, { view: null, mtime: null });
   return workbench.open({
     key, path, kind: 'file',
-    actions: [{ act: 'save', id: 'btnSave', icon: 'save', title: 'Save (Ctrl+S)' }],
+    actions: [{ act: 'save', id: 'btnSave', icon: 'save', title: t('saveAction') }],
     onAction: (act, _b, tab) => { if (act === 'save') void saveFile(tab); },
-    canClose: () => !workbench.find(key)?.dirty || confirm(`${path} punya perubahan belum disimpan. Tutup?`),
+    canClose: () => !workbench.find(key)?.dirty || confirm(t('unsavedClose').replace('{0}', path)),
     onClose: () => { fileTabs.get(key)?.view?.destroy(); fileTabs.delete(key); targets.delete(key); },
     onActivate: () => { fileTabs.get(key)?.view?.focus(); },
   }, (tab) => {
-    tab.setStatus(`Membuka: ${path}`);
+    tab.setStatus(t('openingPath').replace('{0}', path));
     void (async () => {
       try {
         const res: any = await bridge.call('fs.readFileLines', { path, startLine: 0, endLine: -1 });
@@ -150,7 +150,7 @@ function openFileTab(target: EditorTarget): EditorTab {
               EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
                   tab.setDirty(true);
-                  updateCursorPos(tab, update.view, `${path} - belum disimpan`);
+                  updateCursorPos(tab, update.view, `${path} - ${t('unsaved')}`);
                 } else if (update.selectionSet) {
                   updateCursorPos(tab, update.view, undefined);
                 }
@@ -159,12 +159,12 @@ function openFileTab(target: EditorTarget): EditorTab {
           }),
         });
         tab.body.classList.add('bro-code-host');
-        updateCursorPos(tab, state.view, `Dibuka: ${path} - ${fileInfo(content)}`);
+        updateCursorPos(tab, state.view, t('openedPath').replace('{0}', path).replace('{1}', fileInfo(content)));
         if (target.line) revealLine(tab, target.line);
         else if (workbench.active() === tab) state.view.focus();
       } catch (e: any) {
-        tab.setStatus(`Gagal membuka ${path}: ${e.message}`);
-        tab.body.innerHTML = `<div class="dv-empty">Gagal membuka file: ${String(e?.message || e).replace(/</g, '&lt;')}</div>`;
+        tab.setStatus(t('failedOpenPath').replace('{0}', path).replace('{1}', e.message));
+        tab.body.innerHTML = `<div class="dv-empty">${t('failedOpenFile').replace('{0}', String(e?.message || e).replace(/</g, '&lt;'))}</div>`;
       }
     })();
   });
@@ -189,8 +189,8 @@ async function openDiff(target: EditorTarget): Promise<void> {
   } catch (e: any) {
     targets.set(key, target);
     workbench.open({ key, path: target.path, kind: 'diff', tag: 'diff', onClose: () => { targets.delete(key); } }, (tab) => {
-      tab.body.innerHTML = `<div class="dv-empty">Gagal memuat diff: ${String(e?.message || e).replace(/</g, '&lt;')}</div>`;
-      tab.setStatus('Gagal memuat diff');
+      tab.body.innerHTML = `<div class="dv-empty">${t('failedLoadDiff').replace('{0}', String(e?.message || e).replace(/</g, '&lt;'))}</div>`;
+      tab.setStatus(t('failedLoadDiffShort'));
     });
   }
 }

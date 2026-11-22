@@ -1,6 +1,7 @@
 // Settings > MCP: real server list, trust review, start/stop/restart and tool browser.
 // The bridge is the MCP host; this panel only sends mcp.* / workspace.trust RPCs.
 import { bridge } from './bridge-client.js';
+import { t } from './i18n.js';
 
 interface McpServerInfo {
   id: string;
@@ -40,14 +41,14 @@ let listing: McpListing | null = null;
 let refreshTimer: any = null;
 
 function reviewHtml(servers: McpServerInfo[]): string {
-  return '<p>Server di bawah didefinisikan oleh file project (<code>broagentai.json</code>). Trust mengizinkan server ini dijalankan di mesin Anda. Periksa command-nya.</p>' +
+  return `<p>${t('mcpReviewIntro')}</p>` +
     servers.map((s) => `<div class="card"><b>${esc(s.id)}</b> (${s.transport})` +
       (s.command ? `<div>Command: <code>${esc(JSON.stringify(s.command))}</code></div><div>Cwd: <code>${esc(s.cwd || '')}</code></div>` : '') +
       (s.url ? `<div>URL: <code>${esc(s.url)}</code></div>` : '') +
       `<div>Env keys: <code>${esc(s.environmentKeys.join(', ') || '-')}</code></div>` +
       `<div>Header keys: <code>${esc(s.headerKeys.join(', ') || '-')}</code></div>` +
       (s.risk ? `<div>Risk override: <code>${esc(s.risk)}</code></div>` : '') + '</div>').join('') +
-    '<p class="muted">Hanya nama env/header yang ditampilkan, bukan nilainya. Mengubah command/URL/env di file project akan membatalkan trust.</p>';
+    `<p class="muted">${t('mcpReviewNotice')}</p>`;
 }
 
 function render(tools: any[]): void {
@@ -55,19 +56,19 @@ function render(tools: any[]): void {
   const warn = listing.warnings.map((w) => `<p class="err">${esc(w)}</p>`).join('');
   const trust = !listing.hasProjectServers ? ''
     : listing.trusted
-      ? '<div class="banner" id="mcpTrustBanner"><span>Workspace ini <b>trusted</b> untuk MCP project.</span><button class="mini danger" data-mcp-act="untrust">Revoke trust</button></div>'
-      : '<div class="banner" id="mcpTrustBanner"><span>MCP server dari project <b>belum di-trust</b> dan tidak bisa dijalankan.</span><button class="mini primary" data-mcp-act="review">Review &amp; trust</button></div>';
+      ? `<div class="banner" id="mcpTrustBanner"><span>${t('mcpTrusted')}</span><button class="mini danger" data-mcp-act="untrust">${t('revokeTrust')}</button></div>`
+      : `<div class="banner" id="mcpTrustBanner"><span>${t('mcpUntrusted')}</span><button class="mini primary" data-mcp-act="review">${t('reviewTrust')}</button></div>`;
   const cards = listing.servers.map((s) => {
     const running = s.status === 'ready' || s.status === 'starting';
     const blocked = s.status === 'untrusted' || s.status === 'disabled';
     const buttons = running
-      ? `<button class="mini" data-mcp-act="stop" data-server="${esc(s.id)}">Stop</button> <button class="mini" data-mcp-act="restart" data-server="${esc(s.id)}">Restart</button>`
-      : `<button class="mini primary" data-mcp-act="start" data-server="${esc(s.id)}" ${blocked ? 'disabled' : ''}>Start</button>`;
+      ? `<button class="mini" data-mcp-act="stop" data-server="${esc(s.id)}">${t('stop')}</button> <button class="mini" data-mcp-act="restart" data-server="${esc(s.id)}">${t('restart')}</button>`
+      : `<button class="mini primary" data-mcp-act="start" data-server="${esc(s.id)}" ${blocked ? 'disabled' : ''}>${t('start')}</button>`;
     return `<div class="card" data-mcp-server="${esc(s.id)}"><div class="card-head"><strong>${esc(s.id)}</strong><span class="mcp-status mcp-${esc(s.status)}">${esc(s.status)}</span></div>` +
       `<small>${s.transport} - origin: ${s.origin} - ${s.toolCount} tools</small>` +
       (s.error ? `<p class="err">${esc(s.error)}</p>` : '') + `<div>${buttons}</div></div>`;
   }).join('');
-  $('mcpList').innerHTML = warn + trust + (cards || '<p class="muted">Belum ada MCP server. Tambahkan di <code>broagentai.json</code> (key <code>mcp</code>) pada workspace atau config global.</p>');
+  $('mcpList').innerHTML = warn + trust + (cards || `<p class="muted">${t('noMcpServers')}</p>`);
   $('mcpTools').innerHTML = tools.length === 0 ? ''
     : '<h4>Tools</h4>' + tools.map((t) => `<div class="log-row" data-mcp-tool="${esc(t.name)}"><b>${esc(t.name)}</b> - <span class="risk-${esc(t.risk)}">${esc(t.risk)}</span> - ${esc(t.description)}</div>`).join('');
 }
@@ -76,7 +77,7 @@ function render(tools: any[]): void {
 export async function refreshMcp(): Promise<void> {
   if (!deps.hasWorkspace()) {
     listing = null;
-    $('mcpList').innerHTML = '<p class="muted">Pilih workspace untuk melihat MCP server.</p>';
+    $('mcpList').innerHTML = `<p class="muted">${t('selectWorkspaceMcp')}</p>`;
     $('mcpTools').innerHTML = '';
     return;
   }
@@ -85,7 +86,7 @@ export async function refreshMcp(): Promise<void> {
     const tools: any = await bridge.call('mcp.tools');
     render(tools.tools || []);
   } catch (err: any) {
-    $('mcpList').innerHTML = `<p class="err">Gagal memuat MCP: ${esc(err?.message || String(err))}</p>`;
+    $('mcpList').innerHTML = `<p class="err">${esc(t('failedLoadMcp').replace('{0}', err?.message || String(err)))}</p>`;
   }
 }
 
@@ -93,17 +94,17 @@ async function act(action: string, server: string): Promise<void> {
   try {
     if (action === 'review') {
       const project = (listing?.servers || []).filter((s) => s.origin === 'project');
-      deps.openModal('Review MCP project', reviewHtml(project), async () => {
-        try { await bridge.call('workspace.trust'); deps.toast('Workspace di-trust. Klik Start untuk menjalankan server.'); }
-        catch (err: any) { deps.toast('MCP: ' + (err?.message || err)); }
+      deps.openModal(t('reviewMcpProject'), reviewHtml(project), async () => {
+        try { await bridge.call('workspace.trust'); deps.toast(t('trustWorkspaceStart')); }
+        catch (err: any) { deps.toast(t('mcpError').replace('{0}', err?.message || String(err))); }
         await refreshMcp();
       });
       return;
     }
-    if (action === 'untrust') { await bridge.call('workspace.untrust'); deps.toast('Trust dicabut, server project dihentikan'); }
-    else { await bridge.call('mcp.' + action, { server }, 45000); deps.toast(`MCP ${server}: ${action} selesai`); }
+    if (action === 'untrust') { await bridge.call('workspace.untrust'); deps.toast(t('trustRevoked')); }
+    else { await bridge.call('mcp.' + action, { server }, 45000); deps.toast(t('mcpActionComplete').replace('{0}', server).replace('{1}', action)); }
   } catch (err: any) {
-    deps.toast('MCP: ' + (err?.message || err));
+    deps.toast(t('mcpError').replace('{0}', err?.message || String(err)));
   }
   await refreshMcp();
 }

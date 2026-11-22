@@ -4,6 +4,7 @@ import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcServer } from "./rpc-server.ts";
+import { terminalShellFor } from "./shell.ts";
 import { WorkspaceStore } from "./workspace.ts";
 
 let hasPty = true;
@@ -72,4 +73,18 @@ ptyTest("terminal limits and validation", async () => {
 test("term.create requires an active workspace", async () => {
   const s = new RpcServer({ store: new WorkspaceStore({ configDir: mkdtempSync(join(tmpdir(), "ba-term-cfg-")) }) });
   assert.equal((await s.handle({ id: 1, method: "term.create", params: {} })).error?.code, -32006);
+});
+
+test("terminal shell is detection-only and rejects overrides", async () => {
+  const detected = terminalShellFor();
+  assert.equal(detected.file, process.platform === "win32" ? "powershell.exe" : "/bin/sh");
+  assert.equal(detected.family, process.platform === "win32" ? "powershell" : "sh");
+
+  const { s, call } = await fixture();
+  try {
+    assert.equal((await call("term.create", { shell: "/bin/bash" })).error?.code, -32602);
+    assert.equal((await call("term.create", { executable: "pwsh" })).error?.code, -32602);
+  } finally {
+    await s.shutdown();
+  }
 });

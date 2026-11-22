@@ -7,7 +7,7 @@
 // the chat as the next turn. The loop lives in the side panel on purpose:
 // closing the panel stops it, so nothing runs without the approval UI open.
 import { bridge } from './bridge-client.js';
-import { NATIVE_CALL_REMINDER, formatCorrection, formatToolResult, parseReply } from './agent-parser.js';
+import { NATIVE_CALL_REMINDER, NOTE_TAG, formatCorrection, formatToolResult, parseReply, redactSecrets } from './agent-parser.js';
 import { SEND_ATTEMPTS, retryBackoffMs, sendDelayMs, toolTimeoutMs } from './agent-timing.js';
 import { buildHandoffSnapshot, classifyChatMessage, emptyWorkSummary, formatHandoffContext, handoffMessage, normalizeTranscript, noteToolCall, validateHandoffSnapshot, workspaceFromGitStatus, type HandoffSnapshot, type HandoffTurn, type WorkSummary, type WorkspaceState } from './agent-handoff.js';
 import { t } from './i18n.js';
@@ -124,6 +124,8 @@ let queue: Promise<void> = Promise.resolve();
 /** True while a reply is being handled (tool approval, tool run, sending its result). */
 let replyBusy = false;
 let pendingApproval: ((decision: 'allow' | 'deny') => void) | null = null;
+let shellSignature: string | null = null;
+let pendingShellChange: string | null = null;
 let phase: Phase | null = null;
 /**
  * A start in progress (opening the chat tab, waiting for it, connecting). It
@@ -170,7 +172,7 @@ function notify(title: string, message: string): void {
 }
 
 function log(entry: Omit<LogEntry, 'time'>): void {
-  logs.push({ ...entry, time: new Date().toLocaleTimeString() });
+  logs.push({ ...entry, detail: entry.detail ? redactSecrets(entry.detail) : undefined, time: new Date().toLocaleTimeString() });
   if (logs.length > 500) logs = logs.slice(-500);
   renderLog();
 }
@@ -552,6 +554,30 @@ async function refreshDetected(): Promise<void> {
   if (session) return;
   const found = await findChatTab().catch(() => null);
   $('detectedChat').textContent = found ? `${found.provider.label} - ${found.tab.title || found.tab.url || ''}` : 'Tidak ada tab chat terbuka';
+}
+
+export async function refreshAgentContext(): Promise<{ found: boolean; bytes: number; truncated: boolean; delivered: boolean }> {
+  const snapshot: any = await bridge.call('context.read');
+  const found = snapshot?.found === true;
+  if (session && found) {
+    await deliver(`${NOTE_TAG} Project context refreshed from AGENTS.md. Treat this as the current project context; bridge rules and approval mode are unchanged.\n\n${snapshot.summary}`, false);
+  }
+  log({
+    tool: 'context.refresh',
+    category: '-',
+    decision: '-',
+    status: found ? 'info' : 'error',
+    ms: 0,
+    detail: found
+      ? `${snapshot.bytes} bytes${snapshot.truncated ? ', truncated' : ''}${session ? ', sent to chat' : ''}`
+      : snapshot?.warning || 'no BroAgentAI section',
+  });
+  return {
+    found,
+    bytes: snapshot?.bytes ?? 0,
+    truncated: snapshot?.truncated === true,
+    delivered: !!session && found,
+  };
 }
 
 async function send(text: string): Promise<void> {
@@ -1073,6 +1099,9 @@ async function stopSession(reason = 'dihentikan', opts: { notifyUser?: boolean }
   beforeOffline = null;
   pendingApproval?.('deny');
   hideApproval();
+  logs = [];
+  renderLog();
+  hideShellBanner();
   renderStatus();
   try { await tabMessage(tabId, { type: 'ba.deactivate' }); } catch { /* tab gone */ }
   log({ tool: 'session.stop', category: '-', decision: '-', status: 'info', ms: 0, detail: reason });
@@ -1086,16 +1115,62 @@ function hideApproval(): void {
   pendingApproval = null;
 }
 
+function shellSignatureOf(info: any): string {
+  return [info?.family, info?.environment, info?.file, info?.platform, info?.arch].join('|');
+}
+
+function hideShellBanner(): void {
+  $('shellBanner').classList.add('hidden');
+  pendingShellChange = null;
+}
+
+export async function confirmShellChange(): Promise<void> {
+  if (!pendingShellChange) return;
+  shellSignature = pendingShellChange;
+  hideShellBanner();
+  log({ tool: 'shell.change', category: '-', decision: 'confirmed', status: 'info', ms: 0, detail: t('shellConfirmed') });
+  setPhase('idle', t('shellConfirmed'));
+}
+
+/** Detect PATH/runtime shell changes and block the next command until confirmed. */
+async function ensureShellStable(active: Session): Promise<boolean> {
+  let info: any;
+  try {
+    info = await bridge.call('shell.info');
+  } catch {
+    return true;
+  }
+  const signature = shellSignatureOf(info);
+  if (shellSignature === null) {
+    shellSignature = signature;
+    return true;
+  }
+  if (shellSignature === signature) return true;
+
+  pendingShellChange = signature;
+  $('shellBannerText').textContent = `${t('shellChangeDesc')} ${info?.family ?? '?'} (${info?.environment ?? '?'}) - ${info?.file ?? '?'}`;
+  $('shellBanner').classList.remove('hidden');
+  setPhase('approval', t('shellChangeTitle'));
+  log({ tool: 'shell.change', category: '-', decision: 'blocked', status: 'denied', ms: 0, detail: $('shellBannerText').textContent });
+  void saveWorkspaceHandoff(active);
+  return false;
+}
+
 function askApproval(check: any, params: Record<string, unknown>, remember: boolean): Promise<'allow' | 'deny'> {
-  $('apRisk').textContent = String(check.category).toUpperCase();
+  const ctx = check.approvalContext;
+  $('apRisk').textContent = String(check.risk || check.category).toUpperCase();
   $('apRisk').className = 'risk risk-' + (check.category === 'read' ? 'read' : 'write');
   $('apTool').textContent = check.command;
   $('apSummary').textContent = check.category === 'execute'
     ? 'Perintah shell. Berjalan dengan hak akunmu dan TIDAK dibatasi ke workspace.'
     : (check.source === 'mcp' ? 'MCP tool. ' : '') + (check.paths?.length ? 'Path: ' + check.paths.join(', ') : 'Tidak ada path spesifik.');
-  $('apDiff').textContent = check.preview || '';
+  $('apContext').textContent = ctx
+    ? `${t('approvalContextLabel')}: ${ctx.shellFamily} (${ctx.environment}) · ${t('workspace')}: ${ctx.workspacePath} · cwd: ${ctx.cwd} · ${t('riskLabel')}: ${ctx.risk}`
+    : '';
+  $('apContext').classList.toggle('hidden', !ctx);
+  $('apDiff').textContent = redactSecrets(check.preview || '');
   $('apDiff').classList.toggle('hidden', !check.preview);
-  const shown = JSON.stringify(params, null, 2);
+  const shown = redactSecrets(JSON.stringify(params, null, 2));
   $('apParams').textContent = shown.length > 4000 ? shown.slice(0, 4000) + '\n... (dipotong)' : shown;
   $('apNote').textContent = !remember ? ''
     : check.category === 'execute' ? 'Tanya sekali: perintah yang persis sama tidak akan ditanyakan lagi di sesi ini.'
@@ -1182,6 +1257,7 @@ async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
   active.toolCalls++;
   active.totalCalls++;
   setPhase('running', `Memeriksa ${command}`);
+  if (!(await ensureShellStable(active))) return;
 
   const currentMode = mode();
   let check: any;
@@ -1222,7 +1298,8 @@ async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
   setPhase('running', `Menjalankan ${command}`);
   let message: string;
   try {
-    const result: any = await bridge.call('agent.callTool', { command, params, mode: currentMode, approved }, toolTimeoutMs(params));
+    const callParams = check.approvalContext ? { ...params, approvalContext: check.approvalContext } : params;
+    const result: any = await bridge.call('agent.callTool', { command, params: callParams, mode: currentMode, approved }, toolTimeoutMs(params));
     log({ tool: command, category: check.category, decision, status: 'ok', ms: Math.round(performance.now() - started) });
     noteToolCall(active.work, command, check.category, params);
     message = formatToolResult(command, true, result.text, result.truncated);
@@ -1316,6 +1393,7 @@ export function initAgent(dependencies: AgentDeps): void {
 
   $('apAllow').addEventListener('click', () => pendingApproval?.('allow'));
   $('apDeny').addEventListener('click', () => pendingApproval?.('deny'));
+  $('shellBannerConfirm').addEventListener('click', () => void confirmShellChange());
   $('logFilter').addEventListener('change', renderLog);
   $('clearLog').addEventListener('click', () => { logs = []; renderLog(); });
   $('copyLog').addEventListener('click', () => {
