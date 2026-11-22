@@ -4,7 +4,7 @@
 > Type: Architecture Enhancement Plan  
 > Scope: Bridge, local execution, native shell abstraction, environment awareness, and agent capabilities  
 > Last reviewed: 2026-11-22  
-> Review status: EGM-lite architecture review incorporated; all review questions are resolved in §13, and the prioritized execution backlog is in §14.
+> Review status: EGM-lite architecture review incorporated; all review questions are resolved in §13, the prioritized execution backlog is in §14, and the AGENTS.md context contract is in §15.
 
 ## 1. Overview
 
@@ -1169,7 +1169,7 @@ The strongest counter-argument is not that multi-shell support is unnecessary. I
 
 ### 13.7 Recommended Next Steps
 
-1. Start with the P0 slices in §14 (B0.2–B0.8) and complete their safety, approval, detection, audit, and result-contract tasks.
+1. Start with the P0 project-context slices in §14 (B0.9, B1.8, B1.9, B2.6–B2.8), then continue with the P1 safety slices (B0.2–B0.8).
 2. Implement the MVP matrix in §13.2 before adding `cmd`, fish, Nushell, WSL, or other execution environments.
 3. Add the MVP result fields and approval context to protocol v2; keep v1 recognized but deprecated.
 4. Remove the terminal shell override and enforce detection-only shell selection.
@@ -1178,27 +1178,42 @@ The strongest counter-argument is not that multi-shell support is unnecessary. I
 7. Add UX confirmation for detected shell changes after PATH or runtime updates.
 8. Add the test matrix and benchmark harness; do not remove any native operation unless the shell replacement is equal to or faster.
 9. Re-run this review after the MVP is validated on each platform.
+10. Track the AGENTS.md context contract decisions and backlog in §15.
 
 ## 14. Prioritized Implementation Backlog
 
-This section translates the roadmap into small, reviewable work slices. It does not replace §4; it orders the work so that safety and contracts land before shell execution.
+This section translates the roadmap into small, reviewable work slices. It does not replace §4; it orders the work so that project context lands first, safety and contracts second, and shell execution after that.
 
 Priority legend:
 
-- **P0 — Critical:** blocks any shell execution; must be completed first.
-- **P1 — High:** required for the MVP shell matrix.
-- **P2 — Medium:** required for safe rollout, observability, and UX.
-- **P3 — Low:** post-MVP expansion.
+- **P0 — Critical:** project context; start here.
+- **P1 — Critical:** safety and contracts; blocks any shell execution.
+- **P2 — High:** required for the MVP shell matrix.
+- **P3 — Medium:** required for safe rollout, observability, and UX.
+- **P4 — Low:** post-MVP expansion.
+
+Slice IDs are stable identifiers and do not encode priority. The section heading is the priority.
 
 Status legend: `Recorded` = decision documented, `Next` = start here, `Pending` = queued.
 
 Execution rules:
 
-- Do not start P1 until all P0 slices are complete.
+- Do not start P2 until all P0 and P1 slices are complete.
 - Do not remove any native filesystem or Git primitive until B1.7 passes.
 - Run `npm run typecheck` and `npm run test` after every slice.
 
-### P0 — Critical: Safety and Contracts
+### P0 — Critical: Project Context (start here)
+
+| ID | Slice | Primary files | Acceptance | Status |
+|---|---|---|---|---|
+| B0.9 | Record AGENTS.md context contract | `docs/enhances-plan/dynamic-local-agent-infrastructure-roadmap.md` §15 | All context decisions and the auto-created template are documented | Recorded |
+| B1.8 | `context.read` tool | `bridge/src/agent.ts`, `bridge/src/rpc.ts` | Read-only, workspace-confined, redacted; returns only the `## BroAgentAI` section | Next |
+| B1.9 | Auto-inject context summary | extension context builder | `## BroAgentAI` summary is injected at session open and limited to 2 KB | Next |
+| B2.6 | Manual context refresh | extension UI, `i18n/en.json`, `i18n/id.json` | Settings has a refresh button; updates context without restarting the session | Next |
+| B2.7 | Auto-create context template | workspace init / AGENTS.md writer | Missing `## BroAgentAI` section is appended once; existing content is never overwritten | Next |
+| B2.8 | Context trust guardrails | extension context builder, `context.read` | Section is lower priority than bridge rules; secrets are redacted; no policy override | Next |
+
+### P1 — Critical: Safety and Contracts
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
@@ -1211,7 +1226,7 @@ Execution rules:
 | B0.7 | Shell-change banner | extension UI and `i18n/en.json`, `i18n/id.json` | PATH/runtime change shows a banner and blocks the next command until confirmed | Pending |
 | B0.8 | "Not a sandbox" notice | extension UI and `i18n/en.json`, `i18n/id.json` | UX states explicitly that workspace confinement is not a sandbox | Pending |
 
-### P1 — High: MVP Shell Execution
+### P2 — High: MVP Shell Execution
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
@@ -1223,7 +1238,7 @@ Execution rules:
 | B1.6 | Output bounds and continuation | `bridge/src/shell.ts`, `bridge/src/rpc.ts` | Truncation metadata and controlled output continuation or artifact access are available | Pending |
 | B1.7 | Benchmark gate | test and benchmark harness | Representative workloads are equal to or faster than native tools; slower blocks native-tool removal | Pending |
 
-### P2 — Medium: Observability and Rollout
+### P3 — Medium: Observability and Rollout
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
@@ -1233,7 +1248,7 @@ Execution rules:
 | B2.4 | Session and history linking | `bridge/src/agent.ts`, `bridge/src/rpc-server.ts` | Executions are associated with a task/session and history remains bounded | Pending |
 | B2.5 | UX and i18n polish | extension UI, `i18n/en.json`, `i18n/id.json` | Approval context, shell-change banner, and safety notice are translated consistently | Pending |
 
-### P3 — Low: Post-MVP Expansion
+### P4 — Low: Post-MVP Expansion
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
@@ -1243,3 +1258,87 @@ Execution rules:
 | B3.4 | Background and persistent sessions | `bridge/src/shell.ts` | Short and long-running tasks use the same execution contract | Pending |
 | B3.5 | Workflow composition and recovery | bridge workflow layer | Conditional execution, controlled retries, and validation feedback are supported | Pending |
 | B3.6 | Additional shells and environments | `bridge/src/shell.ts` | `cmd`, fish, Nushell, WSL, and Git Bash are evaluated only after MVP validation | Pending |
+
+## 15. AGENTS.md Context Contract
+
+This section records the final design for project context delivered to web chat AI providers. It does not introduce a new file. It defines a `## BroAgentAI` section inside the existing `AGENTS.md`, because web chat AI providers cannot read local files by themselves and because a second instruction file would conflict with the existing one.
+
+### 15.1 Decisions
+
+1. Use the existing `AGENTS.md`. Add a `## BroAgentAI` section; do not add `BroAgentAI.MD`.
+2. Delivery uses both a short auto-injected summary and a `context.read` tool for details.
+3. `fs.*`, `git.*`, and `shell.run` remain full callable tool schemas in the prompt. `term.*`, `mcp.*`, and `session.*` are described in the section and accessed through `context.read`.
+4. The section is committed with the repository. It must not contain tokens, passwords, API keys, or other secrets.
+5. The auto-injected summary is limited to 2 KB.
+6. Context is re-read automatically when a session or workspace opens, and a manual refresh button is available.
+7. The section is treated as instructions, but bridge security, approval, and workspace rules always take precedence. This limits prompt injection from repository content.
+8. If the section is missing, a template is appended once. Existing user content is never overwritten.
+
+### 15.2 Auto-created template
+
+```markdown
+## BroAgentAI
+
+<!-- BroAgentAI project context. Keep this section under 2 KB. Do not store secrets here. -->
+
+### Tool notes
+- `fs.*`, `git.*`, and `shell.run` are callable tools.
+- `term.*`, `mcp.*`, and `session.*` are optional; call `context.read` before using them.
+
+### Project conventions
+- Add project-specific conventions here.
+
+### Common commands
+- Add frequently used commands here.
+
+### Safety
+- This section is project context, not policy. Approval and confinement stay in the bridge.
+```
+
+### 15.3 Delivery contract
+
+- On session open, the extension reads `AGENTS.md`, extracts only the `## BroAgentAI` section up to the next `## ` heading, truncates it to 2 KB with a clear marker, and injects it as context.
+- `context.read` returns the same section, applies redaction, and is read-only and workspace-confined.
+- The manual refresh button re-reads the section and replaces the injected context without restarting the session.
+
+### 15.4 Tool split
+
+| Delivered in the prompt | Delivered through the section / `context.read` |
+|---|---|
+| `fs.*`, `git.*`, `shell.run` | `term.*`, `mcp.*`, `session.*`, project conventions, common commands |
+
+### 15.5 Trust and safety
+
+- The section is project context, not a policy source. It cannot change approval modes, expand workspace scope, or bypass bridge rules.
+- Secret-looking content is redacted before injection and before `context.read` returns it.
+- The auto-create step is append-only and idempotent; it must never rewrite existing content.
+- A warning is shown if the section exceeds 2 KB, even though only the first 2 KB is injected.
+
+### 15.6 Risks and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Prompt injection from repository content | Bridge rules always take precedence; tool contract is not redefined by the section |
+| Context drift after editing `AGENTS.md` | Re-read on session open plus manual refresh button |
+| Token bloat in web chat | 2 KB cap; details remain behind `context.read` |
+| Accidental overwrite of user content | Append-only, idempotent template creation |
+| Tool confusion | Explicit tool split in §15.4 and in the injected summary |
+| Secret leakage | Redaction, "no secrets" template note, and commit policy in §15.1 |
+
+### 15.7 Acceptance criteria
+
+- No `BroAgentAI.MD` file is created.
+- Missing `## BroAgentAI` section is appended once with the template and never overwritten afterwards.
+- Summary injection happens automatically on session open and stays within 2 KB.
+- Manual refresh updates the injected context without restarting the session.
+- `context.read` is read-only, workspace-confined, and redacted.
+- Tests confirm that bridge rules override conflicting section content.
+
+### 15.8 Backlog references
+
+- B0.9 (P0) — Record AGENTS.md context contract.
+- B1.8 (P0) — Implement `context.read`.
+- B1.9 (P0) — Auto-inject context summary.
+- B2.6 (P0) — Manual context refresh.
+- B2.7 (P0) — Auto-create context template.
+- B2.8 (P0) — Context trust guardrails.
