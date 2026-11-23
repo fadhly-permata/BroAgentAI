@@ -48,6 +48,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - DeepSeek's "generating" check no longer matches the **warning button** next to an error reply, which made a chat with an error look busy forever.
 - Saving from the side-panel preview now refreshes the Explorer tree as well as the Source Control panel, so the file's size and Git badge are no longer stale.
 
+## [0.2.0] - 2026-11-23
+
+### Added
+
+- **GUI and CLI installers** for Windows, macOS and Linux. Windows uses a native WinForms wizard; macOS and Linux use zenity/osascript with a terminal fallback. Firefox native host registration is covered, and setup/uninstall is documented in `docs/installer.md`.
+- **User-run updater** (`npm run update:check` / `npm run update`) that finds the latest GitHub release, verifies SHA-256 checksums, extracts ZIPs safely, backs up the current install with rollback, and re-registers the native host. Settings shows the installed host version against the extension version.
+- **Release tooling**: `npm run release` and `npm run host:build:binaries` build local bundles, plus a tag-driven release workflow for per-OS artifacts when the user decides to publish. Agent publishing to GitHub remains forbidden.
+- **Semver rule**: every modification bumps `MAJOR.MINOR.PATCH` across manifests, `HOST_VERSION`, CHANGELOG and release notes.
+
+### Changed
+
+- `install.sh` gained macOS and Firefox support; installer, Firefox, PRD, BRD, TSD, ADR and roadmap docs were reconciled with the shipped state.
+
+### Fixed
+
+- The native host client no longer reports a false **Host ready** state when the port disconnects before `system.ping` completes; the side panel now shows the honest offline state. Covered by the Chromium e2e offline checks.
+
 ## [0.1.0] - 2026-11-17
 
 First public release. Everything below is new.
@@ -82,5 +99,6 @@ First public release. Everything below is new.
 - Only this extension's id may talk to the native host (`allowed_origins`).
 - No telemetry, no cloud backend, no API keys, and no stored Git credentials.
 
-[Unreleased]: https://github.com/fadhly-permata/BroAgentAI/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/fadhly-permata/BroAgentAI/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/fadhly-permata/BroAgentAI/tree/v0.2.0
 [0.1.0]: https://github.com/fadhly-permata/BroAgentAI/tree/v0.1.0

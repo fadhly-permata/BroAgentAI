@@ -52,7 +52,7 @@ export const NOT_SANDBOX_NOTICE =
   "Workspace confinement is not a sandbox. Shell commands run with your account rights and can access anything you can.";
 
 /** Version of the bridge host, reported by `system.info`. */
-export const HOST_VERSION = "0.1.0";
+export const HOST_VERSION = "0.2.0";
 
 /** Host name used for the Native Messaging registration. */
 export const HOST_NAME = "com.broagentai.host";

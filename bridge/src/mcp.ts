@@ -429,7 +429,7 @@ export class McpManager {
   async #connect(runtime: Runtime): Promise<void> {
     const { def } = runtime;
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-    const client = new Client({ name: "broagentai-bridge", version: "0.1.0" }, { capabilities: {} });
+    const client = new Client({ name: "broagentai-bridge", version: "0.2.0" }, { capabilities: {} });
     runtime.client = client;
 
     if (def.type === "local") {
@@ -452,7 +452,7 @@ export class McpManager {
       } catch (httpError) {
         // Legacy servers only speak SSE; retry once with that transport.
         const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-        const sseClient = new Client({ name: "broagentai-bridge", version: "0.1.0" }, { capabilities: {} });
+        const sseClient = new Client({ name: "broagentai-bridge", version: "0.2.0" }, { capabilities: {} });
         try {
           await sseClient.connect(new SSEClientTransport(url, { requestInit: { headers } }));
           runtime.client = sseClient;
