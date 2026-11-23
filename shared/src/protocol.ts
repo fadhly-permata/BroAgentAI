@@ -137,6 +137,8 @@ export interface GlobalConfig {
   mcpServers?: Record<string, McpServerConfig>;
   /** Provider configurations */
   providers?: Record<string, ProviderConfig>;
+  scripts?: Record<string, ProjectScriptAllowlistEntry>;
+  skillRuns?: Record<string, SkillRunAllowlistEntry>;
 }
 
 /**
@@ -153,6 +155,8 @@ export interface ProjectConfig {
   providers?: Record<string, ProviderConfig>;
   /** Project instructions (AGENTS.md content reference) */
   instructions?: string;
+  scripts?: Record<string, ProjectScriptAllowlistEntry>;
+  skillRuns?: Record<string, SkillRunAllowlistEntry>;
 }
 
 // ============================================================================
@@ -251,6 +255,7 @@ export interface ContentScript {
  * Workspace metadata
  */
 export interface WorkspaceInfo {
+  rootId?: string;
   /** Workspace name (folder name) */
   name: string;
   /** Absolute path to workspace root */
@@ -618,4 +623,99 @@ export interface DependencyInstallResult {
   stdout: string;
   stderr: string;
   error?: string;
+}
+export interface ProjectScriptAllowlistEntry {
+  manager: "npm" | "pnpm" | "yarn" | "bun";
+  args?: string[];
+  cwd?: string;
+  timeoutMs?: number;
+}
+
+export interface SkillRunAllowlistEntry {
+  command: string[];
+  cwd?: string;
+  env?: string[];
+  timeoutMs?: number;
+}
+
+export interface ProjectScriptInfo {
+  name: string;
+  manager: string;
+  command: string[];
+  cwd: string;
+  timeoutMs: number;
+}
+
+export interface SkillRunInfo {
+  name: string;
+  command: string[];
+  cwd: string;
+  envKeys: string[];
+  timeoutMs: number;
+}
+
+export interface SkillRunResult {
+  executionId: string;
+  name: string;
+  command: string[];
+  cwd: string;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  truncated: boolean;
+  timeoutMs: number;
+  durationMs: number;
+}
+
+export interface RootInfo {
+  id: string;
+  rootId?: string;
+  name: string;
+  path: string;
+  active: boolean;
+}
+
+export interface RootResolvedPath {
+  rootId: string;
+  rootPath: string;
+  relativePath: string;
+  path: string;
+}
+
+export interface GitBlameLine {
+  line: number;
+  hash: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  summary: string;
+  text: string;
+}
+
+export interface GitBlameResult {
+  path: string;
+  lines: GitBlameLine[];
+  truncated: boolean;
+}
+
+export interface GitStashEntry {
+  index: number;
+  ref: string;
+  hash: string;
+  branch: string;
+  message: string;
+  date: string;
+}
+
+export interface GitStashListResult {
+  entries: GitStashEntry[];
+  truncated: boolean;
+}
+
+export interface GitStageLinesResult {
+  path: string;
+  stagedLines: number[];
+  patchBytes: number;
+  status: unknown;
 }

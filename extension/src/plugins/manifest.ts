@@ -22,6 +22,7 @@ export interface PluginManifest {
   script?: string;
   style?: string;
   icon?: string;
+  hooks?: { detectError?: boolean };
   /** Free text: how and when the selectors were checked on the live site. */
   verified?: string;
   /**
@@ -45,8 +46,8 @@ export type ManifestResult =
   | { ok: true; plugin: PluginManifest; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
-const TOP_LEVEL_KEYS = new Set(['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'selectors', 'script', 'style', 'icon', 'verified', 'errorReplies', 'blockingPrompts']);
-const SELECTOR_KEYS = new Set<keyof ProviderSelectors>(['composer', 'submit', 'assistantMessage', 'userMessage', 'generating', 'messageKeyAttr', 'codeLine', 'codeBlock', 'markdownSource', 'exclude']);
+const TOP_LEVEL_KEYS = new Set(['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'selectors', 'script', 'style', 'icon', 'hooks', 'verified', 'errorReplies', 'blockingPrompts']);
+const SELECTOR_KEYS = new Set<keyof ProviderSelectors>(['composer', 'submit', 'assistantMessage', 'userMessage', 'generating', 'messageKeyAttr', 'messageKeyFallback', 'codeLine', 'codeBlock', 'markdownSource', 'exclude']);
 const REQUIRED_SELECTORS: (keyof ProviderSelectors)[] = ['composer', 'assistantMessage'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
@@ -126,6 +127,10 @@ export function validatePluginManifest(raw: unknown): ManifestResult {
     for (const key of REQUIRED_SELECTORS) if (!isText(s[key])) errors.push(`selectors.${key} is required`);
     for (const [key, value] of Object.entries(s)) {
       if (!SELECTOR_KEYS.has(key as keyof ProviderSelectors)) { warnings.push(`unknown selector "${key}" is ignored`); continue; }
+      if (key === 'messageKeyFallback') {
+        if (typeof value !== 'boolean') errors.push('selectors.messageKeyFallback must be true or false');
+        continue;
+      }
       if (typeof value !== 'string' || value.length > MAX_TEXT) errors.push(`selectors.${key} must be text (max ${MAX_TEXT} characters)`);
     }
   }
@@ -159,6 +164,17 @@ export function validatePluginManifest(raw: unknown): ManifestResult {
 
   for (const key of ['script', 'style', 'icon'] as const) {
     if (m[key] !== undefined && (typeof m[key] !== 'string' || !FILE_RE.test(m[key] as string))) errors.push(`${key} must be a file name next to plugin.json`);
+  }
+
+  if (m.hooks !== undefined) {
+    const hooks = m.hooks;
+    if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) errors.push('hooks must be an object');
+    else {
+      const fields = hooks as Record<string, unknown>;
+      for (const key of Object.keys(fields)) if (key !== 'detectError') warnings.push(`unknown hook "${key}" is ignored`);
+      if (fields.detectError !== undefined && typeof fields.detectError !== 'boolean') errors.push('hooks.detectError must be true or false');
+      if (fields.detectError === true && typeof m.script !== 'string') errors.push('hooks.detectError requires a plugin.js script');
+    }
   }
 
   if (errors.length > 0) return { ok: false, errors, warnings };
@@ -223,6 +239,7 @@ export function toProviderInfo(plugin: PluginManifest, files: { icon?: string; s
     author: plugin.author,
     icon: files.icon,
     style: files.style,
+    ...(plugin.hooks ? { hooks: { ...plugin.hooks } } : {}),
     ...(plugin.errorReplies ? { errorReplies: [...plugin.errorReplies] } : {}),
     ...(plugin.blockingPrompts ? { blockingPrompts: plugin.blockingPrompts.map((rule) => ({ ...rule })) } : {}),
   };

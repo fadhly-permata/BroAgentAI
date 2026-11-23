@@ -6,6 +6,7 @@
 // manifest does not already cover (the relay itself also refuses to run twice).
 // The P0 spike showed an extension reload/update clears dynamic registrations,
 // so this runs on install/update/startup and whenever plugins or permissions change.
+import { browser, userScriptsApi, type RegisteredContentScript, type UserScriptsApi } from '../browser.ts';
 import { mergePlugins, type PluginState } from './merge.ts';
 import { loadPluginState } from './store.ts';
 import { PLUGIN_WORLD_CSP, pluginWorldId, userWorldPrelude, userWorldReady } from './user-world.ts';
@@ -17,7 +18,7 @@ const ID_PREFIX = 'plugin-';
 export interface PluginAccess { id: string; patterns: string[]; granted: boolean }
 
 function staticContentScripts(): { matches: Set<string>; mainWorldJs?: string } {
-  const scripts = chrome.runtime.getManifest().content_scripts ?? [];
+  const scripts = browser.runtime.getManifest().content_scripts ?? [];
   const matches = new Set(scripts.flatMap((s) => s.matches ?? []));
   const main = scripts.find((s) => (s as { world?: string }).world === 'MAIN');
   return { matches, mainWorldJs: main?.js?.[0] };
@@ -32,7 +33,7 @@ export async function pluginAccess(state: PluginState): Promise<PluginAccess[]> 
     if (entry.source !== 'user' || !entry.enabled || entry.problem) continue;
     const patterns = entry.manifest.matches.filter((p) => !staticMatches.has(p));
     if (patterns.length === 0) continue;
-    const granted = await chrome.permissions.contains({ origins: patterns }).catch(() => false);
+    const granted = await browser.permissions.contains({ origins: patterns }).catch(() => false);
     out.push({ id: entry.id, patterns, granted });
   }
   return out;
@@ -50,38 +51,20 @@ async function doSync(): Promise<void> {
   try {
     const access = await pluginAccess(await loadPluginState());
     const { mainWorldJs } = staticContentScripts();
-    const existing = (await chrome.scripting.getRegisteredContentScripts()).filter((s) => s.id.startsWith(ID_PREFIX));
-    if (existing.length > 0) await chrome.scripting.unregisterContentScripts({ ids: existing.map((s) => s.id) });
-    const scripts: chrome.scripting.RegisteredContentScript[] = [];
+    const existing = (await browser.scripting.getRegisteredContentScripts()).filter((s) => s.id.startsWith(ID_PREFIX));
+    if (existing.length > 0) await browser.scripting.unregisterContentScripts({ ids: existing.map((s) => s.id) });
+    const scripts: RegisteredContentScript[] = [];
     for (const plugin of access) {
       if (!plugin.granted) continue; // shown as "access revoked" on the Plugins page (R7)
       scripts.push({ id: `${ID_PREFIX}${plugin.id}`, matches: plugin.patterns, js: [DYNAMIC_RELAY], runAt: 'document_idle', persistAcrossSessions: true });
       // The MAIN-world helper that reads React props (code blocks, markdown).
       if (mainWorldJs) scripts.push({ id: `${ID_PREFIX}${plugin.id}-main`, matches: plugin.patterns, js: [mainWorldJs], runAt: 'document_idle', world: 'MAIN', persistAcrossSessions: true });
     }
-    if (scripts.length > 0) await chrome.scripting.registerContentScripts(scripts);
+    if (scripts.length > 0) await browser.scripting.registerContentScripts(scripts);
   } catch (err) {
     console.error('[BroAgentAI] plugin registration sync failed:', err);
   }
   await syncUserScripts();
-}
-
-/** chrome.userScripts as Chrome 133+ ships it (worldId is newer than the bundled @types/chrome). */
-interface UserScriptsApi {
-  configureWorld(properties: { worldId?: string; csp?: string; messaging?: boolean }): Promise<void>;
-  getScripts(filter?: { ids?: string[] }): Promise<Array<{ id: string }>>;
-  register(scripts: Array<{ id: string; matches: string[]; js: Array<{ code: string }>; runAt?: string; world?: string; worldId?: string }>): Promise<void>;
-  unregister(filter?: { ids?: string[] }): Promise<void>;
-}
-
-/**
- * The userScripts API, or null when Chrome hides it: "Allow User Scripts" is off
- * for BroAgentAI (Chrome 138+), or Chrome is too old. P0 found the object itself
- * is undefined then (R14).
- */
-export function userScriptsApi(): UserScriptsApi | null {
-  const api = (chrome as unknown as { userScripts?: UserScriptsApi }).userScripts;
-  return typeof api?.register === 'function' ? api : null;
 }
 
 /**
@@ -100,7 +83,7 @@ export interface ScriptSyncStatus { at: number; available: boolean; registered: 
  */
 export async function syncUserScripts(): Promise<void> {
   const api = userScriptsApi();
-  const report = (status: Omit<ScriptSyncStatus, 'at'>) => chrome.storage.local.set({ [SCRIPT_SYNC_KEY]: { at: Date.now(), ...status } }).catch(() => {});
+  const report = (status: Omit<ScriptSyncStatus, 'at'>) => browser.storage.local.set({ [SCRIPT_SYNC_KEY]: { at: Date.now(), ...status } }).catch(() => {});
   if (!api) { await report({ available: false, registered: [] }); return; } // plugins still run on selectors + style.css
   try {
     const state = await loadPluginState();
@@ -110,7 +93,7 @@ export async function syncUserScripts(): Promise<void> {
     for (const entry of mergePlugins([], state).entries) {
       const stored = state.user[entry.id];
       if (entry.source !== 'user' || !entry.enabled || entry.problem || !stored?.script) continue;
-      if (!(await chrome.permissions.contains({ origins: entry.manifest.matches }).catch(() => false))) continue;
+      if (!(await browser.permissions.contains({ origins: entry.manifest.matches }).catch(() => false))) continue;
       const worldId = pluginWorldId(entry.id);
       await api.configureWorld({ worldId, csp: PLUGIN_WORLD_CSP, messaging: false });
       scripts.push({

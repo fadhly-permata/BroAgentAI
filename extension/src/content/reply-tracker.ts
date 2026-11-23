@@ -12,15 +12,24 @@ export interface ReplySnapshot {
   text: string;
 }
 
+export interface ReplyTrackerOptions {
+  orderedKeys?: boolean;
+}
+
+const MAX_SEEN_KEYS = 512;
+
 export class ReplyTracker {
   readonly stableMs: number;
+  readonly orderedKeys: boolean;
   #reported: ReplySnapshot = { count: 0, key: null, text: '' };
   #candidate: (ReplySnapshot & { since: number }) | null = null;
   #inFlight = false;
+  #seen = new Set<number>();
 
   /** @param stableMs a reply counts as finished once its text stayed unchanged this long. */
-  constructor(stableMs: number) {
+  constructor(stableMs: number, options: ReplyTrackerOptions = {}) {
     this.stableMs = stableMs;
+    this.orderedKeys = options.orderedKeys !== false;
   }
 
   /** Everything currently on the page belongs to the past; only later replies are reported. */
@@ -28,6 +37,17 @@ export class ReplyTracker {
     this.#reported = { count: current.count, key: current.key, text: current.text };
     this.#candidate = null;
     this.#inFlight = false;
+    this.#seen.clear();
+    if (current.key !== null) this.#seen.add(current.key);
+  }
+
+  #remember(key: number | null): void {
+    if (key === null || this.#seen.has(key)) return;
+    if (this.#seen.size >= MAX_SEEN_KEYS) {
+      const oldest = this.#seen.values().next();
+      if (!oldest.done) this.#seen.delete(oldest.value);
+    }
+    this.#seen.add(key);
   }
 
   /**
@@ -39,8 +59,12 @@ export class ReplyTracker {
   isNew(reply: ReplySnapshot): boolean {
     const reported = this.#reported;
     if (reply.key !== null && reported.key !== null) {
-      if (reply.key < reported.key) return false;
-      return reply.key > reported.key || reply.text !== reported.text;
+      if (this.orderedKeys) {
+        if (reply.key < reported.key) return false;
+        return reply.key > reported.key || reply.text !== reported.text;
+      }
+      if (this.#seen.has(reply.key)) return reply.key === reported.key && reply.text !== reported.text;
+      return true;
     }
     return reply.count !== reported.count || reply.text !== reported.text;
   }
@@ -72,6 +96,7 @@ export class ReplyTracker {
     this.#reported = { count: reply.count, key: reply.key, text: reply.text };
     this.#candidate = null;
     this.#inFlight = false;
+    this.#remember(reply.key);
   }
 
   /** Nobody took the reply (panel busy, reloading or closed): offer it again later. */

@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { hooksFor, registerPlugin, runPrepare, type HookApi } from './hooks.ts';
+import { DETECT_ERROR_TIMEOUT_MS, hooksFor, parsePluginError, pluginErrorMessage, registerPlugin, runDetectError, runPrepare, type HookApi } from './hooks.ts';
 
-function fakeApi(): HookApi & { calls: string[] } {
+function fakeApi(pageText = ''): HookApi & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
     $: () => null,
     $$: () => [],
+    text: () => pageText,
     click: (selector, options) => { calls.push(`click ${selector} ${options?.text ?? ''}`); return true; },
     setSelect: (selector, value) => { calls.push(`select ${selector}=${value}`); return true; },
     sleep: async () => { calls.push('sleep'); },
@@ -44,6 +45,42 @@ test('runPrepare gives up on a hook that never finishes (R21)', async () => {
   const result = await runPrepare('t-hang', fakeApi(), 30);
   assert.equal(result.ran, true);
   assert.match(result.error ?? '', /timed out after 30 ms/);
+});
+
+test('registerPlugin accepts a detectError hook and ignores invalid hook values', () => {
+  registerPlugin('t-error', { detectError() { return null; } });
+  assert.equal(typeof hooksFor('t-error')?.detectError, 'function');
+  assert.throws(() => registerPlugin('t-error', { detectError: 1 }), /must be a function/);
+});
+
+test('runDetectError validates the result and never throws', async () => {
+  assert.deepEqual(await runDetectError('t-none', fakeApi()), { ran: false });
+  registerPlugin('t-quota', { detectError: () => ({ kind: 'quota', message: '  out of credit  ' }) });
+  assert.deepEqual(await runDetectError('t-quota', fakeApi()), { ran: true, result: { kind: 'quota', message: 'out of credit' } });
+  registerPlugin('t-none-error', { detectError: () => null });
+  assert.deepEqual(await runDetectError('t-none-error', fakeApi()), { ran: true });
+  registerPlugin('t-bad', { detectError: () => ({ kind: 'nope', message: 'x' }) });
+  assert.match((await runDetectError('t-bad', fakeApi())).error ?? '', /kind must be/);
+  assert.throws(() => parsePluginError({ kind: 'blocked', message: ' ' }), /message must be text/);
+  registerPlugin('t-slow', { detectError: () => new Promise(() => {}) });
+  const result = await runDetectError('t-slow', fakeApi(), 20);
+  assert.match(result.error ?? '', new RegExp(`detectError timed out after 20 ms|timed out after 20`));
+  assert.equal(DETECT_ERROR_TIMEOUT_MS, 5000);
+});
+
+test('pluginErrorMessage has exactly the panel message shape', () => {
+  assert.deepEqual(pluginErrorMessage('deepseek', { kind: 'quota', message: 'limit' }), {
+    type: 'ba.pluginError', pluginId: 'deepseek', kind: 'quota', message: 'limit',
+  });
+});
+
+test('the built-in DeepSeek plugin detects its usage limit text', async () => {
+  (globalThis as Record<string, unknown>).BroAgentAI = { registerPlugin };
+  const source = readFileSync(fileURLToPath(new URL('../../plugins/deepseek/plugin.js', import.meta.url)), 'utf8');
+  new Function(source)();
+  const found = await runDetectError('deepseek', fakeApi('A problem occurred\nUsage limit reached. Please try again later.'));
+  assert.deepEqual(found.result, { kind: 'quota', message: 'DeepSeek usage limit reached. Switch chat or wait for the quota to reset.' });
+  assert.deepEqual(await runDetectError('deepseek', fakeApi('A normal answer')), { ran: true });
 });
 
 test('the built-in Ptero plugin closes the welcome dialog and selects Quick Answer', async () => {

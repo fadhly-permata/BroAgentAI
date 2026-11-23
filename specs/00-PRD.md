@@ -13,6 +13,8 @@ BroAgentAI is a Chrome Manifest V3 extension that adds a persistent side panel â
 
 The product requires **no API key** and, after a one-time development setup, **no terminal or `start.bat` per session**. The extension starts and stops the native companion through Chrome Native Messaging.
 
+> Firefox note: a partial, manually loaded Firefox build exists (`npm run build:firefox`, add-on id `broagentai@local`, sidebar instead of side panel); see `docs/firefox.md`. Chromium remains the primary target.
+
 ## 2. Problem
 
 - Web AI chats are good at reasoning and code generation, but they cannot inspect, edit, search, or version-control a local project.
@@ -39,7 +41,7 @@ The product requires **no API key** and, after a one-time development setup, **n
 
 - Replacing a full IDE (no LSP, debugger, terminals, or extensions).
 - A hosted backend, cloud sync, or multi-user collaboration.
-- Firefox, Safari, or mobile support.
+- Safari or mobile support (the Firefox port is partial; see `docs/firefox.md`).
 - Guaranteed compatibility with every AI provider DOM or a provider's terms of service.
 - Force-push, history rewriting, or automatic conflict resolution.
 - Automatic native-host installation without a user-run installer or dev script (Chrome security restriction).

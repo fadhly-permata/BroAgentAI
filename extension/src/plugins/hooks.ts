@@ -13,8 +13,21 @@ export interface HookApi {
   click(selector: string, options?: { text?: string | RegExp }): boolean;
   /** Pick `value` in a <select> and fire input/change like a user would. False when the select or option is missing. */
   setSelect(selector: string, value: string): boolean;
+  text(selector?: string): string;
   /** Wait (capped at 5 s per call). */
   sleep(ms: number): Promise<void>;
+}
+
+export interface PluginError {
+  kind: 'quota' | 'blocked' | 'other';
+  message: string;
+}
+
+export interface PluginErrorMessage {
+  type: 'ba.pluginError';
+  pluginId: string;
+  kind: PluginError['kind'];
+  message: string;
 }
 
 export interface PluginHooks {
@@ -24,11 +37,14 @@ export interface PluginHooks {
    * Must be safe to run more than once.
    */
   prepare?(api: HookApi): void | Promise<void>;
+  detectError?(api: HookApi): PluginError | null | Promise<PluginError | null>;
 }
 
-const HOOK_NAMES = new Set<keyof PluginHooks>(['prepare']);
+const HOOK_NAMES = new Set<keyof PluginHooks>(['prepare', 'detectError']);
 /** R21: a hook that never finishes must not block the session. */
 export const PREPARE_TIMEOUT_MS = 10_000;
+export const DETECT_ERROR_TIMEOUT_MS = 5_000;
+const MAX_ERROR_MESSAGE = 300;
 
 const registry = new Map<string, PluginHooks>();
 
@@ -46,7 +62,7 @@ export function registerPlugin(id: unknown, hooks: unknown): void {
       continue;
     }
     if (typeof fn !== 'function') throw new Error(`BroAgentAI.registerPlugin("${id}"): hook "${name}" must be a function`);
-    clean[name as keyof PluginHooks] = fn as PluginHooks[keyof PluginHooks];
+    (clean as Record<string, unknown>)[name] = fn;
   }
   registry.set(id, clean);
 }
@@ -60,6 +76,43 @@ export interface PrepareResult {
   ran: boolean;
   /** Set when the hook threw or timed out; the session goes on without it. */
   error?: string;
+}
+
+export function parsePluginError(value: unknown): PluginError | null {
+  if (value === null || value === undefined) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('detectError must return an object or null');
+  const raw = value as Record<string, unknown>;
+  if (raw.kind !== 'quota' && raw.kind !== 'blocked' && raw.kind !== 'other') throw new Error('detectError kind must be "quota", "blocked" or "other"');
+  if (typeof raw.message !== 'string' || raw.message.trim() === '') throw new Error('detectError message must be text');
+  return { kind: raw.kind, message: raw.message.trim().slice(0, MAX_ERROR_MESSAGE) };
+}
+
+export function pluginErrorMessage(pluginId: string, error: PluginError): PluginErrorMessage {
+  return { type: 'ba.pluginError', pluginId, kind: error.kind, message: error.message };
+}
+
+export interface DetectErrorResult {
+  ran: boolean;
+  result?: PluginError;
+  error?: string;
+}
+
+export async function runDetectError(id: string, api: HookApi, timeoutMs = DETECT_ERROR_TIMEOUT_MS): Promise<DetectErrorResult> {
+  const detectError = registry.get(id)?.detectError;
+  if (!detectError) return { ran: false };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const raw = await Promise.race([
+      Promise.resolve().then(() => detectError(api)),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`detectError timed out after ${timeoutMs} ms`)), timeoutMs); }),
+    ]);
+    const result = parsePluginError(raw);
+    return result ? { ran: true, result } : { ran: true };
+  } catch (err) {
+    return { ran: true, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Run a plugin's prepare hook with a timeout. Never throws. */

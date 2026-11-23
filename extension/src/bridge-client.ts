@@ -1,4 +1,6 @@
 // Bridge client: Native Messaging ke host lokal. Offline = error BRIDGE_OFFLINE, bukan data palsu.
+import { browser, lastError, type Port } from './browser.ts';
+
 type Handler = (ev: any) => void;
 
 interface RpcRequest {
@@ -73,10 +75,41 @@ export const BridgeErrorCode = {
   DEPENDENCY_INSTALL_FAILED: -32029,
 } as const;
 
+export interface RootInfo {
+  id: string;
+  rootId?: string;
+  name: string;
+  path: string;
+  active: boolean;
+}
+
+export interface RootResolvedPath {
+  rootId: string;
+  rootPath: string;
+  relativePath: string;
+  path: string;
+}
+
+export interface ScriptSummary {
+  name: string;
+  manager: string;
+  command: string[];
+  cwd: string;
+  timeoutMs: number;
+}
+
+export interface SkillRunSummary {
+  name: string;
+  command: string[];
+  cwd: string;
+  envKeys: string[];
+  timeoutMs: number;
+}
+
 const DEFAULT_TIMEOUT_MS = 15000;
 
 class BridgeClient {
-  private port: chrome.runtime.Port | null = null;
+  private port: Port | null = null;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void }>();
   private handlers: Handler[] = [];
   private seq = 0;
@@ -96,6 +129,30 @@ class BridgeClient {
     return DEPRECATED_PROTOCOL_VERSIONS.includes(version as 1);
   }
 
+  async roots(): Promise<{ roots: RootInfo[]; activeRootId: string | null }> {
+    return this.call('root.list', {});
+  }
+
+  async setActiveRoot(rootId: string): Promise<{ root: RootInfo; activeRootId: string }> {
+    return this.call('root.setActive', { rootId });
+  }
+
+  async removeRoot(rootId: string): Promise<unknown> {
+    return this.call('root.remove', { rootId });
+  }
+
+  async resolveRootPath(path: string): Promise<RootResolvedPath> {
+    return this.call('root.resolve', { path });
+  }
+
+  async scripts(): Promise<{ scripts: ScriptSummary[] }> {
+    return this.call('script.list', {});
+  }
+
+  async skillRuns(): Promise<{ skills: SkillRunSummary[] }> {
+    return this.call('skill.list', {});
+  }
+
   onEvent(h: Handler) { this.handlers.push(h); }
 
   async connect(): Promise<void> {
@@ -104,7 +161,7 @@ class BridgeClient {
 
     this.connectPromise = new Promise((resolve, reject) => {
       try {
-        this.port = chrome.runtime.connectNative("com.broagentai.host");
+        this.port = browser.runtime.connectNative("com.broagentai.host");
         
         this.port.onMessage.addListener((msg: RpcResponse) => {
           if ('event' in msg) {
@@ -123,7 +180,7 @@ class BridgeClient {
         });
 
         this.port.onDisconnect.addListener(() => {
-          const err = chrome.runtime.lastError;
+          const err = lastError();
           this.port = null;
           this.connectPromise = null;
           for (const [, p] of this.pending.entries()) {

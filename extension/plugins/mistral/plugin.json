@@ -1,0 +1,20 @@
+{
+  "apiVersion": 1,
+  "id": "mistral",
+  "name": "Mistral",
+  "version": "0.1.0",
+  "author": "BroAgentAI",
+  "description": "Mistral Le Chat web chat (experimental selector defaults)",
+  "homepage": "https://chat.mistral.ai/",
+  "matches": [
+    "https://chat.mistral.ai/*"
+  ],
+  "status": "experimental",
+  "icon": "icon.svg",
+  "verified": "Not verified against the live site or a local fixture. Conservative best-effort selectors; check and adjust them on the actual page before relying on this plugin.",
+  "selectors": {
+    "composer": "textarea[placeholder], div[contenteditable='true']",
+    "assistantMessage": "[data-testid='message-content'], .markdown",
+    "messageKeyFallback": true
+  }
+}

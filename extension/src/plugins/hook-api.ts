@@ -2,6 +2,9 @@
 import type { HookApi } from './hooks.js';
 
 const MAX_SLEEP_MS = 5_000;
+const MAX_TEXT = 20_000;
+
+const textOf = (el: Element | null): string => ((el as HTMLElement | null)?.innerText ?? el?.textContent ?? '').slice(0, MAX_TEXT);
 
 function matchesText(el: Element, text: string | RegExp | undefined): boolean {
   if (text === undefined) return true;
@@ -19,6 +22,7 @@ export function createHookApi(): HookApi {
       el.click();
       return true;
     },
+    text: (selector) => textOf(selector ? document.querySelector(selector) : document.body),
     setSelect(selector, value) {
       const select = document.querySelector(selector);
       if (!(select instanceof HTMLSelectElement)) return false;

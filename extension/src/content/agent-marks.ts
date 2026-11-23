@@ -12,6 +12,7 @@
 // expands it, a click on the label strip of an expanded one collapses it again.
 // The only layout change is that height, which virtualized lists re-measure.
 import { agentMessageKind, PROMPT_HEADING, NOTE_TAG, type AgentMessage } from '../agent-parser.js';
+import { messageKeyOf } from '../providers/dom-adapter.js';
 import type { ProviderInfo } from '../providers/types.js';
 
 const ATTR = 'data-ba-agent';
@@ -162,6 +163,10 @@ function scan(provider: ProviderInfo): void {
     const { kind, text } = label(msg);
     bubble.setAttribute(ATTR, kind);
     bubble.setAttribute(LABEL_ATTR, text);
+    if (currentProvider?.selectors.messageKeyFallback) {
+      const key = messageKeyOf(bubble, currentProvider);
+      if (key !== null) bubble.setAttribute('data-ba-message-key', String(key));
+    }
     setCollapsed(bubble, !expanded.has(signature(bubble)));
   }
 }
@@ -171,10 +176,12 @@ function scan(provider: ProviderInfo): void {
  * the node (scrolling away and back) shows it expanded again. Page lifetime only.
  */
 const expanded = new Set<string>();
+let currentProvider: ProviderInfo | null = null;
 
 function signature(bubble: HTMLElement): string {
   const text = visibleText(bubble);
-  return `${bubble.getAttribute(ATTR)}|${text.length}|${text.slice(0, 160)}`;
+  const key = currentProvider ? messageKeyOf(bubble, currentProvider) : null;
+  return `${bubble.getAttribute(ATTR)}|${key ?? '-'}|${text.length}|${text.slice(0, 160)}`;
 }
 
 function setCollapsed(bubble: HTMLElement, collapsed: boolean): void {
@@ -210,6 +217,7 @@ function onClick(e: MouseEvent): void {
  * it can override it for this site only.
  */
 export function startAgentMarks(provider: ProviderInfo): void {
+  currentProvider = provider;
   if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement('style');
     style.id = STYLE_ID;

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "my-chat",
+      "name": "Generic chat starter",
+      "description": "Blank selector-only plugin for a new HTTPS chat page. Edit id, name, homepage, matches and selectors before validating.",
+      "file": "generic-chat.json"
+    },
+    {
+      "id": "my-markdown-chat",
+      "name": "Markdown chat starter",
+      "description": "Selector-only starting point for chats that render assistant replies as Markdown.",
+      "file": "markdown-chat.json"
+    },
+    {
+      "id": "my-code-chat",
+      "name": "Code chat starter",
+      "description": "Selector-only starting point for chats that show code blocks in editor widgets.",
+      "file": "code-chat.json"
+    }
+  ]
+}

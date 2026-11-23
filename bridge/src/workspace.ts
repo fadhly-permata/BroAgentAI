@@ -21,10 +21,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { ErrorCode } from "./rpc.ts";
-import type { AppConfig, WorkspaceInfo } from "./rpc.ts";
+import type { AppConfig, RootInfo, WorkspaceInfo } from "./rpc.ts";
 
 /** Environment variable that overrides the config directory (dev + tests). */
 export const CONFIG_DIR_ENV = "BROAGENTAI_CONFIG_DIR";
@@ -167,13 +167,25 @@ export class WorkspaceStore {
 
   /** All registered workspaces, most recently opened first. */
   list(): WorkspaceInfo[] {
-    return [...this.#config.workspaces];
+    return this.#config.workspaces.map((workspace) => ({ ...workspace, rootId: workspace.id }));
+  }
+
+  roots(): RootInfo[] {
+    const activeId = this.#config.activeWorkspaceId;
+    return this.list().map((workspace) => ({
+      id: workspace.id,
+      rootId: workspace.id,
+      name: workspace.name,
+      path: workspace.path,
+      active: workspace.id === activeId,
+    }));
   }
 
   /** The active workspace, or `null` when none is selected. */
   active(): WorkspaceInfo | null {
     if (!this.#config.activeWorkspaceId) return null;
-    return this.#config.workspaces.find((w) => w.id === this.#config.activeWorkspaceId) ?? null;
+    const found = this.#config.workspaces.find((w) => w.id === this.#config.activeWorkspaceId);
+    return found ? { ...found, rootId: found.id } : null;
   }
 
   /** Look up a workspace by id. */
@@ -331,6 +343,42 @@ export class WorkspaceStore {
   #sort(): void {
     this.#config.workspaces.sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt));
   }
+}
+
+export interface ResolvedRootPath {
+  root: WorkspaceInfo;
+  relativePath: string;
+  qualified: boolean;
+}
+
+export function resolveRootPath(store: WorkspaceStore, requestedPath: unknown): ResolvedRootPath {
+  const input = typeof requestedPath === "string" ? requestedPath : ".";
+  if (input.includes("\0")) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "path contains invalid characters");
+  }
+  const match = /^@([A-Za-z0-9_-]{1,64}):(.*)$/.exec(input);
+  let root: WorkspaceInfo | null;
+  let relativePath: string;
+  let qualified: boolean;
+  if (match) {
+    root = store.get(match[1]);
+    if (!root) throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, `unknown root id: ${match[1]}`);
+    relativePath = match[2] === "" ? "." : match[2];
+    qualified = true;
+  } else {
+    root = store.active();
+    if (!root) throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
+    relativePath = input === "" ? "." : input;
+    qualified = false;
+  }
+  if (isAbsolute(relativePath)) {
+    throw new WorkspaceError(ErrorCode.PATH_ESCAPE, "root-qualified paths must be relative");
+  }
+  return { root, relativePath, qualified };
+}
+
+export function displayRootPath(root: WorkspaceInfo, relativePath: string, activeId: string | null): string {
+  return root.id === activeId ? relativePath : `@${root.id}:${relativePath}`;
 }
 
 /** Type guard for entries read from the config file. */

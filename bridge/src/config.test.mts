@@ -20,6 +20,7 @@ test("config.get returns merged config with defaults", async () => {
   assert.ok(res.result);
   const cfg = res.result as any;
   assert.equal(cfg.approval, "ask");
+  assert.equal(cfg.approvalConfigured, false);
   assert.ok(Array.isArray(cfg.ignore));
   assert.ok(cfg.ignore.includes(".git"));
   assert.equal(typeof cfg.maxFileBytes, "number");
@@ -43,6 +44,27 @@ test("config.get loads project config from broagentai.jsonc", async () => {
   assert.equal(cfg.approval, "auto");
   assert.equal(cfg.maxFileBytes, 1024);
   assert.ok(cfg.sources.project);
+});
+
+test("config.get exposes merged script and skill-run allowlists", async () => {
+  const s = server();
+  const wsDir = mkdtempSync(join(tmpdir(), "ba-ws-allowlist-"));
+  writeFileSync(join(wsDir, "broagentai.jsonc"), JSON.stringify({
+    approval: "ask",
+    scripts: { emit: { manager: "npm", args: ["--silent"] } },
+    skillRuns: { ping: { command: ["node", "-e", "console.log('ok')"], env: ["PING_TOKEN"] } },
+  }));
+  mkdirSync(join(wsDir, ".broagentai"));
+  writeFileSync(join(wsDir, ".broagentai", "config.json"), JSON.stringify({
+    scripts: { emit: { manager: "pnpm", timeoutMs: 5000 } },
+  }));
+  await s.handle({ id: 1, method: "workspace.add", params: { path: wsDir } });
+
+  const res = await s.handle({ id: 2, method: "config.get" });
+  const cfg = res.result as any;
+  assert.equal(cfg.approvalConfigured, true);
+  assert.deepEqual(cfg.scripts, { emit: { manager: "pnpm", timeoutMs: 5000 } });
+  assert.deepEqual(cfg.skillRuns, { ping: { command: ["node", "-e", "console.log('ok')"], env: ["PING_TOKEN"] } });
 });
 
 test("instructions.list returns AGENTS.md and rules", async () => {

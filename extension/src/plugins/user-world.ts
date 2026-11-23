@@ -42,6 +42,10 @@ export function userWorldPrelude(pluginId: string): string {
       el.click();
       return true;
     },
+    text(s) {
+      const el = s ? document.querySelector(s) : document.body;
+      return ((el && (el.innerText ?? el.textContent)) || '').slice(0, 20000);
+    },
     setSelect(selector, value) {
       const s = document.querySelector(selector);
       if (!s || s.tagName !== 'SELECT' || !Array.from(s.options).some((o) => o.value === value)) return false;
@@ -58,7 +62,7 @@ export function userWorldPrelude(pluginId: string): string {
       if (id !== PLUGIN_ID) { console.warn('[BroAgentAI] plugin ' + PLUGIN_ID + ' registered hooks as "' + id + '"; ignored'); return; }
       if (!h || typeof h !== 'object') return;
       for (const name of Object.keys(h)) {
-        if (name === 'prepare' && typeof h[name] === 'function') hooks[name] = h[name];
+        if ((name === 'prepare' || name === 'detectError') && typeof h[name] === 'function') hooks[name] = h[name];
         else console.warn('[BroAgentAI] plugin ' + PLUGIN_ID + ': unknown hook "' + name + '" ignored');
       }
     },
@@ -75,7 +79,7 @@ export function userWorldPrelude(pluginId: string): string {
     const fn = hooks[call.hook];
     if (typeof fn !== 'function') { done({ ran: false }); return; }
     Promise.resolve().then(() => fn(api)).then(
-      () => done({ ran: true }),
+      (value) => done(value === undefined ? { ran: true } : { ran: true, value }),
       (err) => done({ ran: true, error: String((err && err.message) || err) }),
     );
   });
@@ -87,14 +91,14 @@ export function userWorldReady(pluginId: string): string {
   return `document.documentElement.setAttribute(${JSON.stringify(READY_ATTR)}, ${JSON.stringify(pluginId)});`;
 }
 
-export interface UserHookResult { ran: boolean; error?: string }
+export interface UserHookResult { ran: boolean; error?: string; value?: unknown }
 
 /**
  * Relay side: call a hook in the plugin's world and wait for its answer
  * (R21: never longer than `timeoutMs`). Without a loaded plugin world
  * (no "Allow User Scripts", or plugin.js failed) it reports that and returns.
  */
-export function callUserHook(pluginId: string, hook: 'prepare', timeoutMs: number): Promise<UserHookResult> {
+export function callUserHook(pluginId: string, hook: 'prepare' | 'detectError', timeoutMs: number): Promise<UserHookResult> {
   const root = document.documentElement;
   if (root.getAttribute(READY_ATTR) !== pluginId) {
     return Promise.resolve({ ran: false, error: 'plugin.js is not running on this page (is "Allow User Scripts" on for BroAgentAI?)' });
@@ -115,9 +119,12 @@ export function callUserHook(pluginId: string, hook: 'prepare', timeoutMs: numbe
       const raw = root.getAttribute(resultAttr);
       if (raw === null) return;
       try {
-        const parsed = JSON.parse(raw);
         // R12: plain data only, size-capped.
-        finish({ ran: parsed?.ran === true, error: typeof parsed?.error === 'string' ? parsed.error.slice(0, 300) : undefined });
+        if (raw.length > 2000) throw new Error('hook result too large');
+        const parsed = JSON.parse(raw);
+        const result: UserHookResult = { ran: parsed?.ran === true, error: typeof parsed?.error === 'string' ? parsed.error.slice(0, 300) : undefined };
+        if (parsed && typeof parsed === 'object' && Object.hasOwn(parsed, 'value')) result.value = parsed.value;
+        finish(result);
       } catch {
         finish({ ran: true, error: 'unreadable hook result' });
       }

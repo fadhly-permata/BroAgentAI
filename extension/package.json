@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && vite build --config vite.relay.config.ts",
+    "build:firefox": "tsc --noEmit && vite build --mode firefox && vite build --config vite.relay.config.ts",
     "typecheck": "tsc --noEmit",
     "e2e": "node e2e/sidepanel.spec.mjs",
     "e2e:native": "node e2e/native-host.spec.mjs",
     "e2e:marks": "node e2e/agent-marks.spec.mjs",
     "e2e:home": "node e2e/home-start.spec.mjs",
+    "e2e:plugin-isolation": "node e2e/plugin-isolation.spec.mjs",
     "test": "node --test --experimental-strip-types src/**/*.test.mts"
   },
   "dependencies": {

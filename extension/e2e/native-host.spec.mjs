@@ -82,12 +82,12 @@ try {
   check('offline banner hidden', !(await page.locator('#banner').isVisible()));
 
   // Home is the default view; the file tree lives in Explorer.
-  await page.locator('.rail-btn[data-tab="explorer"]').click();
-  await page.locator('#wsBtn').click();
-  await page.locator('#wsMenu [data-act="open-folder"]').click();
+  await page.locator('.rail-btn[data-tab="home"]').click();
+  await page.locator('#homeOpenFolder').click();
   await page.locator('#wsPath').waitFor({ state: 'visible', timeout: 10000 });
   await page.locator('#wsPath').fill(workspace);
   await page.locator('#modalOk').click();
+  await page.locator('.rail-btn[data-tab="explorer"]').click();
   check('workspace.add works through the native host',
     await until(async () => /native-project/.test(await text('#headerWs'))), await text('#headerWs'));
   check('fs.listTree works through the native host',

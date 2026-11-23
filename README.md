@@ -110,12 +110,18 @@ Servers defined in a project's `broagentai.json(c)` start out **untrusted**. You
 | ChatGPT | `https://chatgpt.com/` |
 | Ptero (experimental) | `https://ptero.pro/` (the plugin switches Ptero to **Quick Answer** when a session starts; in Smart mode Ptero's own server agent grabs the commands) |
 | Meta AI | `https://www.meta.ai/` (guest mode works after the one-time birth-year prompt; signing in is optional) |
+| Claude (experimental) | `https://claude.ai/` (best-effort selectors, not verified) |
+| Grok (experimental) | `https://grok.com/` (best-effort selectors, not verified) |
+| Kimi (experimental) | `https://www.kimi.com/` (best-effort selectors, not verified) |
+| GLM (experimental) | `https://chat.z.ai/` (best-effort selectors, not verified) |
+| Mistral (experimental) | `https://chat.mistral.ai/` (best-effort selectors, not verified) |
+| Arena (experimental) | `https://lmarena.ai/` (best-effort selectors, not verified) |
 
-"Experimental" means the selectors work on the live site (a full read → write → answer loop passed) but haven't been around long enough to call stable.
+"Experimental" means either new (the loop works on the live site but hasn't been around long enough to call stable) or best-effort: the selectors are conservative defaults that were not verified against a live page or a fixture. Check the plugin's `verified` note and adjust selectors if a site changed.
 
 Each provider is a built-in web chat plugin: a folder under [`extension/plugins/`](extension/plugins) with a `plugin.json` (name, version, URL patterns, DOM selectors), an icon, and optionally a `style.css` (how BroAgentAI's marks look on that site) and a `plugin.js` (hooks for the site's quirks, e.g. Ptero's mode switch). Adding a new chat site is mostly a matter of finding the right selectors; the build validates every `plugin.json` and picks the folder up automatically. Heads up: these sites change their DOM now and then, so a selector might need a refresh every once in a while.
 
-**Add a chat site without rebuilding:** put a `plugin.json` (and optionally a `style.css` and an icon) in a folder or `.zip`, then **Settings → Plugins → Import**. You get a review screen first, Chrome asks for access to that site only, and the plugin shows up on Home. The same page updates, exports, turns off or removes plugins, and can replace a built-in one with your own version. The format and the safety rules are in [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md). An imported plugin's `plugin.js` runs isolated from the page and from BroAgentAI itself, and only when you turn on Chrome's **Allow User Scripts** for BroAgentAI (`chrome://extensions` → BroAgentAI → Details).
+**Add a chat site without rebuilding:** put a `plugin.json` (and optionally a `style.css` and an icon) in a folder or `.zip`, then **Settings → Plugins → Import**. You get a review screen first, Chrome asks for access to that site only, and the plugin shows up on Home. The same page updates, exports, turns off or removes plugins, and can replace a built-in one with your own version. **Provider Lab** validates a selector-only `plugin.json` pasted into the panel, and the **Local catalog** offers static starter templates; neither downloads code nor installs without the same review. See [`docs/write-a-webchat-plugin.md`](docs/write-a-webchat-plugin.md) for a step-by-step guide and [`specs/09-WEBCHAT-PLUGINS.md`](specs/09-WEBCHAT-PLUGINS.md) for the format and safety rules. An imported plugin's `plugin.js` runs isolated from the page and from BroAgentAI itself, and only when you turn on Chrome's **Allow User Scripts** for BroAgentAI (`chrome://extensions` → BroAgentAI → Details). A plugin that declares `detectError` can report a quota/block message to the panel; it cannot change the agent loop or approvals.
 
 ### 🛡️ Safety stuff
 
@@ -228,11 +234,11 @@ Handy scripts:
 | `npm run host:uninstall:dev` | Remove the native host registration |
 | `npm run release` | Build the release zips (bundle + source + checksums) into `release/` |
 
-Before you commit, make sure `npm run typecheck` and `npm run test` pass. Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat(scope):`, `fix(scope):`, ...). See [`AGENTS.md`](AGENTS.md) for the house rules and [`bridge/README.md`](bridge/README.md) for bridge-specific notes.
+Before you commit, make sure `npm run typecheck` and `npm run test` pass. Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat(scope):`, `fix(scope):`, ...). See [`AGENTS.md`](AGENTS.md) for the house rules, [`bridge/README.md`](bridge/README.md) for bridge-specific notes, and [`docs/write-a-webchat-plugin.md`](docs/write-a-webchat-plugin.md) to write a web chat plugin.
 
 ## Status
 
-Early days (v0.1). See [CHANGELOG.md](CHANGELOG.md) for what's in each version and [docs/releases](docs/releases) for release notes and install-from-zip steps. It works and has decent test coverage, but expect rough edges: provider DOMs change, some UI strings are still only in Bahasa Indonesia, and the specs in `specs/` are a bit ahead of (and sometimes behind) the code. Issues and PRs are welcome!
+Early days (v0.1). See [CHANGELOG.md](CHANGELOG.md) for what's in each version, [docs/releases](docs/releases) for release notes and install-from-zip steps, and [PRIVACY.md](PRIVACY.md) for the local-only privacy statement. It works and has decent test coverage, but expect rough edges: provider DOMs change and the specs in `specs/` are occasionally ahead of the code. Issues and PRs are welcome!
 
 Also keep in mind that automating a chat site's UI may not be something every provider loves. Check their terms and use it responsibly.
 

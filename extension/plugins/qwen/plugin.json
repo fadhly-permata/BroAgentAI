@@ -18,6 +18,7 @@
     "assistantMessage": ".qwen-chat-message-assistant .response-message-content.phase-answer",
     "userMessage": ".qwen-chat-message-user .chat-user-message",
     "generating": "button.stop-button",
+    "messageKeyFallback": true,
     "markdownSource": ".custom-qwen-markdown",
     "codeLine": ".view-lines .view-line"
   }

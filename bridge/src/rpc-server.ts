@@ -9,9 +9,11 @@
 
 import { ErrorCode } from "./rpc.ts";
 import type { RpcRequest, RpcResponse } from "./rpc.ts";
-import { WorkspaceError, WorkspaceStore, validateWorkspacePath } from "./workspace.ts";
+import { WorkspaceError, WorkspaceStore, validateWorkspacePath, resolveRootPath } from "./workspace.ts";
 import type { WorkspaceInfo } from "./rpc.ts";
-import { listDir, listTree, statFile, readFile, readFileLines, writeFile, searchFiles } from "./fs.ts";
+import { listDir, listTree, statFile, readFile, readFileLines, writeFile, searchFiles, confinePath } from "./fs.ts";
+import { listProjectScripts, runProjectScript } from "./scripts.ts";
+import { clearSkillRunHistory, listSkillRuns, runSkillScript, skillRunHistory } from "./skill-runs.ts";
 import { commitCoAuthors } from "./co-authors.ts";
 import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
@@ -30,8 +32,8 @@ import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
 import {
-  gitAbort, gitBranches, gitCheckout, gitCommit, gitCommitDiff, gitCommitFiles, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitLog, gitPull, gitPush,
-  gitStage, gitStatus, gitTestRemote, gitUnstage,
+  gitAbort, gitBlame, gitBranches, gitCheckout, gitCommit, gitCommitDiff, gitCommitFiles, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitLog, gitPull, gitPush,
+  gitStage, gitStashDrop, gitStashList, gitStashPop, gitStashPush, gitStageLines, gitStatus, gitTestRemote, gitUnstage,
 } from "./git.ts";
 import { SessionStore } from "./session-store.ts";
 
@@ -253,10 +255,46 @@ export class RpcServer {
     this.register("dependency.history", (params) => dependencyHistory(readParams(params ?? {})));
     this.register("dependency.history.clear", (params) => clearDependencyHistory(readParams(params ?? {})));
 
+    this.register("script.list", () => listProjectScripts(this.#store));
+    this.register("script.run", (params) => runProjectScript(this.#store, readParams(params)));
+    this.register("skill.list", () => listSkillRuns(this.#store));
+    this.register("skill.run", (params) => runSkillScript(this.#store, readParams(params)));
+    this.register("skill.history", () => skillRunHistory());
+    this.register("skill.history.clear", () => clearSkillRunHistory());
+
     this.register("workspace.list", () => ({
       workspaces: this.#store.list(),
       activeWorkspaceId: this.#store.active()?.id ?? null,
     }));
+
+    this.register("root.list", () => ({
+      roots: this.#store.roots(),
+      activeRootId: this.#store.active()?.id ?? null,
+    }));
+    this.register("root.setActive", (params) => {
+      const { id, rootId } = readParams(params);
+      const workspace = this.#store.setActive(typeof id === "string" ? id : rootId);
+      this.#watcher?.restart();
+      return { root: { ...workspace, rootId: workspace.id, active: true }, activeRootId: workspace.id };
+    });
+    this.register("root.remove", (params) => {
+      const { id, rootId } = readParams(params);
+      const result = this.#store.remove(typeof id === "string" ? id : rootId);
+      this.#watcher?.restart();
+      return result;
+    });
+    this.register("root.resolve", (params) => {
+      const { path } = readParams(params);
+      const resolved = resolveRootPath(this.#store, path);
+      const absolute = confinePath(resolved.root.path, resolved.relativePath);
+      const relativePath = absolute.slice(resolved.root.path.length).replace(/^[\\/]/, "").replace(/\\/g, "/") || ".";
+      return {
+        rootId: resolved.root.id,
+        rootPath: resolved.root.path,
+        relativePath,
+        path: absolute,
+      };
+    });
 
     this.register("workspace.add", (params) => {
       const { path, name } = readParams(params);
@@ -373,6 +411,18 @@ export class RpcServer {
     this.register("git.abort", () => gitAbort(this.#store));
     this.register("git.testRemote", (params) => gitTestRemote(this.#store, readParams(params).remote));
     this.register("git.log", (params) => gitLog(this.#store, params == null ? undefined : readParams(params).maxCount));
+    this.register("git.blame", (params) => gitBlame(this.#store, readParams(params).path));
+    this.register("git.stashList", () => gitStashList(this.#store));
+    this.register("git.stashPush", (params) => gitStashPush(this.#store, readParams(params ?? {}).message));
+    this.register("git.stashPop", (params) => {
+      const p = readParams(params);
+      return gitStashPop(this.#store, p.index, p.confirmed);
+    });
+    this.register("git.stashDrop", (params) => {
+      const p = readParams(params);
+      return gitStashDrop(this.#store, p.index, p.confirmed);
+    });
+    this.register("git.stageLines", (params) => gitStageLines(this.#store, params));
     this.register("git.commitFiles", (params) => gitCommitFiles(this.#store, readParams(params).hash));
     this.register("git.commitDiff", (params) => {
       const p = readParams(params);

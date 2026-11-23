@@ -17,6 +17,8 @@ let term: Terminal | null = null;
 let fit: FitAddon | null = null;
 let sessionId: string | null = null;
 let starting = false;
+let confirmed = false;
+let confirmOverlay: HTMLElement | null = null;
 
 function setStatus(text: string): void {
   $('termStatus').textContent = text;
@@ -37,6 +39,45 @@ const LIGHT_TERMINAL = {
 };
 const terminalTheme = () => (document.documentElement.dataset.theme === 'light' ? LIGHT_TERMINAL : DARK_TERMINAL);
 
+function dismissConfirmation(): void {
+  confirmOverlay?.remove();
+  confirmOverlay = null;
+}
+
+function requireConfirmation(onConfirm: () => void): void {
+  dismissConfirmation();
+  const overlay = document.createElement('div');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-editor-foreground,#ccc);border:1px solid var(--vscode-panel-border,#444);border-radius:6px;max-width:420px;padding:16px;font:13px sans-serif';
+  const title = document.createElement('div');
+  title.textContent = 'Konfirmasi terminal / Terminal confirmation';
+  title.style.cssText = 'font-weight:600;margin-bottom:8px';
+  const body = document.createElement('div');
+  body.textContent = 'Terminal membuka shell Anda dengan hak akses penuh di workspace aktif. Hanya Anda yang dapat memulai atau mengetik di terminal ini; agen tidak memakai terminal ini. Lanjutkan?';
+  body.style.cssText = 'line-height:1.5;margin-bottom:12px';
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Batal';
+  const accept = document.createElement('button');
+  accept.textContent = 'Mulai terminal';
+  cancel.addEventListener('click', () => { dismissConfirmation(); setStatus('Terminal dibatalkan.'); });
+  accept.addEventListener('click', () => {
+    dismissConfirmation();
+    confirmed = true;
+    onConfirm();
+  });
+  actions.append(cancel, accept);
+  card.append(title, body, actions);
+  overlay.append(card);
+  document.body.append(overlay);
+  confirmOverlay = overlay;
+  accept.focus();
+}
+
 function ensureXterm(): Terminal {
   if (term) return term;
   term = new Terminal({
@@ -51,7 +92,7 @@ function ensureXterm(): Terminal {
   term.loadAddon(fit);
   term.open($('termView'));
   term.onData((data) => {
-    if (!sessionId) return;
+    if (!sessionId || !confirmed) return;
     bridge.call('term.input', { sessionId, data }).catch((err) => setStatus('Gagal kirim: ' + (err?.message || err)));
   });
   term.onResize(({ cols, rows }) => {
@@ -80,6 +121,10 @@ function fitNow(): void {
 async function startSession(): Promise<void> {
   if (starting || sessionId) return;
   if (!deps.hasWorkspace()) { setStatus('Pilih workspace dulu.'); return; }
+  if (!confirmed) {
+    requireConfirmation(() => { void startSession(); });
+    return;
+  }
   starting = true;
   const xterm = ensureXterm();
   fitNow();
@@ -119,6 +164,7 @@ export function initTerminal(dependencies: TerminalDeps): void {
     if (ev.event === 'term.exit') {
       term?.write(`\r\n[Terminal selesai, exit code ${ev.data.exitCode}]\r\n`);
       sessionId = null;
+      confirmed = false;
       setStatus('Terminal tertutup. Klik New untuk membuka lagi.');
     }
   });
@@ -126,6 +172,7 @@ export function initTerminal(dependencies: TerminalDeps): void {
   $('termNew').addEventListener('click', async () => {
     await killSession();
     sessionId = null;
+    confirmed = false;
     term?.reset();
     await startSession();
   });

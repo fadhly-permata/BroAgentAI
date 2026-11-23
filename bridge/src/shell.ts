@@ -82,6 +82,7 @@ interface DetectOptions {
 }
 
 interface ActiveExecution {
+  store: WorkspaceStore;
   executionId: string;
   sessionId?: string;
   taskId?: string;
@@ -571,7 +572,8 @@ export async function runShell(
 
   const shell = detectShell();
   const executionId = requestedExecutionId(rawParams.executionId);
-  if (activeExecutions.size >= MAX_SHELL_CONCURRENCY) {
+  const storeActive = [...activeExecutions.values()].filter((entry) => entry.store === store).length;
+  if (storeActive >= MAX_SHELL_CONCURRENCY) {
     throw shellFailure(ErrorCode.SHELL_BUSY, `shell concurrency limit reached (${MAX_SHELL_CONCURRENCY})`);
   }
   const token = randomUUID().replace(/-/g, "");
@@ -586,6 +588,7 @@ export async function runShell(
     let fallback: ReturnType<typeof setTimeout> | undefined;
 
     const activeEntry: ActiveExecution = {
+      store,
       executionId,
       sessionId,
       taskId,

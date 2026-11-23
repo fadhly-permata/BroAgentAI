@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+      - name: Install Playwright system dependencies
+        if: runner.os == 'Linux'
+        run: sudo npx playwright install-deps chromium
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test
+      - name: Build
+        run: npm run build
+      - name: Shell benchmark gate
+        run: npm run bench:shell
+      - name: Extension e2e
+        run: npm run e2e -w @broagentai/extension
+      - name: Plugin isolation e2e
+        run: npm run e2e:plugin-isolation -w @broagentai/extension
+      - name: Agent marks e2e
+        run: npm run e2e:marks -w @broagentai/extension
+      - name: Home start e2e
+        run: npm run e2e:home -w @broagentai/extension

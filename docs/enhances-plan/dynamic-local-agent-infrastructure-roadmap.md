@@ -1258,6 +1258,11 @@ Execution rules:
 | B3.4 | Background and persistent sessions | `bridge/src/shell.ts` | Short and long-running tasks use the same execution contract | Done |
 | B3.5 | Workflow composition and recovery | `bridge/src/workflow.ts` | Conditional execution, controlled retries, and validation feedback are supported | Done |
 | B3.6 | Additional shells and environments | `bridge/src/shell.ts` | `cmd`, fish, Nushell, WSL, and Git Bash are evaluated only after MVP validation | Done |
+| B4.1 | Provider plugins, Provider Lab and local catalog | `extension/plugins/`, `extension/src/plugins/`, `extension/catalog/` | Additional providers and selector-only plugins work without remote code | Done |
+| B4.2 | Scripts, skills and multi-root workspaces | `bridge/src/scripts.ts`, `bridge/src/skill-runs.ts`, `bridge/src/workspace.ts` | Allowlisted execution requires explicit approval and remains workspace-confined | Done |
+| B4.3 | Git and UX expansion | `bridge/src/git.ts`, `extension/src/agent-panel.ts`, `extension/src/i18n/` | Blame/stash/per-line staging, resume, quick actions, transcript export and i18n parity are available | Done |
+| B4.4 | Firefox port | `extension/manifest.json`, `extension/src/browser.ts`, `bridge/src/index.ts` | Firefox uses a fixed add-on ID, sidebar API and native host attribution | Partial |
+| B4.5 | Cross-platform CI | `.github/workflows/ci.yml` | Typecheck, tests, build, benchmark and browser e2e run on Windows, macOS and Linux | Done |
 
 ## 15. AGENTS.md Context Contract
 

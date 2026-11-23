@@ -109,7 +109,7 @@ export function packageFiles(pkg: PluginPackage): Map<string, Uint8Array> {
   const enc = new TextEncoder();
   const files = new Map<string, Uint8Array>();
   // chrome.storage returns objects with sorted keys; write plugin.json in the usual field order.
-  const order = ['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'script', 'style', 'icon', 'verified', 'selectors'];
+  const order = ['apiVersion', 'id', 'name', 'version', 'author', 'description', 'homepage', 'matches', 'status', 'script', 'style', 'icon', 'hooks', 'verified', 'selectors'];
   const raw = pkg.manifest as unknown as Record<string, unknown>;
   const manifest = Object.fromEntries([
     ...order.filter((key) => key in raw).map((key) => [key, raw[key]]),

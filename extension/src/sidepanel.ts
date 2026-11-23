@@ -1,4 +1,5 @@
 import { bridge, BridgeErrorCode } from './bridge-client.js';
+import { browser } from './browser.ts';
 import { renderExplorer, resetExplorerState, ExplorerOptions } from './explorer.js';
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
@@ -413,8 +414,8 @@ const UI_SETTINGS_KEY = 'broagentai.ui';
 function loadUISettings() {
   try {
     const raw = localStorage.getItem(UI_SETTINGS_KEY);
-    return raw ? JSON.parse(raw) : { lang: 'id', theme: 'system', fontSize: 13, tabSize: 2, wrap: false };
-  } catch { return { lang: 'id', theme: 'system', fontSize: 13, tabSize: 2, wrap: false }; }
+    return raw ? JSON.parse(raw) : { lang: 'id', theme: 'system', density: 'comfortable', panelWidth: 'compact', fontSize: 13, tabSize: 2, wrap: false };
+  } catch { return { lang: 'id', theme: 'system', density: 'comfortable', panelWidth: 'compact', fontSize: 13, tabSize: 2, wrap: false }; }
 }
 function saveUISettings(settings: any) {
   try {
@@ -429,14 +430,9 @@ function saveUISettings(settings: any) {
  */
 function applyRailSide(): void {
   // Declared with a callback in Chromium's side_panel.idl (Side: left | right).
-  const sidePanel = chrome.sidePanel as unknown as { getLayout?: (callback: (layout?: { side?: string }) => void) => void };
-  if (typeof sidePanel?.getLayout !== 'function') return;
-  try {
-    sidePanel.getLayout((layout) => {
-      if (chrome.runtime.lastError) return;
-      document.documentElement.dataset.railSide = layout?.side === 'left' ? 'left' : 'right';
-    });
-  } catch { /* keep the CSS default (right) */ }
+  void browser.panel.getLayout().then((layout) => {
+    document.documentElement.dataset.railSide = layout?.side === 'left' ? 'left' : 'right';
+  }).catch(() => { /* keep the CSS default (right) */ });
 }
 applyRailSide();
 
@@ -453,6 +449,13 @@ function applyUISettings() {
   const theme = (s.theme || 'system') as Theme;
   if (($('themeSel') as HTMLSelectElement)) ($('themeSel') as HTMLSelectElement).value = theme;
   applyTheme(theme);
+
+  const density = s.density === 'compact' ? 'compact' : 'comfortable';
+  const panelWidth = s.panelWidth === 'wide' ? 'wide' : 'compact';
+  if (($('densitySel') as HTMLSelectElement)) ($('densitySel') as HTMLSelectElement).value = density;
+  if (($('panelWidthSel') as HTMLSelectElement)) ($('panelWidthSel') as HTMLSelectElement).value = panelWidth;
+  document.documentElement.dataset.density = density;
+  document.documentElement.dataset.panelWidth = panelWidth;
   
   // Apply Font & Editor settings
   if (s.fontSize) {
@@ -482,6 +485,16 @@ on('themeSel','change',(e)=>{
   saveUISettings({theme: v}); 
   applyTheme(v);
 });
+on('densitySel','change',(e)=>{
+  const v = (e.target as HTMLSelectElement).value === 'compact' ? 'compact' : 'comfortable';
+  saveUISettings({density: v});
+  document.documentElement.dataset.density = v;
+});
+on('panelWidthSel','change',(e)=>{
+  const v = (e.target as HTMLSelectElement).value === 'wide' ? 'wide' : 'compact';
+  saveUISettings({panelWidth: v});
+  document.documentElement.dataset.panelWidth = v;
+});
 on('fontSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({fontSize:v}); document.documentElement.style.setProperty('--font-size',v+'px');}});
 on('tabSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({tabSize:v}); document.documentElement.style.setProperty('--tab-size',String(v));}});
 on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; saveUISettings({wrap:v}); document.documentElement.style.setProperty('--editor-wrap',v?'pre-wrap':'pre');});
@@ -509,7 +522,7 @@ on('ignoreInput','change',()=>applyIgnore());
 on('ignoreInput','blur',()=>applyIgnore());
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
-try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
+try{ ($('extId') as HTMLElement).textContent=browser.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
 // After a rebuild this page already runs the new code, but Chrome still holds the old
 // manifest (content scripts, site access) until the extension reloads: do that once.
 void reloadIfManifestStale();

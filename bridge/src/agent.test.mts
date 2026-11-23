@@ -6,8 +6,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
-import { AGENT_MODES, approvalKey, decide, normalizeMode, writePreview } from "./agent.ts";
+import { AGENT_MODES, approvalKey, decide, normalizeMode, resolveAgentMode, writePreview } from "./agent.ts";
 import type { ToolCategory } from "./agent.ts";
+import { mergeConfig, normalizeApprovalMode } from "./config.ts";
 import { detectShell } from "./shell.ts";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/mcp-fixture-server.mjs", import.meta.url));
@@ -339,4 +340,145 @@ test("MCP tools join the catalog and follow the same modes", async () => {
   } finally {
     await s.shutdown();
   }
+});
+
+test("new tool catalog exposes scripts, skill runs and extended git tools without exposing term.create", async () => {
+  const { ok } = await fixture();
+  const { tools } = await ok("tools.list");
+  const names = tools.map((tool: any) => tool.name);
+  for (const name of [
+    "script.list", "script.run", "skill.list", "skill.run",
+    "git.log", "git.blame", "git.stashList", "git.stashPush", "git.stashPop", "git.stashDrop", "git.stageLines",
+  ]) {
+    assert.ok(names.includes(name), name);
+  }
+  assert.ok(!names.some((name: string) => name.startsWith("term.")));
+  const { prompt } = await ok("agent.prompt", { mode: "auto-approve" });
+  assert.ok(prompt.includes("script.run"));
+  assert.ok(prompt.includes("skill.run"));
+});
+
+test("skill runs and destructive stash operations always ask in auto-approve", async () => {
+  const { ok } = await fixture();
+  for (const command of ["skill.run", "git.stashPop", "git.stashDrop"]) {
+    const check = await ok("agent.check", { command, params: { name: "ping", index: 0, confirmed: true }, mode: "auto-approve" });
+    assert.equal(check.decision, "ask", command);
+  }
+  const script = await ok("agent.check", { command: "script.run", params: { name: "test" }, mode: "auto-approve" });
+  assert.equal(script.decision, "auto");
+});
+
+test("config approval can only tighten the panel mode, never elevate it", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "ba-agent-policy-cfg-"));
+  const ws = mkdtempSync(join(tmpdir(), "ba-agent-policy-ws-"));
+  writeFileSync(join(ws, "README.md"), "hello\n");
+  writeFileSync(join(ws, "broagentai.jsonc"), JSON.stringify({ approval: "deny" }));
+  const s = new RpcServer({ store: new WorkspaceStore({ configDir }) });
+  await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
+  let id = 1;
+  const ok = async (method: string, params: unknown = {}) => {
+    const res = await s.handle({ id: id++, method, params });
+    assert.equal(res.error, undefined, `${method} failed: ${res.error?.message}`);
+    return res.result as any;
+  };
+
+  const read = await ok("agent.check", { command: "fs.readFile", params: { path: "README.md" }, mode: "auto-approve" });
+  assert.equal(read.decision, "auto");
+  assert.equal(read.mode, "read-only");
+  assert.equal(read.configConstrained, true);
+  const write = await ok("agent.check", { command: "fs.writeFile", params: { path: "out.txt", content: "x" }, mode: "auto-approve" });
+  assert.equal(write.decision, "deny");
+  assert.equal(write.mode, "read-only");
+});
+
+test("tool-specific config overrides only tighten the matching tool", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "ba-agent-override-cfg-"));
+  const ws = mkdtempSync(join(tmpdir(), "ba-agent-override-ws-"));
+  writeFileSync(join(ws, "broagentai.jsonc"), JSON.stringify({ toolOverrides: [{ tool: "shell.run", approval: "deny" }] }));
+  const s = new RpcServer({ store: new WorkspaceStore({ configDir }) });
+  await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
+  let id = 1;
+  const ok = async (method: string, params: unknown = {}) => {
+    const res = await s.handle({ id: id++, method, params });
+    assert.equal(res.error, undefined, `${method} failed: ${res.error?.message}`);
+    return res.result as any;
+  };
+
+  const shell = await ok("agent.check", { command: "shell.run", params: { command: "echo hi" }, mode: "auto-approve" });
+  assert.equal(shell.decision, "deny");
+  assert.equal(shell.mode, "read-only");
+  const push = await ok("agent.check", { command: "git.push", params: {}, mode: "auto-approve" });
+  assert.equal(push.decision, "auto");
+  assert.equal(push.configConstrained, false);
+});
+
+test("stash pop/drop never remember approval and their approval keys bind the stash index", async () => {
+  const { ok } = await fixture();
+  for (const command of ["git.stashPop", "git.stashDrop"]) {
+    const first = await ok("agent.check", { command, params: { index: 0, confirmed: true }, mode: "ask-once" });
+    const second = await ok("agent.check", { command, params: { index: 1, confirmed: true }, mode: "ask-once" });
+    assert.equal(first.rememberApproval, false, command);
+    assert.equal(second.rememberApproval, false, command);
+    assert.equal(first.approvalKey, `${command}:v2:0`);
+    assert.equal(second.approvalKey, `${command}:v2:1`);
+    assert.notEqual(first.approvalKey, second.approvalKey);
+    assert.equal(approvalKey(command, { index: 2 }), `${command}:v2:2`);
+  }
+});
+
+test("invalid config approval values fall back to ask", () => {
+  for (const value of ["god-mode", "auto-approve", "ALLOW", 1, {}, null, undefined]) {
+    assert.equal(normalizeApprovalMode(value), "ask", String(value));
+  }
+  const merged = mergeConfig(
+    { defaultApproval: "auto" },
+    { approval: "always" as any },
+    null,
+    { ignore: [], maxFileBytes: 1024 },
+  );
+  assert.equal(merged.approval, "ask");
+  assert.equal(merged.approvalConfigured, true);
+});
+
+test("resolveAgentMode fails closed when config loading throws", () => {
+  const host = { store: { active() { throw new Error("config unavailable"); } } } as any;
+  for (const mode of ["always-ask", "ask-once", "auto-approve"]) {
+    assert.equal(resolveAgentMode(host, mode), "always-ask", mode);
+    assert.equal(resolveAgentMode(host, mode, "shell.run"), "always-ask", mode);
+  }
+  assert.equal(resolveAgentMode(host, "read-only"), "read-only");
+});
+
+test("script.run check previews the real package script body and binds it to the approval key", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "ba-agent-script-cfg-"));
+  const ws = mkdtempSync(join(tmpdir(), "ba-agent-script-ws-"));
+  const body1 = "node -e \"console.log('one')\"";
+  const body2 = "node -e \"console.log('two')\"";
+  writeFileSync(join(ws, "package.json"), JSON.stringify({ scripts: { emit: body1 } }));
+  writeFileSync(join(ws, "broagentai.jsonc"), JSON.stringify({ scripts: { emit: { manager: "npm" } } }));
+  const s = new RpcServer({ store: new WorkspaceStore({ configDir }) });
+  const added = await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
+  assert.equal(added.error, undefined, added.error?.message);
+  let id = 1;
+  const check = async () => {
+    const res = await s.handle({
+      id: id++,
+      method: "agent.check",
+      params: { command: "script.run", params: { name: "emit" }, mode: "always-ask" },
+    });
+    assert.equal(res.error, undefined, res.error?.message);
+    return res.result as any;
+  };
+
+  const first = await check();
+  assert.equal(first.command, "script.run");
+  assert.match(first.preview, /^\$ npm run emit/);
+  assert.ok(first.preview.includes(`package script: ${body1}`), first.preview);
+  assert.ok(first.approvalContext.command.includes(`body:${body1}`));
+
+  writeFileSync(join(ws, "package.json"), JSON.stringify({ scripts: { emit: body2 } }));
+  const second = await check();
+  assert.ok(second.preview.includes(`package script: ${body2}`), second.preview);
+  assert.notEqual(first.approvalKey, second.approvalKey);
+  assert.ok(second.approvalContext.command.includes(`body:${body2}`));
 });

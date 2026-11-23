@@ -28,7 +28,7 @@ const errorsOf = (raw: unknown) => {
 
 test('every built-in plugin is valid, named after its folder, with its icon present', () => {
   const folders = readdirSync(pluginsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  assert.deepEqual(folders.sort(), ['chatgpt', 'deepseek', 'gemini', 'meta', 'ptero', 'qwen']);
+  assert.deepEqual(folders.sort(), ['arena', 'chatgpt', 'claude', 'deepseek', 'gemini', 'glm', 'grok', 'kimi', 'meta', 'mistral', 'ptero', 'qwen']);
   for (const folder of folders) {
     const raw = JSON.parse(readFileSync(join(pluginsDir, folder, 'plugin.json'), 'utf8'));
     const result = validatePluginManifest(raw);
@@ -40,6 +40,28 @@ test('every built-in plugin is valid, named after its folder, with its icon pres
       const file = result.plugin[key];
       if (file) assert.ok(existsSync(join(pluginsDir, folder, file)), `${folder} ${key} file ${file}`);
     }
+  }
+});
+
+test('the bundled plugin template validates without warnings', () => {
+  const raw = JSON.parse(readFileSync(fileURLToPath(new URL('../../../templates/webchat-plugin/plugin.json', import.meta.url)), 'utf8'));
+  const result = validatePluginManifest(raw);
+  assert.ok(result.ok, result.ok ? '' : result.errors.join('; '));
+  assert.deepEqual(result.warnings, []);
+});
+
+test('the local catalog is valid and contains no code or extra files', () => {
+  const catalogDir = fileURLToPath(new URL('../../catalog/templates', import.meta.url));
+  const index = JSON.parse(readFileSync(fileURLToPath(new URL('../../catalog/index.json', import.meta.url)), 'utf8'));
+  assert.equal(index.version, 1);
+  assert.ok(index.entries.length > 0);
+  for (const entry of index.entries) {
+    const raw = JSON.parse(readFileSync(join(catalogDir, entry.file), 'utf8'));
+    const result = validatePluginManifest(raw);
+    assert.ok(result.ok, `${entry.file}: ${result.ok ? '' : result.errors.join('; ')}`);
+    assert.deepEqual(result.warnings, [], `${entry.file} warnings`);
+    assert.equal(result.plugin.id, entry.id);
+    for (const key of ['script', 'style', 'icon', 'hooks'] as const) assert.equal(result.plugin[key], undefined, `${entry.file} must be selector-only`);
   }
 });
 
@@ -82,6 +104,22 @@ test('unknown fields and a homepage outside matches only warn', () => {
   const result = validatePluginManifest(minimal({ extra: true, homepage: 'https://other.example.com/', selectors: { composer: 'textarea', assistantMessage: '.r', fancy: 'x' } }));
   assert.ok(result.ok);
   assert.equal(result.warnings.length, 3, result.warnings.join('; '));
+});
+
+test('hooks.detectError is validated and requires a script', () => {
+  const ok = validatePluginManifest(minimal({ script: 'plugin.js', hooks: { detectError: true } }));
+  assert.ok(ok.ok, ok.ok ? '' : ok.errors.join('; '));
+  if (ok.ok) assert.deepEqual(toProviderInfo(ok.plugin).hooks, { detectError: true });
+  assert.match(errorsOf(minimal({ hooks: { detectError: true } })).join(), /requires a plugin.js script/);
+  assert.match(errorsOf(minimal({ script: 'plugin.js', hooks: { detectError: 'yes' } })).join(), /hooks.detectError must be true or false/);
+  assert.ok(validatePluginManifest(minimal({ hooks: { fancy: true } })).warnings.some((w) => /unknown hook "fancy"/.test(w)));
+});
+
+test('messageKeyFallback is a boolean selector mapped to the provider', () => {
+  const ok = validatePluginManifest(minimal({ selectors: { composer: 'textarea', assistantMessage: '.reply', messageKeyFallback: true } }));
+  assert.ok(ok.ok, ok.ok ? '' : ok.errors.join('; '));
+  if (ok.ok) assert.equal(toProviderInfo(ok.plugin).selectors.messageKeyFallback, true);
+  assert.match(errorsOf(minimal({ selectors: { composer: 'textarea', assistantMessage: '.reply', messageKeyFallback: 'yes' } })).join(), /messageKeyFallback must be true or false/);
 });
 
 test('toProviderInfo maps the manifest to the provider the panel uses', () => {

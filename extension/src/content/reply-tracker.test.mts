@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { boundedMessageKey, MESSAGE_KEY_LIMIT } from '../providers/message-key.ts';
 import { ReplyTracker } from './reply-tracker.ts';
 
 const snap = (text: string, key: number | null = null, count = 1) => ({ count, key, text });
@@ -67,4 +68,25 @@ test('an empty reply is never reported', () => {
   const tracker = new ReplyTracker(0);
   tracker.observe(snap('  ', 2), false, 0);
   assert.equal(tracker.observe(snap('  ', 2), false, 10), null);
+});
+
+test('derived message keys are stable, bounded and sensitive to attributes and text', () => {
+  const key = boundedMessageKey('data-message-id=m1|hello');
+  assert.equal(key, boundedMessageKey('data-message-id=m1|hello'));
+  assert.notEqual(key, boundedMessageKey('data-message-id=m2|hello'));
+  assert.notEqual(key, boundedMessageKey('data-message-id=m1|goodbye'));
+  assert.ok(key >= 1 && key < MESSAGE_KEY_LIMIT, String(key));
+});
+
+test('a hashed key identifies a message: an older one scrolling back is not new', () => {
+  const tracker = new ReplyTracker(0, { orderedKeys: false });
+  tracker.reset(snap('old', 900_001));
+  assert.equal(tracker.observe(snap('old', 900_001), false, 0), null);
+  tracker.observe(snap('new', 12), false, 10);
+  assert.deepEqual(tracker.observe(snap('new', 12), false, 20), snap('new', 12));
+  tracker.delivered(snap('new', 12));
+  assert.equal(tracker.observe(snap('old', 900_001), false, 30), null, 'higher hash does not mean newer');
+  assert.equal(tracker.observe(snap('new', 12), false, 40), null);
+  tracker.observe(snap('newer', 12, 2), false, 50);
+  assert.deepEqual(tracker.observe(snap('newer', 12, 2), false, 60), snap('newer', 12, 2), 'streamed update to the current key');
 });

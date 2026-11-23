@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "BroAgentAI plugin isolation fixture",
+  "version": "0.1.0",
+  "description": "Two isolated fake chat plugins on two fake domains for e2e",
+  "host_permissions": [
+    "https://chat-a.example.test/*",
+    "https://chat-b.example.test/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://chat-a.example.test/*"],
+      "js": ["plugin-a.js"],
+      "css": ["plugin-a.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://chat-b.example.test/*"],
+      "js": ["plugin-b.js"],
+      "css": ["plugin-b.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

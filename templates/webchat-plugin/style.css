@@ -1,0 +1,7 @@
+[data-ba-agent] {
+  padding-top: 28px !important;
+}
+[data-ba-agent]::after {
+  top: 4px !important;
+  right: 6px !important;
+}

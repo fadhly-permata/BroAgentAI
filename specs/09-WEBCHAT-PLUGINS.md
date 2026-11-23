@@ -2,10 +2,10 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.2 (plan; P0 spike done, see `spikes/webchat-plugins-p0/FINDINGS.md`) |
+| Status | Accepted v0.2 (P0–P5 complete; see `spikes/webchat-plugins-p0/FINDINGS.md`) |
 | Date | 2026-11-19 |
 | Related | `05-ADR.md` (ADR-018, ADR-020), `07-PLUGIN-MCP.md` §4, `08-BACKLOG.md` |
-| Supersedes | `07-PLUGIN-MCP.md` §4.3–4.5 once ADR-020 is accepted |
+| Supersedes | `07-PLUGIN-MCP.md` §4.3–4.5 (ADR-020 accepted 2026-11-23) |
 
 ## 1. Why
 
@@ -94,17 +94,20 @@ BroAgentAI.registerPlugin('my-chat', {   // first argument: the id from plugin.j
 });
 ```
 
-Every hook is optional. A missing hook, a hook that throws, or a hook that times out falls back to the generic adapter. **Implemented so far (P2): `prepare`** (10 s timeout). The others are added when a plugin needs them; unknown hook names are ignored with a warning, so a newer plugin still loads on an older runtime. `api` exposes only page helpers: `$`, `$$`, `click`, `setSelect`, `sleep`, `reactProp(el, names)` (served by the core MAIN-world helper, see §4.3). It exposes nothing that reaches the extension, the bridge, or other tabs.
+Every hook is optional. A missing hook, a hook that throws, or a hook that times out falls back to the generic adapter. **Implemented (P2/P5): `prepare`** (10 s timeout) and `detectError` (5 s timeout, polled at 3 s with a 30 s repeat guard). The others are added when a plugin needs them; unknown hook names are ignored with a warning, so a newer plugin still loads on an older runtime. `api` exposes only page helpers: `$`, `$$`, `text`, `click`, `setSelect`, `sleep`, `reactProp(el, names)` (served by the core MAIN-world helper, see §4.3). It exposes nothing that reaches the extension, the bridge, or other tabs. A valid `detectError` result is sent to the panel as `{ type: 'ba.pluginError', pluginId, kind, message }`; the relay never executes the returned data.
 
 ### 3.4 Built-in plugins after conversion
 
 | Plugin | `plugin.json` | `plugin.js` | `style.css` |
 | --- | --- | --- | --- |
 | chatgpt | data-* selectors | `readCode` (full code from React props), `findComposer` (skip the hidden previous-chat composer) | bubble shape and badge spot |
-| deepseek | `.ds-*` selectors, `messageKeyAttr` | `detectError` ("Usage limit reached" → tell the panel) | badge away from the edit/copy buttons |
-| gemini | Quill composer, `exclude` chips | none | yes |
+| deepseek | `.ds-*` selectors, `messageKeyAttr` | `detectError` ("Usage limit reached" → `ba.pluginError`) | badge away from the edit/copy buttons |
+| gemini | Quill composer, `exclude` chips, `messageKeyFallback` | none | yes |
 | ptero | `#chat-*` ids | `prepare` (close welcome popup, set Quick Answer) | optional |
-| qwen | `markdownSource`, `codeLine` (Monaco) | none | yes |
+| qwen | `markdownSource`, `codeLine` (Monaco), `messageKeyFallback` | none | yes |
+| claude, grok, kimi, glm, mistral, arena | conservative best-effort selectors, `messageKeyFallback` | none | none |
+
+The six extra provider folders above are `status: "experimental"`: their `verified` field says they were not checked against a live page or a local fixture, so users should adjust selectors before relying on them.
 
 ## 4. Architecture
 
@@ -158,6 +161,8 @@ The only place where plugins are managed. There is no separate developer mode.
 | One row per plugin | icon, name, version, author, domains, badges (Built-in / Custom / Override / Script / Needs update / Access revoked), enable/disable switch |
 | Row actions | **Update** (import a newer copy, §4.5), **Export `.zip`**, **Remove** (user plugins), **Reset to built-in** (overrides), **Re-grant access** (R7), **Reload open tabs** (R16), **Health check** on an open tab of that domain (R25) |
 | Review screen | shared by install and update: metadata, files, `plugin.js` source or diff, domain changes, warnings (R26) |
+| Provider Lab | selector-only `plugin.json` editor; validates with the same schema, rejects `script`/`style`/`icon`/`hooks`, then opens the shared review screen |
+| Local catalog | static JSON templates shipped under `extension/catalog/`; loading one only fills Provider Lab. No fetches, remote code, auto-update or direct install. |
 
 Home provider cards and the switch-provider list show only enabled plugins.
 
@@ -167,10 +172,10 @@ Home provider cards and the switch-provider list show only enabled plugins.
 | --- | --- | --- |
 | **P0 Spike** | Prove the unknowns on Chrome 157 with the user's own profile: user-scripts toggle detection, `worldId` per plugin, the sender field that identifies a user-script world, dynamic content scripts after an extension reload, `registerContentScripts` with `css`, DOM-event bridge between isolated and user-script worlds, `permissions.request` from the side panel. | **Done 2026-11-19:** `spikes/webchat-plugins-p0/FINDINGS.md`; R4, R11, R14, R15 adjusted. Browser-restart persistence not tested (covered by R15 re-sync). |
 | **P1 Format + registry** | `plugin.json` schema + validator, registry reading built-in plugins (it becomes async and storage-backed in P3, when user plugins join), convert the five providers to `extension/plugins/`, keep behaviour identical. | Typecheck + tests pass; all five providers pass the live loop again; no user-visible change. |
-| **P2 Built-in hooks + CSS** (done except DeepSeek, see 9.2 in the backlog) | Hook bridge, compiled built-in hooks (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), neutral base CSS in `agent-marks.ts`, per-plugin `style.css`, `findBubble`. Move the ChatGPT `codeBlock` logic out of the core. | Ptero works without manual mode change; DeepSeek quota shows in the panel; marks look right on all five sites. |
+| **P2 Built-in hooks + CSS** (done) | Hook bridge, compiled built-in hooks (ChatGPT `readCode`/`findComposer`, DeepSeek `detectError`, Ptero `prepare`), neutral base CSS in `agent-marks.ts`, per-plugin `style.css`, `findBubble`. Move the ChatGPT `codeBlock` logic out of the core. | Ptero works without manual mode change; DeepSeek quota shows in the panel; marks look right on all five sites. |
 | **P3 User plugins (no script)** (done 2026-11-19) | Import from folder or `.zip`, validate/review, permissions, dynamic registration, Settings → Plugins tab (list, enable/disable, update with diff, remove, reset built-in, export `.zip`), Home cards from the registry, conflict handling. | A selector + CSS plugin for a new site installs from a folder and from a `.zip` and runs a full loop without a rebuild; an exported `.zip` re-imports as an update. |
 | **P4 User plugin scripts** (done 2026-11-19) | `userScripts` registration per world, toggle detection and guidance, messaging checks, timeouts, fallback, custom-plugin safety rules. | A user plugin with `plugin.js` hooks runs a full loop; toggle off → falls back to selectors with a clear notice. |
-| **P5 Hardening + docs** | Plugin template, README "Write a plugin" guide, e2e with a fake chat plugin, ADR-020 accepted, `07-PLUGIN-MCP.md` §4 updated. | Docs reviewed; e2e green. |
+| **P5 Hardening + docs** (done) | Plugin template (`templates/webchat-plugin/`), `docs/write-a-webchat-plugin.md`, Provider Lab + local catalog, `e2e/plugin-isolation.spec.mjs`, ADR-020 accepted, `07-PLUGIN-MCP.md` §4 updated. | Docs reviewed; `npm run typecheck` and `npm run test` pass; e2e spec added. |
 
 ## 6. Risks and countermeasures
 
@@ -242,7 +247,7 @@ Home provider cards and the switch-provider list show only enabled plugins.
 ## 7. Testing
 
 - Unit (`node:test`): `plugin.json` validator, match-pattern checks and overlap detection, CSS lint, apiVersion gate, registry merge/override, hook-result validation.
-- E2E (fake chat, Playwright): two user plugins on two fake domains (isolation, R1), domain conflict (R2), toggle-off fallback (R14), plugin removal during a session (R20).
+- E2E (fake chat, Playwright): `extension/e2e/plugin-isolation.spec.mjs` loads two isolated fake plugins on two fake domains (isolation, R1), checks that CSS/scripts do not cross over, and verifies domain conflict (R2) and id clash (R29) planning. Toggle-off fallback (R14) and plugin removal during a session (R20) remain covered by the existing sidepanel/native e2e runs.
 - Live (user's own Chrome profile): every built-in plugin runs the full loop and a provider switch chain after P1 and P2.
 
 ## 8. Decisions

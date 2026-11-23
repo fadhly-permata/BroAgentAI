@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
-import { effectiveRisk, expandEnvRefs, loadMcpConfig } from "./mcp.ts";
+import { effectiveRisk, expandEnvRefs, loadMcpConfig, validateEnvRefs } from "./mcp.ts";
+import { ErrorCode } from "./rpc.ts";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/mcp-fixture-server.mjs", import.meta.url));
 const stdioServer = (extra: object = {}) => ({ type: "local", command: [process.execPath, FIXTURE], ...extra });
@@ -50,6 +51,14 @@ test("effectiveRisk maps annotations and only lets overrides escalate", () => {
 test("expandEnvRefs expands ${env:NAME} and reports missing names", () => {
   assert.deepEqual(expandEnvRefs("Bearer ${env:TOK}", { TOK: "abc" }), { value: "Bearer abc", missing: [] });
   assert.deepEqual(expandEnvRefs("${env:NOPE}", {}), { value: "", missing: ["NOPE"] });
+});
+
+test("validateEnvRefs rejects missing environment and header references without values", () => {
+  assert.deepEqual(validateEnvRefs({ TOK: "${env:BA_MCP_OK}" }, "test", { BA_MCP_OK: "abc" }), { TOK: "abc" });
+  assert.throws(
+    () => validateEnvRefs({ A: "${env:BA_MCP_MISSING_A}", B: "${env:BA_MCP_MISSING_B}" }, "headers", {}),
+    (error: any) => error?.code === ErrorCode.CONFIG_INVALID && /BA_MCP_MISSING_A, BA_MCP_MISSING_B/.test(error.message),
+  );
 });
 
 test("loadMcpConfig validates definitions and tracks origin", () => {
@@ -240,5 +249,27 @@ test("remote Streamable HTTP server with an env-referenced auth header", async (
     delete process.env.BA_TEST_MCP_TOKEN;
     await s.shutdown();
     child.kill();
+  }
+});
+
+test("local stdio servers reject missing environment references before spawn", async () => {
+  process.env.BA_MCP_LOCAL_SECRET = "local-secret-value";
+  try {
+    const { s, call } = await fixture({ global: { fx: stdioServer({
+      environment: {
+        TOKEN: "${env:BA_MCP_LOCAL_SECRET}",
+        MISSING: "${env:BA_MCP_LOCAL_UNSET_VAR}",
+      },
+    }) } });
+    try {
+      const res = await call("mcp.start", { server: "fx" });
+      assert.equal(res.error?.code, ErrorCode.CONFIG_INVALID);
+      assert.match(res.error!.message, /BA_MCP_LOCAL_UNSET_VAR/);
+      assert.equal(JSON.stringify(res).includes("local-secret-value"), false);
+    } finally {
+      await s.shutdown();
+    }
+  } finally {
+    delete process.env.BA_MCP_LOCAL_SECRET;
   }
 });
