@@ -134,10 +134,10 @@ Each provider is a built-in web chat plugin: a folder under [`extension/plugins/
 
 ### Requirements
 
-- **Windows or Linux** (macOS: manual install with `npm run host:install:dev`)
+- **Windows, Linux or macOS** — all three have GUI and CLI installers.
 - **Node.js 22.6+**. The installers download a portable copy into `.runtime/` when it is missing or too old.
-- **Chrome, Edge, Brave or Chromium**. On Linux, use the browser's official .deb/.rpm package: Snap and Flatpak builds run in a sandbox and are not supported.
-- **Linux only:** gcc/g++, make and python3 to compile the terminal backend (node-pty). The installer offers to install them with `sudo`.
+- **Chrome, Edge, Brave, Chromium or Firefox (experimental)**. On Linux, use the browser's official .deb/.rpm package: Snap and Flatpak builds run in a sandbox and are not supported.
+- **Linux:** gcc/g++, make and python3 to compile the terminal backend (node-pty); the installer offers to install them with `sudo`. **macOS:** Xcode Command Line Tools via `xcode-select --install`.
 - **Git** on your `PATH` (optional, but you'll want it for source control)
 - An account on at least one of the supported AI chats
 
@@ -151,26 +151,29 @@ git clone https://github.com/fadhly-permata/BroAgentAI.git
 cd BroAgentAI
 ```
 
-Then run the installer for your OS. On the first run it prepares everything: Node.js (a portable copy if needed), `npm ci`, the build, and the native host registration for every browser it finds.
+Then run the installer for your OS. On the first run it prepares everything: Node.js (a portable copy if needed), `npm ci`, the build, and the native host registration for every browser it finds. No admin rights are needed, and nothing is installed system-wide.
 
-- **Windows:** double-click `install.bat`, or run `powershell -ExecutionPolicy Bypass -File install.ps1`.
-- **Linux:** `bash install.sh`
+**GUI:** `node scripts/install-gui.mjs` picks the right wrapper for your OS (WinForms wizard on Windows, zenity/osascript checklist on Linux/macOS, terminal fallback). You can also call the wrappers directly: `powershell -ExecutionPolicy Bypass -File install-gui.ps1` or `bash install-gui.sh`.
 
-Options (Windows / Linux):
+**CLI:** double-click `install.bat` or run `powershell -ExecutionPolicy Bypass -File install.ps1` on Windows; run `bash install.sh` on Linux/macOS.
+
+Options (Windows / Linux / macOS):
 
 | Option | What it does |
 | --- | --- |
-| `-Browser chrome,edge` / `--browser chrome,edge` | Register only these browsers (`chrome`, `edge`, `brave`, `chromium`). |
+| `-Browser chrome,edge,firefox` / `--browser chrome,edge,firefox` | Register only these browsers (`chrome`, `edge`, `brave`, `chromium`, `firefox`). |
 | `-Rebuild` / `--rebuild` | Build again, e.g. after `git pull`. |
 | `-PortableNode` / `--portable-node` | Use the portable Node.js even when a suitable one is on `PATH`. |
 | `-Uninstall` / `--uninstall` | Remove the native host registration. |
-| — / `--yes` | Linux: install missing build tools without asking. |
+| — / `--yes` | POSIX: install missing build tools without asking. |
+
+Firefox is selectable in the GUI and CLI; load the Firefox build from `about:debugging` as described in [docs/firefox.md](docs/firefox.md). Update, uninstall, per-OS details and signer requirements are in [docs/installer.md](docs/installer.md).
 
 Prefer doing it by hand? `npm install`, `npm run build`, then `npm run host:install:dev` (one browser per run, `-- --browser edge` for another).
 
 Finally, load the extension:
 
-1. Open `chrome://extensions` (or `edge://extensions`, `brave://extensions`) and turn on **Developer mode**.
+1. Open `chrome://extensions` (or `edge://extensions`, `brave://extensions`) and turn on **Developer mode**. For Firefox, use `about:debugging` → **This Firefox** → **Load Temporary Add-on…** after `npm run build:firefox`.
 2. Click **Load unpacked** and pick the `extension/dist` folder. It has to be exactly that folder, because the host registration is tied to it.
 3. Click the BroAgentAI toolbar icon to open the side panel. The pill in the top-right should say **Host ready**.
 

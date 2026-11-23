@@ -1,6 +1,6 @@
 // Build the release files for the current version, locally (no GitHub Releases / Actions).
 // Usage:
-//   node scripts/release.mjs [--skip-build]
+//   node scripts/release.mjs [--skip-build] [--platform-tag <tag>]
 //
 // Output, in release/ (gitignored):
 //   broagentai-v<version>-<platform>-<arch>.zip  ready-to-run bundle (built extension + bridge,
@@ -21,12 +21,15 @@ import { crc32, deflateRawSync } from "node:zlib";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const OUT = join(ROOT, "release");
-const skipBuild = process.argv.includes("--skip-build");
-
 function fail(message) {
   console.error(`[release] ${message}`);
   process.exit(1);
 }
+const skipBuild = process.argv.includes("--skip-build");
+const platformTagIndex = process.argv.indexOf("--platform-tag");
+const platformTagOverride = platformTagIndex >= 0 ? process.argv[platformTagIndex + 1] : null;
+if (platformTagIndex >= 0 && (!platformTagOverride || platformTagOverride.startsWith("-"))) fail("--platform-tag needs a value");
+if (platformTagOverride && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(platformTagOverride)) fail(`Invalid platform tag: ${platformTagOverride}`);
 const readJson = (rel) => JSON.parse(readFileSync(join(ROOT, rel), "utf8"));
 
 // ---------------------------------------------------------------- preflight
@@ -137,6 +140,9 @@ addTree(join(ROOT, "bridge", "dist"), "bridge/dist", (abs) => !abs.endsWith(".d.
 for (const rel of ["bridge/package.json", "bridge/README.md", "scripts/native-host.mjs", "install.bat", "install.ps1", "install.sh", "README.md", "LICENSE", "CHANGELOG.md"]) {
   addFile(join(ROOT, rel), rel);
 }
+for (const rel of ["install-gui.ps1", "install-gui.sh", "scripts/install-gui.mjs", "scripts/update.mjs", "docs/installer.md"]) {
+  if (existsSync(join(ROOT, rel))) addFile(join(ROOT, rel), rel);
+}
 addFile(notes, "RELEASE_NOTES.md");
 
 // The bridge's runtime dependency closure, resolved the way Node would from bridge/.
@@ -186,7 +192,7 @@ const bundlePackageJson = {
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
-const platformTag = `${process.platform}-${process.arch}`;
+const platformTag = platformTagOverride ?? `${process.platform}-${process.arch}`;
 const bundleName = `${prefix}-${platformTag}.zip`;
 const entries = [...files.entries()]
   .sort(([a], [b]) => a.localeCompare(b))
@@ -199,7 +205,7 @@ const entries = [...files.entries()]
 entries.push({ name: `${prefix}/package.json`, data: Buffer.from(JSON.stringify(bundlePackageJson, null, 2) + "\n") });
 writeFileSync(join(OUT, bundleName), zip(entries));
 
-const sourceName = `${prefix}-source.zip`;
+const sourceName = platformTagOverride ? `${prefix}-${platformTag}-source.zip` : `${prefix}-source.zip`;
 execFileSync("git", ["archive", "--format=zip", `--prefix=${prefix}/`, "-o", join(OUT, sourceName), "HEAD"], { cwd: ROOT });
 
 const sums = [bundleName, sourceName]

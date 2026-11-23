@@ -345,7 +345,7 @@ Complete remote MCP support, polish recovery, and ship the first extensible rele
 
 Prioritized:
 
-1. GUI installer and auto-update (Windows/macOS/Linux) — Deferred.
+1. GUI installer and auto-update (Windows/macOS/Linux) — Done for the GUI installer and update plumbing: WinForms/zenity/osascript wrappers, `scripts/install-gui.mjs` dispatcher with console fallback, Firefox in the browser list, and `scripts/update.mjs` with checksum verification, confirmation and host re-registration (plus installer re-run with `--rebuild`/`-Rebuild`). No silent auto-update; code signing/notarization is still pending and must not be claimed without secrets.
 2. ChatGPT, Claude, Grok, Kimi, GLM, Meta, Mistral, Ptero, Arena provider plugins — Done.
 3. Declarative provider selectors / Provider Lab — Done.
 4. Allowlisted project scripts (build/test/lint) — Done.
@@ -358,7 +358,7 @@ Prioritized:
 11. Themes and layout customization — Done.
 12. i18n — Done.
 13. Provider/MCP marketplace or registry (no remote code) — Done.
-14. Firefox port (different native messaging and side panel APIs) — Partial.
+14. Firefox port (different native messaging and side panel APIs) — Done for installer registration (GUI/CLI select `firefox`, host id `com.broagentai.host` with `allowed_extensions: ["broagentai@local"]`); the unsigned dev build still loads as a temporary add-on and CI has no Firefox e2e.
 
 ## 13. Release checklist
 
@@ -368,11 +368,12 @@ Prioritized:
 - [x] Privacy policy (no telemetry, local-only).
 - [x] Chrome Web Store assets and permission justification.
 - [x] Version numbers consistent across manifests and package.json.
-- [ ] Host binaries built for supported platforms.
+- [ ] Host binary bundles built for supported platforms — release matrix added in `.github/workflows/release.yml`; actual Windows/macOS/Linux artifacts still need a CI run (currently blocked by GitHub billing lock).
 - [x] Config schema and examples validated; invalid config paths tested.
 - [x] MCP trust review verified; no project server auto-starts.
 - [x] Provider manifest generation verified with a fixture plugin.
-- [ ] Clean-profile manual test on Windows (primary), macOS, Linux.
+- [ ] Clean-profile smoke on Windows (primary), macOS, Linux — automated smoke only; manual sign-off on a clean profile is still required because no manual test was added in this change.
+- [ ] Signed/notarized distributables (Apple Developer ID + notarytool credentials, Windows OV/EV code-signing cert) — pending; no secrets in repo, so do not claim signing/notarization.
 - [x] No secrets, no debug logs, no TODO blockers.
 - [x] Changelog and migration notes.
 

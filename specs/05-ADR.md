@@ -17,7 +17,7 @@
 **Consequences:**
 
 - No port, token, or manual bridge process.
-- One-time native host registration is still required (dev script now, GUI installer later).
+- One-time native host registration is still required, now handled by the GUI/CLI installers.
 - Chrome limits host→extension messages to 1 MB, so responses need caps and pagination.
 - The host exits when Chrome disconnects; long-running work must be resumable or idempotent.
 - Debugging requires logging to stderr/files, never stdout.

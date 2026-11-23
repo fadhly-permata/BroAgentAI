@@ -281,7 +281,7 @@ A contributor adds a new folder under `extension/src/providers/<id>/` with `prov
 
 ### 10.2 Excluded (post-MVP)
 
-- GUI installer and auto-update.
+- Signed/notarized distributables (pending credentials).
 - Hunk-level staging and conflict resolution UI.
 - Integrated terminal and arbitrary command execution.
 - MCP marketplace, external apps connecting to BroAgentAI as an MCP server.
@@ -296,7 +296,7 @@ A contributor adds a new folder under `extension/src/providers/<id>/` with `prov
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | AI provider DOM changes | Agent stops working on a provider | Provider adapters, fixture tests, health checks, fast update path |
-| Native host install friction | Users cannot connect | One-time dev script now; GUI installer later; clear setup card |
+| Native host install friction | Users cannot connect | GUI/CLI installers per OS; clear setup card; checksum-verified user-run updater |
 | 1 MB host→extension limit | Large files/diffs fail | 512 KB caps, pagination, per-file diffs, range reads |
 | Git credential prompts hang | Push/pull appears frozen | `GIT_TERMINAL_PROMPT=0`, timeouts, actionable errors, Test remote |
 | Merge/rebase conflicts | Repo put in intermediate state | Show conflict state, Abort action, no auto-resolution |

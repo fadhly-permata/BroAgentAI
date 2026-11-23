@@ -206,7 +206,9 @@
 
   <div id="set-companion" class="set-panel">
     <h3 data-i18n="companionHost">Companion Host</h3>
-    <div class="kv"><span class="kv-key" data-i18n="versionLabel">Version</span><b class="kv-val">0.1.0-dev</b></div>
+    <div class="kv"><span class="kv-key" data-i18n="hostVersionLabel">Host version</span><b id="hostVersion" class="kv-val" data-i18n="hostVersionUnknownValue">unknown</b></div>
+    <div class="kv"><span class="kv-key" data-i18n="hostUpdateStatusLabel">Update status</span><span id="hostUpdateStatus" class="kv-val pill pill-warn" data-i18n="hostVersionUnknown">Version unavailable; companion may be offline</span></div>
+    <div class="btn-row"><button id="hostUpdateBtn" class="mini" disabled data-i18n="hostUpdateBtn">How to update</button></div>
     <div class="kv"><span class="kv-key" data-i18n="extIdLabel">Extension ID</span><code id="extId" class="kv-val"></code></div>
     <div class="kv"><span class="kv-key" data-i18n="protocolLabel">Protocol</span><span id="protocolStatus" class="kv-val"></span></div>
     <div class="kv"><span class="kv-key" data-i18n="shellLabel">Shell</span><span id="shellStatus" class="kv-val"></span></div>

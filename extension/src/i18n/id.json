@@ -342,5 +342,16 @@
     "panelWidthLabel":  "Lebar panel",
     "panelWidthDesc":  "Ringkas menjaga panel samping tetap padat; lebar memberi ruang lebih.",
     "panelWidthCompact":  "Ringkas",
-    "panelWidthWide":  "Lebar"
+    "panelWidthWide":  "Lebar",
+    "hostVersionLabel":  "Versi host",
+    "hostVersionUnknownValue":  "tidak diketahui",
+    "hostVersionMatch":  "Versi cocok",
+    "hostVersionMismatch":  "Versi tidak cocok",
+    "hostVersionUnknown":  "Versi tidak tersedia; companion mungkin offline",
+    "hostUpdateStatusLabel":  "Status pembaruan",
+    "hostUpdateBtn":  "Cara memperbarui",
+    "hostUpdateTitle":  "Perbarui companion",
+    "hostUpdateIntro":  "Versi extension dan companion berbeda. Perbarui companion agar cocok dengan extension.",
+    "hostUpdateCli":  "Dari root repo, jalankan:",
+    "hostUpdateGui":  "Atau unduh GUI installer terbaru untuk sistem Anda, jalankan, lalu gunakan Check for updates untuk memastikan companion sudah mutakhir."
 }

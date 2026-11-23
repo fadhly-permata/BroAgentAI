@@ -1,6 +1,6 @@
 # Firefox (experimental port)
 
-The Firefox port is partial and manual. Chromium browsers remain the primary target. See `specs/00-PRD.md` and `docs/enhances-plan/dynamic-local-agent-infrastructure-roadmap.md` (B4.4 = `Partial`).
+The Firefox port is a partial dev build: the extension is loaded manually, but native host registration is handled by the installers. Chromium browsers remain the primary target. See `specs/00-PRD.md` and `docs/enhances-plan/dynamic-local-agent-infrastructure-roadmap.md` (B4.4 = `Partial`).
 
 ## Build
 
@@ -34,12 +34,22 @@ node scripts/native-host.mjs install --browser firefox
 
 The script writes the manifest to the per-user Firefox NativeMessagingHosts location (`HKCU\Software\Mozilla\NativeMessagingHosts` on Windows, `~/Library/Application Support/Mozilla/NativeMessagingHosts` on macOS, `~/.mozilla/native-messaging-hosts` on Linux) and uses the shared `bridge/broagentai-host.cmd` / `bridge/broagentai-host.sh` launcher. If `BROAGENTAI_EXTENSION_ID` is set for Chromium development, pass `--extension-id broagentai@local` explicitly. The bridge logs both `chrome-extension://` and `moz-extension://` callers, including the Firefox add-on id, instead of `null`.
 
-Installer changes are out of scope; this is manual/dev registration only.
+Installer registration is supported. Select `firefox` in the GUI checklist (`install-gui.ps1` on Windows, `install-gui.sh` on Linux/macOS, or `node scripts/install-gui.mjs`), or pass it to the CLI installers:
+
+```sh
+bash install.sh --browser firefox
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -Browser firefox
+```
+
+The POSIX installer passes `--extension-id broagentai@local` explicitly; the Windows GUI clears `BROAGENTAI_EXTENSION_ID` for the child process so `native-host.mjs` uses its default Firefox add-on id (`broagentai@local`). If you use the Windows CLI installer with `BROAGENTAI_EXTENSION_ID` set for Chromium development, use the manual command above instead. The installers only register the host; build and load the Firefox extension variant as described below. See `docs/installer.md` for the full GUI/CLI option list.
 
 ## Manual loading
 
 1. Build the host and Firefox extension (`npm run build:firefox`).
-2. Register the native host once as shown above, then restart Firefox if it was running.
+2. Register the native host with the installer (select Firefox in the GUI or pass `--browser firefox` / `-Browser firefox`), or use the manual command above, then restart Firefox if it was running.
 3. Open `about:debugging` → **This Firefox** → **Load Temporary Add-on…**.
 4. Select `extension/dist/manifest.json`.
 5. Open the BroAgentAI sidebar from the browser's sidebar/activity bar and check the host pill shows **Online**. If it is offline, check `~/.broagentai/host.log` and the native host registration.
@@ -54,4 +64,4 @@ Temporary add-ons are removed when Firefox closes. Loading a permanently signed 
 - Firefox uses `sidebar_action`, so Chrome's `sidePanel.setPanelBehavior` has no equivalent; clicking the toolbar action and the sidebar are handled by Firefox. The activity rail defaults to the right edge because Firefox does not expose Chrome's `getLayout`.
 - The Firefox manifest uses background scripts rather than a service worker; event/page lifecycle differs from Chrome.
 - Static `world: "MAIN"` content scripts and dynamic `scripting` registrations depend on the installed Firefox version; older versions may need a newer Firefox or may skip those helpers.
-- Native host registration is manual; there is no Firefox installer in this change.
+- Native host registration is automatic when Firefox is selected in the installer; loading the unsigned dev build as a temporary add-on is still manual.

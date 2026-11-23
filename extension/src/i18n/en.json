@@ -342,5 +342,16 @@
     "panelWidthLabel":  "Panel width",
     "panelWidthDesc":  "Compact keeps narrow side panels dense; wide uses more breathing room.",
     "panelWidthCompact":  "Compact",
-    "panelWidthWide":  "Wide"
+    "panelWidthWide":  "Wide",
+    "hostVersionLabel":  "Host version",
+    "hostVersionUnknownValue":  "unknown",
+    "hostVersionMatch":  "Versions match",
+    "hostVersionMismatch":  "Version mismatch",
+    "hostVersionUnknown":  "Version unavailable; companion may be offline",
+    "hostUpdateStatusLabel":  "Update status",
+    "hostUpdateBtn":  "How to update",
+    "hostUpdateTitle":  "Update companion",
+    "hostUpdateIntro":  "The extension and companion versions differ. Update the companion to match the extension.",
+    "hostUpdateCli":  "From the repo root, run:",
+    "hostUpdateGui":  "Or download the latest GUI installer for your OS, run it, then use Check for updates to confirm the companion is current."
 }

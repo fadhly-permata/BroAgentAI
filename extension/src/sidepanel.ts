@@ -10,6 +10,7 @@ import { initHome, renderHome } from './home-panel.js';
 import { initPlugins, renderPlugins } from './plugins-panel.js';
 import { refreshProviders, watchProviders } from './providers/registry.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
+import { compareHostVersions } from './host-version.js';
 import { reloadIfManifestStale } from './stale-manifest.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
 import { openEditorTab } from './editor-tabs.js';
@@ -85,6 +86,25 @@ async function updateShellStatus(){
   }catch{
     el.textContent=t('shellUnavailable');
   }
+}
+
+let hostInfo: unknown = null;
+function manifestVersion(): string { try { return String(browser.runtime.getManifest().version ?? ''); } catch { return ''; } }
+function renderHostVersionStatus(){
+  const cmp=compareHostVersions(manifestVersion(),hostInfo);
+  const versionEl=$('hostVersion');
+  const statusEl=$('hostUpdateStatus');
+  const btn=$('hostUpdateBtn') as HTMLButtonElement;
+  versionEl.textContent=cmp.hostVersion||t('hostVersionUnknownValue');
+  const key=cmp.status==='matching'?'hostVersionMatch':cmp.status==='mismatch'?'hostVersionMismatch':'hostVersionUnknown';
+  statusEl.textContent=t(key)+(cmp.status==='mismatch'?' ('+cmp.extensionVersion+' / '+cmp.hostVersion+')':'');
+  statusEl.className='kv-val pill '+(cmp.status==='matching'?'pill-ok':'pill-warn');
+  btn.disabled=cmp.status!=='mismatch';
+}
+async function refreshHostVersion(){
+  try{ hostInfo=await bridge.call('system.info'); }
+  catch{ hostInfo=null; }
+  renderHostVersionStatus();
 }
 
 function updateHostStatus(status: 'offline' | 'ready' | 'error') {
@@ -218,12 +238,15 @@ async function connectBridge(){
     updateHostStatus('ready');
     updateProtocolStatus();
     void updateShellStatus();
+    void refreshHostVersion();
     await loadWorkspaces();
     await ensureProjectContext();
     await updateContextStatus();
   }catch(err){
     console.warn('Bridge connection failed:', err);
     updateHostStatus('offline');
+    hostInfo=null;
+    renderHostVersionStatus();
   }
 }
 function switchTab(t:string){
@@ -396,6 +419,7 @@ let searchTimer:any=null;
 document.querySelectorAll('.rail-btn').forEach(b=>b.addEventListener('click',()=>switchTab((b as HTMLElement).dataset.tab!)));
 document.querySelectorAll('.set-tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.set-tab').forEach(x=>x.classList.toggle('active',x===b)); document.querySelectorAll('.set-panel').forEach(p=>p.classList.toggle('active',p.id==='set-'+(b as HTMLElement).dataset.set))}));
 on('restartBtn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('restart2Btn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('setupBtn','click',()=>openModal('Setup help','<p>Host: <code>com.broagentai.host</code></p><p>Dev: build host + register sekali, lalu reload extension.</p><p>Config: <code>~/.broagentai/config.jsonc</code> - Log: <code>~/.broagentai/host.log</code></p>',()=>{}));
+on('hostUpdateBtn','click',()=>openModal(t('hostUpdateTitle'),'<p>'+t('hostUpdateIntro')+'</p><p>'+t('hostUpdateCli')+' <code>npm run update</code></p><p>'+t('hostUpdateGui')+'</p>',()=>{}));
 on('diagBtn','click',runDiagnostics); on('reloadConfigBtn','click',async()=>{try{await bridge.call('config.get'); toast('Config reloaded')}catch(err:any){toast('Gagal reload config: '+(err?.message||err))}}); on('createConfigBtn','click',createProjectConfig);
 
 // Close menus when clicking outside
@@ -477,6 +501,7 @@ on('langSel','change',(e)=>{
   saveUISettings({lang: v}); 
   document.documentElement.lang = v;
   translatePage(v);
+  renderHostVersionStatus();
   renderWs(); // dynamic text is not covered by data-i18n
   void renderPlugins();
 });
@@ -500,6 +525,7 @@ on('tabSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value)
 on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; saveUISettings({wrap:v}); document.documentElement.style.setProperty('--editor-wrap',v?'pre-wrap':'pre');});
 
 applyUISettings();
+renderHostVersionStatus();
 
 on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')});
 on('contextRefreshBtn','click',async()=>{

@@ -156,9 +156,10 @@ class BridgeClient {
   onEvent(h: Handler) { this.handlers.push(h); }
 
   async connect(): Promise<void> {
-    if (this.port) return Promise.resolve();
     if (this.connectPromise) return this.connectPromise;
+    if (this.port) return Promise.resolve();
 
+    let connected = false;
     this.connectPromise = new Promise((resolve, reject) => {
       try {
         this.port = browser.runtime.connectNative("com.broagentai.host");
@@ -183,6 +184,7 @@ class BridgeClient {
           const err = lastError();
           this.port = null;
           this.connectPromise = null;
+          if (!connected) reject(new Error(err ? err.message : 'BRIDGE_OFFLINE'));
           for (const [, p] of this.pending.entries()) {
             p.reject(new Error(err ? err.message : 'BRIDGE_DISCONNECTED'));
           }
@@ -191,6 +193,7 @@ class BridgeClient {
 
         this.call('system.ping', {}).then((info: any) => {
           this.protocolInfo = normalizeProtocolInfo(info);
+          connected = true;
           resolve();
         }).catch(() => {
           try { this.port?.disconnect(); } catch { /* already gone */ }
