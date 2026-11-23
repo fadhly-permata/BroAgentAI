@@ -30,6 +30,70 @@ test("system.info reports platform and config paths", async () => {
   assert.ok(info.configPath.endsWith("config.json"));
 });
 
+test("shell.info reports shell metadata and read-only status", async () => {
+  const s = server();
+  const res = await s.handle({ id: 3, method: "shell.info" });
+  const info = res.result as any;
+  assert.equal(typeof info.family, "string");
+  assert.equal(typeof info.version, "string");
+  assert.equal(info.encoding, "utf8");
+  assert.ok(Array.isArray(info.fallbacks));
+  assert.equal(typeof info.maxConcurrency, "number");
+  assert.equal(typeof info.notSandbox, "string");
+});
+
+test("environment info and refresh stay redacted", async () => {
+  const s = server();
+  const info = (await s.handle({ id: 4, method: "environment.info" })).result as any;
+  assert.equal(info.credentialsExposed, false);
+  assert.equal(typeof info.credentialKeysDetected, "number");
+  assert.equal(typeof info.pathEntryCount, "number");
+  assert.equal(info.profilePolicy, "no-profile");
+  const refreshed = (await s.handle({ id: 5, method: "environment.refresh" })).result as any;
+  assert.equal(refreshed.credentialsExposed, false);
+  assert.equal(typeof refreshed.pathEntryCount, "number");
+});
+
+test("capability and dependency methods expose policy without installing silently", async () => {
+  const s = server();
+  const report = (await s.handle({ id: 6, method: "capabilities.discover", params: {} })).result as any;
+  assert.equal(report.policy.preferExisting, true);
+  assert.equal(report.policy.autoInstall, false);
+  assert.equal(report.policy.explicitApprovalForInstall, true);
+  assert.ok(Array.isArray(report.capabilities));
+
+  const planned = await s.handle({
+    id: 7,
+    method: "dependency.plan",
+    params: { need: "json", scope: "temporary", reason: "JSON support needed", force: true },
+  });
+  assert.equal(planned.error, undefined, planned.error?.message);
+  const requestId = (planned.result as any).requestId;
+  assert.equal(typeof requestId, "string");
+
+  const denied = await s.handle({
+    id: 8,
+    method: "dependency.install",
+    params: { requestId, approved: false },
+  });
+  assert.equal(denied.error?.code, -32028);
+
+  const history = (await s.handle({ id: 9, method: "dependency.history", params: {} })).result as any;
+  assert.equal(history.total, 0);
+});
+
+test("typed filesystem and Git RPC methods remain registered alongside shell fallbacks", () => {
+  const methods = server().methods();
+  const required = [
+    "fs.listDir", "fs.listTree", "fs.stat", "fs.readFile", "fs.readFileLines", "fs.searchFiles",
+    "fs.writeFile", "fs.createFile", "fs.mkdir", "fs.rename", "fs.delete",
+    "git.status", "git.diff", "git.branches", "git.stage", "git.unstage", "git.discard",
+    "git.commit", "git.createBranch", "git.checkout", "git.fetch", "git.pull", "git.push",
+    "shell.run", "shell.fallbackPlan", "shell.environmentPlan",
+  ];
+  for (const method of required) assert.ok(methods.includes(method), method);
+});
+
 test("unknown method returns METHOD_NOT_FOUND with available methods", async () => {
   const s = server();
   const res = await s.handle({ id: 3, method: "nope.nope" });

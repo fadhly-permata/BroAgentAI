@@ -1,19 +1,20 @@
 // User web chat plugins in chrome.storage.local (specs/09 §3.1, §4.4–4.6).
 // Used by the side panel (install/update/remove/toggle), the relay (to know
 // which plugin owns a page) and the service worker (dynamic registrations).
+import { browser } from '../browser.ts';
 import { normalizeState, type PluginState, type StoredPlugin } from './merge.ts';
 import type { PluginPackage } from './package.ts';
 
 export const PLUGIN_STATE_KEY = 'broagentai.plugins';
 
 export async function loadPluginState(): Promise<PluginState> {
-  const stored = await chrome.storage.local.get(PLUGIN_STATE_KEY);
+  const stored = await browser.storage.local.get(PLUGIN_STATE_KEY);
   return normalizeState(stored[PLUGIN_STATE_KEY]);
 }
 
 async function savePluginState(state: PluginState): Promise<void> {
   try {
-    await chrome.storage.local.set({ [PLUGIN_STATE_KEY]: state });
+    await browser.storage.local.set({ [PLUGIN_STATE_KEY]: state });
   } catch (err) {
     // R18: a full storage must surface, not fail silently.
     throw new Error('Could not save plugins (browser storage full or unavailable): ' + (err instanceof Error ? err.message : String(err)));
@@ -60,7 +61,7 @@ export async function setPluginEnabled(ref: PluginRef, enabled: boolean): Promis
 }
 
 export function onPluginStateChange(callback: (state: PluginState) => void): void {
-  chrome.storage.onChanged.addListener((changes, area) => {
+  browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes[PLUGIN_STATE_KEY]) callback(normalizeState(changes[PLUGIN_STATE_KEY].newValue));
   });
 }

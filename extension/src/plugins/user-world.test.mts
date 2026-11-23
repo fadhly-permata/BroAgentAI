@@ -53,6 +53,14 @@ test('a throwing hook reports its error; a hanging hook times out (R21)', async 
   assert.match(hung.error ?? '', /timed out after 30 ms/);
 });
 
+test('a user plugin detectError hook returns plain data through the DOM bridge', async () => {
+  loadPlugin('quota', `BroAgentAI.registerPlugin('quota', { detectError(api) { return api.text().includes('Usage limit reached') ? { kind: 'quota', message: 'limit reached' } : null; } });`);
+  doc.body = { innerText: 'Usage limit reached' } as unknown as HTMLElement;
+  assert.deepEqual(await callUserHook('quota', 'detectError', 1000), { ran: true, error: undefined, value: { kind: 'quota', message: 'limit reached' } });
+  doc.body = { innerText: 'all good' } as unknown as HTMLElement;
+  assert.deepEqual(await callUserHook('quota', 'detectError', 1000), { ran: true, error: undefined, value: null });
+});
+
 test('a plugin cannot register hooks under another id, and an unknown hook is ignored', async () => {
   loadPlugin('mine', `BroAgentAI.registerPlugin('someone-else', { prepare() { document.documentElement.setAttribute('x', '1'); } }); BroAgentAI.registerPlugin('mine', { fancy() {} });`);
   assert.deepEqual(await callUserHook('mine', 'prepare', 500), { ran: false, error: undefined });

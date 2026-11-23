@@ -195,6 +195,20 @@ export function loadMcpConfig(configDir: string, workspacePath: string): LoadedC
   return { servers, warnings, projectHash };
 }
 
+export function validateEnvRefs(values: Record<string, string>, label: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const missing = new Set<string>();
+  const expanded: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(values)) {
+    const result = expandEnvRefs(raw, env);
+    for (const name of result.missing) missing.add(name);
+    expanded[key] = result.value;
+  }
+  if (missing.size > 0) {
+    throw new WorkspaceError(ErrorCode.CONFIG_INVALID, `${label} references unset environment variable(s): ${[...missing].sort().join(", ")}`);
+  }
+  return expanded;
+}
+
 /** Expand `${env:NAME}` references. Missing variables are reported, never printed. */
 export function expandEnvRefs(value: string, env: NodeJS.ProcessEnv): { value: string; missing: string[] } {
   const missing: string[] = [];
@@ -415,13 +429,13 @@ export class McpManager {
   async #connect(runtime: Runtime): Promise<void> {
     const { def } = runtime;
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-    const client = new Client({ name: "broagentai-bridge", version: "0.1.0" }, { capabilities: {} });
+    const client = new Client({ name: "broagentai-bridge", version: "0.2.0" }, { capabilities: {} });
     runtime.client = client;
 
     if (def.type === "local") {
       const { StdioClientTransport, getDefaultEnvironment } = await import("@modelcontextprotocol/sdk/client/stdio.js");
       const env: Record<string, string> = { ...getDefaultEnvironment() }; // minimal inherited environment
-      for (const [key, raw] of Object.entries(def.environment)) env[key] = expandEnvRefs(raw, process.env).value;
+      Object.assign(env, validateEnvRefs(def.environment, `server ${def.id} environment`));
       const [command, ...args] = def.command!;
       const transport = new StdioClientTransport({ command, args, env, cwd: def.cwd, stderr: "pipe" });
       transport.stderr?.on("data", (chunk: Buffer) => {
@@ -430,14 +444,7 @@ export class McpManager {
       transport.onclose = () => this.#onTransportClosed(runtime);
       await client.connect(transport);
     } else {
-      const headers: Record<string, string> = {};
-      for (const [key, raw] of Object.entries(def.headers)) {
-        const { value, missing } = expandEnvRefs(raw, process.env);
-        if (missing.length > 0) {
-          throw new WorkspaceError(ErrorCode.CONFIG_INVALID, `header ${key} references unset environment variable(s): ${missing.join(", ")}`);
-        }
-        headers[key] = value;
-      }
+      const headers: Record<string, string> = validateEnvRefs(def.headers, `server ${def.id} headers`);
       const url = new URL(def.url!);
       try {
         const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
@@ -445,7 +452,7 @@ export class McpManager {
       } catch (httpError) {
         // Legacy servers only speak SSE; retry once with that transport.
         const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-        const sseClient = new Client({ name: "broagentai-bridge", version: "0.1.0" }, { capabilities: {} });
+        const sseClient = new Client({ name: "broagentai-bridge", version: "0.2.0" }, { capabilities: {} });
         try {
           await sseClient.connect(new SSEClientTransport(url, { requestInit: { headers } }));
           runtime.client = sseClient;

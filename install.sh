@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# BroAgentAI installer (Linux).
+# BroAgentAI installer (Linux / macOS).
 #
 # The first run prepares everything the bridge needs, then registers the
 # native-messaging host com.broagentai.host:
@@ -7,17 +7,17 @@
 #      nodejs.org (SHA-256 checked) into .runtime/node. Nothing is installed
 #      system-wide for this.
 #   2. Build tools for the terminal backend (node-pty has no prebuilt binary
-#      for Linux, so it is compiled): gcc/g++, make, python3. When they are
-#      missing the installer shows the package-manager command, asks, and runs
-#      it with sudo.
+#      for Linux/macOS, so it is compiled): gcc/g++, make, python3. On Linux the
+#      installer shows the package-manager command, asks, and runs it with sudo;
+#      on macOS it offers xcode-select --install (no sudo).
 #   3. npm dependencies (npm ci) when node_modules is missing or out of date,
 #      and a check that node-pty loads.
 #   4. npm run build when the build output is missing (or with --rebuild).
 #   5. scripts/native-host.mjs install for every detected browser
-#      (Chrome, Chromium, Edge, Brave).
+#      (Chrome, Chromium, Edge, Brave, Firefox).
 #
 # Usage:
-#   ./install.sh [--browser chrome,chromium,edge,brave] [--rebuild] [--portable-node] [--yes]
+#   ./install.sh [--browser chrome,chromium,edge,brave,firefox] [--rebuild] [--portable-node] [--yes]
 #   ./install.sh --uninstall [--browser ...]
 set -euo pipefail
 
@@ -28,7 +28,7 @@ MIN_NODE="22.6.0"
 NODE_LINE=22 # portable downloads take the latest release of this major line
 RUNTIME_DIR="$ROOT/.runtime"
 PORTABLE_DIR="$RUNTIME_DIR/node"
-KNOWN_BROWSERS="chrome chromium edge brave"
+KNOWN_BROWSERS="chrome chromium edge brave firefox"
 
 UNINSTALL=0
 REBUILD=0
@@ -45,6 +45,12 @@ step() { printf '%s[..]%s %s\n' "$C_CYAN" "$C_OFF" "$*"; }
 ok()   { printf '%s[OK]%s %s\n' "$C_GREEN" "$C_OFF" "$*"; }
 warn() { printf '%s[!]%s %s\n' "$C_YELLOW" "$C_OFF" "$*"; }
 die()  { printf '%s[X]%s %s\n' "$C_RED" "$C_OFF" "$*" >&2; exit 1; }
+
+case "$(uname -s)" in
+  Linux) PLATFORM=linux ;;
+  Darwin) PLATFORM=darwin ;;
+  *) die "install.sh mendukung Linux dan macOS. Di Windows pakai install.ps1, install-gui.ps1 atau node scripts/install-gui.mjs." ;;
+esac
 
 usage() {
   sed -n '/^# Usage:/,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'
@@ -64,8 +70,6 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-
-[ "$(uname -s)" = "Linux" ] || die "install.sh khusus Linux. Di Windows pakai install.bat / install.ps1; di OS lain: npm run host:install:dev."
 
 # --------------------------------------------------------------- helpers
 
@@ -119,9 +123,9 @@ install_portable_node() {
   case "$(uname -m)" in
     x86_64|amd64) arch=x64 ;;
     aarch64|arm64) arch=arm64 ;;
-    armv7l) arch=armv7l ;;
-    ppc64le) arch=ppc64le ;;
-    s390x) arch=s390x ;;
+    armv7l|ppc64le|s390x)
+      [ "$PLATFORM" = linux ] || die "Arsitektur $(uname -m) tidak didukung di macOS. Install Node.js $MIN_NODE+ manual lalu jalankan ulang."
+      arch="$(uname -m)" ;;
     *) die "Arsitektur $(uname -m) tidak didukung. Install Node.js $MIN_NODE+ manual lalu jalankan ulang." ;;
   esac
   local base="https://nodejs.org/dist/latest-v${NODE_LINE}.x"
@@ -131,9 +135,9 @@ install_portable_node() {
   step "Mengunduh daftar rilis Node.js $NODE_LINE dari nodejs.org..."
   download "$base/SHASUMS256.txt" "$sums"
   local line hash file
-  line="$(grep -E "^[0-9a-f]{64}  node-v[0-9.]+-linux-${arch}\.tar\.gz$" "$sums" | head -n1 || true)"
+  line="$(grep -E "^[0-9a-f]{64}  node-v[0-9.]+-${PLATFORM}-${arch}\.tar\.gz$" "$sums" | head -n1 || true)"
   rm -f "$sums"
-  [ -n "$line" ] || die "Paket Node.js untuk linux-$arch tidak ditemukan di $base."
+  [ -n "$line" ] || die "Paket Node.js untuk $PLATFORM-$arch tidak ditemukan di $base."
   hash="${line%% *}"
   file="${line##* }"
 
@@ -155,6 +159,9 @@ install_portable_node() {
   rm -rf "$staging" "$RUNTIME_DIR/$file"
 
   if [ -z "$(node_version "$PORTABLE_DIR/bin/node")" ]; then
+    if [ "$PLATFORM" = darwin ]; then
+      die "Node.js portable tidak bisa dijalankan di macOS ini. Install Node.js $MIN_NODE+ manual lalu jalankan ulang."
+    fi
     die "Node.js portable tidak bisa dijalankan di sistem ini (butuh glibc 2.28+; Alpine/musl tidak didukung). Install Node.js $MIN_NODE+ lewat package manager lalu jalankan ulang."
   fi
   ok "Node.js portable terpasang di $PORTABLE_DIR"
@@ -181,11 +188,16 @@ resolve_node() {
 have_build_tools() {
   command -v make >/dev/null 2>&1 &&
     { command -v g++ >/dev/null 2>&1 || command -v c++ >/dev/null 2>&1; } &&
-    command -v python3 >/dev/null 2>&1
+    command -v python3 >/dev/null 2>&1 &&
+    { [ "$PLATFORM" != darwin ] || xcode-select -p >/dev/null 2>&1; }
 }
 
-# Prints the command that installs the build tools on this distro, or nothing.
+# Prints the command that installs the build tools on this OS, or nothing.
 build_tools_command() {
+  if [ "$PLATFORM" = darwin ]; then
+    command -v xcode-select >/dev/null 2>&1 && echo "xcode-select --install"
+    return 0
+  fi
   if command -v apt-get >/dev/null 2>&1; then echo "apt-get install -y build-essential python3"
   elif command -v dnf >/dev/null 2>&1; then echo "dnf install -y gcc-c++ make python3"
   elif command -v yum >/dev/null 2>&1; then echo "yum install -y gcc-c++ make python3"
@@ -203,6 +215,16 @@ ensure_build_tools() {
   warn "Build tools (gcc/g++, make, python3) belum lengkap. Ini dibutuhkan untuk compile node-pty (tab Terminal)."
   if [ -z "$cmd" ]; then
     warn "Package manager tidak dikenali. Install gcc/g++, make dan python3 manual, lalu jalankan ulang."
+    return 1
+  fi
+  if [ "$PLATFORM" = darwin ]; then
+    echo "    Perintah: $cmd"
+    if ! confirm "Jalankan perintah itu sekarang?"; then
+      warn "Build tools dilewati."
+      return 1
+    fi
+    xcode-select --install || warn "xcode-select --install gagal atau sudah berjalan."
+    warn "Setelah Command Line Tools selesai dipasang, jalankan ulang installer agar node-pty bisa di-compile."
     return 1
   fi
   echo "    Perintah: sudo $cmd"
@@ -235,20 +257,43 @@ compile_pty() {
 
 browser_dir() { # profile folder that shows the browser is used by this account
   local config="${XDG_CONFIG_HOME:-$HOME/.config}"
+  if [ "$PLATFORM" = darwin ]; then
+    local support="$HOME/Library/Application Support"
+    case "$1" in
+      chrome) echo "$support/Google/Chrome" ;;
+      chromium) echo "$support/Chromium" ;;
+      edge) echo "$support/Microsoft Edge" ;;
+      brave) echo "$support/BraveSoftware/Brave-Browser" ;;
+      firefox) echo "$support/Mozilla/Firefox" ;;
+    esac
+    return 0
+  fi
   case "$1" in
     chrome) echo "$config/google-chrome" ;;
     chromium) echo "$config/chromium" ;;
     edge) echo "$config/microsoft-edge" ;;
     brave) echo "$config/BraveSoftware/Brave-Browser" ;;
+    firefox) echo "$HOME/.mozilla/firefox" ;;
   esac
 }
 
 browser_commands() {
+  if [ "$PLATFORM" = darwin ]; then
+    case "$1" in
+      chrome) echo "google-chrome" ;;
+      chromium) echo "chromium" ;;
+      edge) echo "microsoft-edge" ;;
+      brave) echo "brave" ;;
+      firefox) echo "firefox" ;;
+    esac
+    return 0
+  fi
   case "$1" in
     chrome) echo "google-chrome google-chrome-stable" ;;
     chromium) echo "chromium chromium-browser" ;;
     edge) echo "microsoft-edge microsoft-edge-stable" ;;
     brave) echo "brave-browser brave" ;;
+    firefox) echo "firefox firefox-esr" ;;
   esac
 }
 
@@ -256,6 +301,16 @@ detect_browsers() {
   local found="" name cmd
   for name in $KNOWN_BROWSERS; do
     if [ -d "$(browser_dir "$name")" ]; then found="$found $name"; continue; fi
+    if [ "$PLATFORM" = darwin ]; then
+      case "$name" in
+        chrome) [ ! -d "/Applications/Google Chrome.app" ] || found="$found $name" ;;
+        chromium) [ ! -d "/Applications/Chromium.app" ] || found="$found $name" ;;
+        edge) [ ! -d "/Applications/Microsoft Edge.app" ] || found="$found $name" ;;
+        brave) [ ! -d "/Applications/Brave Browser.app" ] || found="$found $name" ;;
+        firefox) [ ! -d "/Applications/Firefox.app" ] || found="$found $name" ;;
+      esac
+      continue
+    fi
     for cmd in $(browser_commands "$name"); do
       if command -v "$cmd" >/dev/null 2>&1; then found="$found $name"; break; fi
     done
@@ -264,6 +319,7 @@ detect_browsers() {
 }
 
 warn_sandboxed_browsers() {
+  [ "$PLATFORM" = linux ] || return 0
   if [ -d "$HOME/snap/chromium" ] || [ -d "$HOME/.var/app/com.google.Chrome" ] ||
      [ -d "$HOME/.var/app/org.chromium.Chromium" ] || [ -d "$HOME/.var/app/com.brave.Browser" ] ||
      [ -d "$HOME/.var/app/com.microsoft.Edge" ]; then
@@ -352,7 +408,11 @@ fi
 warn_sandboxed_browsers
 for name in $BROWSERS; do
   step "Mendaftarkan com.broagentai.host untuk $name..."
-  "$NODE" scripts/native-host.mjs install --browser "$name" || die "Registrasi untuk $name gagal."
+  if [ "$name" = firefox ]; then
+    "$NODE" scripts/native-host.mjs install --browser "$name" --extension-id broagentai@local || die "Registrasi untuk $name gagal."
+  else
+    "$NODE" scripts/native-host.mjs install --browser "$name" || die "Registrasi untuk $name gagal."
+  fi
 done
 
 echo "${C_CYAN}==========================================${C_OFF}"
@@ -360,4 +420,10 @@ ok "Instalasi selesai untuk:$(printf ' %s' $BROWSERS)"
 echo "1. Buka chrome://extensions (atau edge://extensions, brave://extensions), aktifkan Developer mode."
 echo "2. Load unpacked: $ROOT/extension/dist"
 echo "3. Kalau sudah ter-load, klik Reload pada kartu BroAgentAI."
+case " $BROWSERS " in
+  *" firefox "*)
+    echo "Firefox: jalankan npm run build:firefox lalu about:debugging -> This Firefox -> Load Temporary Add-on..."
+    echo "Pilih $ROOT/extension/dist/manifest.json. Lihat docs/firefox.md."
+    ;;
+esac
 echo "${C_CYAN}==========================================${C_OFF}"

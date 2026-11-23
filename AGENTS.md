@@ -9,6 +9,8 @@
 - Validate before commit: `npm run typecheck` and `npm run test` must pass.
 - Use conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `chore:`.
 - Keep e2e artifacts out of git (`.pw-profile` is ignored).
+- Local release artifacts are allowed (`npm run release`, `npm run host:build:binaries`, ignored `release/`). Never publish a GitHub release: do not create/push `v*` tags, create GitHub Releases, upload release artifacts, or trigger `.github/workflows/release.yml` — even as validation. The GitHub account is locked due to pending payment; remote release steps are manual and user-only until billing is resolved.
+- Every modification must bump the product version in the same change using semantic versioning `MAJOR.MINOR.PATCH`: PATCH for fixes/docs/chore/config, MINOR for backward-compatible features, MAJOR for breaking changes. Update root/workspace manifests, extension manifest, `HOST_VERSION`, CHANGELOG, and release notes together; never ship two changes with the same version.
 
 ## BroAgentAI
 

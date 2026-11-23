@@ -13,6 +13,8 @@ BroAgentAI is a Chrome Manifest V3 extension that adds a persistent side panel â
 
 The product requires **no API key** and, after a one-time development setup, **no terminal or `start.bat` per session**. The extension starts and stops the native companion through Chrome Native Messaging.
 
+> Firefox note: a partial, manually loaded Firefox build exists (`npm run build:firefox`, add-on id `broagentai@local`, sidebar instead of side panel); see `docs/firefox.md`. Chromium remains the primary target.
+
 ## 2. Problem
 
 - Web AI chats are good at reasoning and code generation, but they cannot inspect, edit, search, or version-control a local project.
@@ -39,7 +41,7 @@ The product requires **no API key** and, after a one-time development setup, **n
 
 - Replacing a full IDE (no LSP, debugger, terminals, or extensions).
 - A hosted backend, cloud sync, or multi-user collaboration.
-- Firefox, Safari, or mobile support.
+- Safari or mobile support (the Firefox port is partial; see `docs/firefox.md`).
 - Guaranteed compatibility with every AI provider DOM or a provider's terms of service.
 - Force-push, history rewriting, or automatic conflict resolution.
 - Automatic native-host installation without a user-run installer or dev script (Chrome security restriction).
@@ -279,7 +281,7 @@ A contributor adds a new folder under `extension/src/providers/<id>/` with `prov
 
 ### 10.2 Excluded (post-MVP)
 
-- GUI installer and auto-update.
+- Signed/notarized distributables (pending credentials).
 - Hunk-level staging and conflict resolution UI.
 - Integrated terminal and arbitrary command execution.
 - MCP marketplace, external apps connecting to BroAgentAI as an MCP server.
@@ -294,7 +296,7 @@ A contributor adds a new folder under `extension/src/providers/<id>/` with `prov
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | AI provider DOM changes | Agent stops working on a provider | Provider adapters, fixture tests, health checks, fast update path |
-| Native host install friction | Users cannot connect | One-time dev script now; GUI installer later; clear setup card |
+| Native host install friction | Users cannot connect | GUI/CLI installers per OS; clear setup card; checksum-verified user-run updater |
 | 1 MB hostâ†’extension limit | Large files/diffs fail | 512 KB caps, pagination, per-file diffs, range reads |
 | Git credential prompts hang | Push/pull appears frozen | `GIT_TERMINAL_PROMPT=0`, timeouts, actionable errors, Test remote |
 | Merge/rebase conflicts | Repo put in intermediate state | Show conflict state, Abort action, no auto-resolution |

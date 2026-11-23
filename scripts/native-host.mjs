@@ -24,6 +24,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HOST_NAME = "com.broagentai.host";
+const FIREFOX_EXTENSION_ID = "broagentai@local";
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BRIDGE_ENTRY = join(ROOT, "bridge", "dist", "index.js");
 const EXTENSION_DIST = join(ROOT, "extension", "dist");
@@ -192,8 +193,10 @@ function main() {
     return;
   }
 
-  const extensionId = opts.extensionId ?? process.env.BROAGENTAI_EXTENSION_ID ?? unpackedExtensionId(EXTENSION_DIST);
-  if (!/^[a-p]{32}$/.test(extensionId) && opts.browser !== "firefox") fail(`Invalid extension id: ${extensionId}`);
+  const extensionId = opts.extensionId ?? process.env.BROAGENTAI_EXTENSION_ID ?? (opts.browser === "firefox" ? FIREFOX_EXTENSION_ID : unpackedExtensionId(EXTENSION_DIST));
+  if (opts.browser === "firefox") {
+    if (!/^[a-z0-9.@-]+$/.test(extensionId)) fail(`Invalid Firefox add-on id: ${extensionId}`);
+  } else if (!/^[a-p]{32}$/.test(extensionId)) fail(`Invalid extension id: ${extensionId}`);
   if (!existsSync(BRIDGE_ENTRY)) fail(`Bridge is not built: ${BRIDGE_ENTRY} is missing. Run "npm run build" first.`);
 
   const manifestText = JSON.stringify(manifest({ browser: opts.browser, extensionId, launcher }), null, 2) + "\n";

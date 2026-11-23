@@ -24,6 +24,7 @@ export interface ProviderSelectors {
    * assistant element" is not always the newest reply.
    */
   messageKeyAttr?: string;
+  messageKeyFallback?: boolean;
   /**
    * One element per code line, inside a reply's <pre>. For pages that render
    * code in an editor widget (language label, toolbar, line-number gutter):
@@ -99,6 +100,7 @@ export interface ProviderInfo {
   source?: 'builtin' | 'user';
   /** The plugin ships plugin.js hooks. */
   hasScript?: boolean;
+  hooks?: { detectError?: boolean };
 }
 
 export interface ProviderReply {

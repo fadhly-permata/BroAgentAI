@@ -1230,34 +1230,39 @@ Execution rules:
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
-| B1.1 | Shell registry and detection | `bridge/src/shell.ts` | Deterministic priority, cached result, no agent parameter; missing shells return structured errors | Pending |
-| B1.2 | MVP shell wrappers | `bridge/src/shell.ts` | `pwsh`/`powershell.exe`, `zsh`/`bash`/`sh`, and `bash`/`sh` pass quoting, exit-code, encoding, and cwd fixtures | Pending |
-| B1.3 | Process-tree cleanup | `bridge/src/shell.ts`, `bridge/src/terminal.ts` | Job Objects on Windows, process groups on POSIX; Windows execution refused if Job Objects are unavailable; detached children tested | Pending |
-| B1.4 | Timeout and cancellation | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Stable executionId cancels a running command and reports termination reason | Pending |
-| B1.5 | Bounded concurrency | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Concurrent runs are bounded; excess work is queued or rejected with a structured error | Pending |
-| B1.6 | Output bounds and continuation | `bridge/src/shell.ts`, `bridge/src/rpc.ts` | Truncation metadata and controlled output continuation or artifact access are available | Pending |
-| B1.7 | Benchmark gate | test and benchmark harness | Representative workloads are equal to or faster than native tools; slower blocks native-tool removal | Pending |
+| B1.1 | Shell registry and detection | `bridge/src/shell.ts` | Deterministic priority, cached result, no agent parameter; missing shells return structured errors | Done |
+| B1.2 | MVP shell wrappers | `bridge/src/shell.ts` | `pwsh`/`powershell.exe`, `zsh`/`bash`/`sh`, and `bash`/`sh` pass quoting, exit-code, encoding, and cwd fixtures | Done |
+| B1.3 | Process-tree cleanup | `bridge/src/shell.ts`, `bridge/src/terminal.ts` | Job Objects on Windows, process groups on POSIX; Windows execution refused if Job Objects are unavailable; detached children tested | Done |
+| B1.4 | Timeout and cancellation | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Stable executionId cancels a running command and reports termination reason | Done |
+| B1.5 | Bounded concurrency | `bridge/src/shell.ts`, `bridge/src/rpc-server.ts` | Concurrent runs are bounded; excess work is queued or rejected with a structured error | Done |
+| B1.6 | Output bounds and continuation | `bridge/src/shell.ts`, `bridge/src/rpc.ts` | Truncation metadata and controlled output continuation or artifact access are available | Done |
+| B1.7 | Benchmark gate | test and benchmark harness | Representative workloads are equal to or faster than native tools; slower blocks native-tool removal | Done |
 
 ### P3 — Medium: Observability and Rollout
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
-| B2.1 | Read-only shell info | `bridge/src/shell.ts`, `bridge/src/rpc.ts`, extension UI | `shell.info` or `system.info` reports shell family, version, encoding, and fallbacks | Pending |
-| B2.2 | Bounded environment discovery | environment discovery module | PATH origin and profile policy are discovered, cached, refreshable, and do not expose credentials | Pending |
-| B2.3 | Error normalization | `bridge/src/rpc.ts` | `SHELL_NOT_AVAILABLE`, `SHELL_START_FAILED`, `SHELL_UNSUPPORTED`, and `SHELL_CWD_INVALID` are used consistently | Pending |
-| B2.4 | Session and history linking | `bridge/src/agent.ts`, `bridge/src/rpc-server.ts` | Executions are associated with a task/session and history remains bounded | Pending |
-| B2.5 | UX and i18n polish | extension UI, `i18n/en.json`, `i18n/id.json` | Approval context, shell-change banner, and safety notice are translated consistently | Pending |
+| B2.1 | Read-only shell info | `bridge/src/shell.ts`, `bridge/src/rpc.ts`, extension UI | `shell.info` or `system.info` reports shell family, version, encoding, and fallbacks | Done |
+| B2.2 | Bounded environment discovery | environment discovery module | PATH origin and profile policy are discovered, cached, refreshable, and do not expose credentials | Done |
+| B2.3 | Error normalization | `bridge/src/rpc.ts` | `SHELL_NOT_AVAILABLE`, `SHELL_START_FAILED`, `SHELL_UNSUPPORTED`, and `SHELL_CWD_INVALID` are used consistently | Done |
+| B2.4 | Session and history linking | `bridge/src/agent.ts`, `bridge/src/rpc-server.ts` | Executions are associated with a task/session and history remains bounded | Done |
+| B2.5 | UX and i18n polish | extension UI, `i18n/en.json`, `i18n/id.json` | Approval context, shell-change banner, and safety notice are translated consistently | Done |
 
 ### P4 — Low: Post-MVP Expansion
 
 | ID | Slice | Primary files | Acceptance | Status |
 |---|---|---|---|---|
-| B3.1 | Long-tail filesystem migration | existing typed filesystem tools | Shell fallback is adopted only after B1.7; typed primitives remain by default | Pending |
-| B3.2 | Long-tail Git operations | existing typed Git tools | Git CLI handles the long tail; structured Git tools are retained | Pending |
-| B3.3 | Capability discovery and dependency policy | bridge capability layer | Existing capabilities are preferred; installation requires explicit approval and records side effects | Pending |
-| B3.4 | Background and persistent sessions | `bridge/src/shell.ts` | Short and long-running tasks use the same execution contract | Pending |
-| B3.5 | Workflow composition and recovery | bridge workflow layer | Conditional execution, controlled retries, and validation feedback are supported | Pending |
-| B3.6 | Additional shells and environments | `bridge/src/shell.ts` | `cmd`, fish, Nushell, WSL, and Git Bash are evaluated only after MVP validation | Pending |
+| B3.1 | Long-tail filesystem migration | `bridge/src/fallback.ts`, existing typed filesystem tools | Shell fallback is adopted only after B1.7; typed primitives remain by default | Done |
+| B3.2 | Long-tail Git operations | `bridge/src/fallback.ts`, existing typed Git tools | Git CLI handles the long tail; structured Git tools are retained | Done |
+| B3.3 | Capability discovery and dependency policy | bridge capability layer | Existing capabilities are preferred; installation requires explicit approval and records side effects | Done |
+| B3.4 | Background and persistent sessions | `bridge/src/shell.ts` | Short and long-running tasks use the same execution contract | Done |
+| B3.5 | Workflow composition and recovery | `bridge/src/workflow.ts` | Conditional execution, controlled retries, and validation feedback are supported | Done |
+| B3.6 | Additional shells and environments | `bridge/src/shell.ts` | `cmd`, fish, Nushell, WSL, and Git Bash are evaluated only after MVP validation | Done |
+| B4.1 | Provider plugins, Provider Lab and local catalog | `extension/plugins/`, `extension/src/plugins/`, `extension/catalog/` | Additional providers and selector-only plugins work without remote code | Done |
+| B4.2 | Scripts, skills and multi-root workspaces | `bridge/src/scripts.ts`, `bridge/src/skill-runs.ts`, `bridge/src/workspace.ts` | Allowlisted execution requires explicit approval and remains workspace-confined | Done |
+| B4.3 | Git and UX expansion | `bridge/src/git.ts`, `extension/src/agent-panel.ts`, `extension/src/i18n/` | Blame/stash/per-line staging, resume, quick actions, transcript export and i18n parity are available | Done |
+| B4.4 | Firefox port | `extension/manifest.json`, `extension/src/browser.ts`, `bridge/src/index.ts` | Firefox uses a fixed add-on ID, sidebar API and native host attribution | Partial |
+| B4.5 | Cross-platform CI | `.github/workflows/ci.yml` | Typecheck, tests, build, benchmark and browser e2e run on Windows, macOS and Linux | Done |
 
 ## 15. AGENTS.md Context Contract
 

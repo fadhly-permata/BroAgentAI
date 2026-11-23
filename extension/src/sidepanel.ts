@@ -1,4 +1,5 @@
 import { bridge, BridgeErrorCode } from './bridge-client.js';
+import { browser } from './browser.ts';
 import { renderExplorer, resetExplorerState, ExplorerOptions } from './explorer.js';
 import { initScm, refreshScm } from './git-panel.js';
 import { initTerminal, showTerminal } from './terminal-panel.js';
@@ -9,6 +10,7 @@ import { initHome, renderHome } from './home-panel.js';
 import { initPlugins, renderPlugins } from './plugins-panel.js';
 import { refreshProviders, watchProviders } from './providers/registry.js';
 import { applyTheme, translatePage, t, Lang, Theme } from './i18n.js';
+import { compareHostVersions } from './host-version.js';
 import { reloadIfManifestStale } from './stale-manifest.js';
 import { hydrateIcons, icon, fileIcon } from './icons.js';
 import { openEditorTab } from './editor-tabs.js';
@@ -72,6 +74,37 @@ function updateProtocolStatus() {
   const info = bridge.protocol;
   const suffix = bridge.protocolDeprecated ? ' · ' + t('protocolDeprecated') : '';
   el.textContent = `${t('protocolLabel')} ${info.version} (${info.supported.join(', ')})${suffix}`;
+}
+
+async function updateShellStatus(){
+  const el=$('shellStatus');
+  if(!el) return;
+  try{
+    const info:any=await bridge.call('shell.info');
+    const fallbacks=(info.fallbacks||[]).map((f:any)=>`${f.family}: ${f.file}`).join(', ');
+    el.textContent=`${info.family} ${info.version || ''} · ${info.encoding || 'utf8'}${fallbacks?' · '+t('shellFallbacks')+': '+fallbacks:''}`;
+  }catch{
+    el.textContent=t('shellUnavailable');
+  }
+}
+
+let hostInfo: unknown = null;
+function manifestVersion(): string { try { return String(browser.runtime.getManifest().version ?? ''); } catch { return ''; } }
+function renderHostVersionStatus(){
+  const cmp=compareHostVersions(manifestVersion(),hostInfo);
+  const versionEl=$('hostVersion');
+  const statusEl=$('hostUpdateStatus');
+  const btn=$('hostUpdateBtn') as HTMLButtonElement;
+  versionEl.textContent=cmp.hostVersion||t('hostVersionUnknownValue');
+  const key=cmp.status==='matching'?'hostVersionMatch':cmp.status==='mismatch'?'hostVersionMismatch':'hostVersionUnknown';
+  statusEl.textContent=t(key)+(cmp.status==='mismatch'?' ('+cmp.extensionVersion+' / '+cmp.hostVersion+')':'');
+  statusEl.className='kv-val pill '+(cmp.status==='matching'?'pill-ok':'pill-warn');
+  btn.disabled=cmp.status!=='mismatch';
+}
+async function refreshHostVersion(){
+  try{ hostInfo=await bridge.call('system.info'); }
+  catch{ hostInfo=null; }
+  renderHostVersionStatus();
 }
 
 function updateHostStatus(status: 'offline' | 'ready' | 'error') {
@@ -204,18 +237,22 @@ async function connectBridge(){
     await bridge.connect();
     updateHostStatus('ready');
     updateProtocolStatus();
+    void updateShellStatus();
+    void refreshHostVersion();
     await loadWorkspaces();
     await ensureProjectContext();
     await updateContextStatus();
   }catch(err){
     console.warn('Bridge connection failed:', err);
     updateHostStatus('offline');
+    hostInfo=null;
+    renderHostVersionStatus();
   }
 }
 function switchTab(t:string){
   document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab===t));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t));
-  if(t==='settings'){ refreshMcp(); void updateContextStatus(); }
+  if(t==='settings'){ refreshMcp(); void updateContextStatus(); void updateShellStatus(); }
   if(t==='agent') showAgent();
   if(t==='scm') refreshScm();
   if(t==='terminal') showTerminal();
@@ -382,6 +419,7 @@ let searchTimer:any=null;
 document.querySelectorAll('.rail-btn').forEach(b=>b.addEventListener('click',()=>switchTab((b as HTMLElement).dataset.tab!)));
 document.querySelectorAll('.set-tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.set-tab').forEach(x=>x.classList.toggle('active',x===b)); document.querySelectorAll('.set-panel').forEach(p=>p.classList.toggle('active',p.id==='set-'+(b as HTMLElement).dataset.set))}));
 on('restartBtn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('restart2Btn','click',async()=>{await connectBridge(); toast($('banner').classList.contains('hidden')?'Host terhubung':'Host masih offline')}); on('setupBtn','click',()=>openModal('Setup help','<p>Host: <code>com.broagentai.host</code></p><p>Dev: build host + register sekali, lalu reload extension.</p><p>Config: <code>~/.broagentai/config.jsonc</code> - Log: <code>~/.broagentai/host.log</code></p>',()=>{}));
+on('hostUpdateBtn','click',()=>openModal(t('hostUpdateTitle'),'<p>'+t('hostUpdateIntro')+'</p><p>'+t('hostUpdateCli')+' <code>npm run update</code></p><p>'+t('hostUpdateGui')+'</p>',()=>{}));
 on('diagBtn','click',runDiagnostics); on('reloadConfigBtn','click',async()=>{try{await bridge.call('config.get'); toast('Config reloaded')}catch(err:any){toast('Gagal reload config: '+(err?.message||err))}}); on('createConfigBtn','click',createProjectConfig);
 
 // Close menus when clicking outside
@@ -400,8 +438,8 @@ const UI_SETTINGS_KEY = 'broagentai.ui';
 function loadUISettings() {
   try {
     const raw = localStorage.getItem(UI_SETTINGS_KEY);
-    return raw ? JSON.parse(raw) : { lang: 'id', theme: 'system', fontSize: 13, tabSize: 2, wrap: false };
-  } catch { return { lang: 'id', theme: 'system', fontSize: 13, tabSize: 2, wrap: false }; }
+    return raw ? JSON.parse(raw) : { lang: 'id', theme: 'system', density: 'comfortable', panelWidth: 'compact', fontSize: 13, tabSize: 2, wrap: false };
+  } catch { return { lang: 'id', theme: 'system', density: 'comfortable', panelWidth: 'compact', fontSize: 13, tabSize: 2, wrap: false }; }
 }
 function saveUISettings(settings: any) {
   try {
@@ -416,14 +454,9 @@ function saveUISettings(settings: any) {
  */
 function applyRailSide(): void {
   // Declared with a callback in Chromium's side_panel.idl (Side: left | right).
-  const sidePanel = chrome.sidePanel as unknown as { getLayout?: (callback: (layout?: { side?: string }) => void) => void };
-  if (typeof sidePanel?.getLayout !== 'function') return;
-  try {
-    sidePanel.getLayout((layout) => {
-      if (chrome.runtime.lastError) return;
-      document.documentElement.dataset.railSide = layout?.side === 'left' ? 'left' : 'right';
-    });
-  } catch { /* keep the CSS default (right) */ }
+  void browser.panel.getLayout().then((layout) => {
+    document.documentElement.dataset.railSide = layout?.side === 'left' ? 'left' : 'right';
+  }).catch(() => { /* keep the CSS default (right) */ });
 }
 applyRailSide();
 
@@ -440,6 +473,13 @@ function applyUISettings() {
   const theme = (s.theme || 'system') as Theme;
   if (($('themeSel') as HTMLSelectElement)) ($('themeSel') as HTMLSelectElement).value = theme;
   applyTheme(theme);
+
+  const density = s.density === 'compact' ? 'compact' : 'comfortable';
+  const panelWidth = s.panelWidth === 'wide' ? 'wide' : 'compact';
+  if (($('densitySel') as HTMLSelectElement)) ($('densitySel') as HTMLSelectElement).value = density;
+  if (($('panelWidthSel') as HTMLSelectElement)) ($('panelWidthSel') as HTMLSelectElement).value = panelWidth;
+  document.documentElement.dataset.density = density;
+  document.documentElement.dataset.panelWidth = panelWidth;
   
   // Apply Font & Editor settings
   if (s.fontSize) {
@@ -461,6 +501,7 @@ on('langSel','change',(e)=>{
   saveUISettings({lang: v}); 
   document.documentElement.lang = v;
   translatePage(v);
+  renderHostVersionStatus();
   renderWs(); // dynamic text is not covered by data-i18n
   void renderPlugins();
 });
@@ -469,11 +510,22 @@ on('themeSel','change',(e)=>{
   saveUISettings({theme: v}); 
   applyTheme(v);
 });
+on('densitySel','change',(e)=>{
+  const v = (e.target as HTMLSelectElement).value === 'compact' ? 'compact' : 'comfortable';
+  saveUISettings({density: v});
+  document.documentElement.dataset.density = v;
+});
+on('panelWidthSel','change',(e)=>{
+  const v = (e.target as HTMLSelectElement).value === 'wide' ? 'wide' : 'compact';
+  saveUISettings({panelWidth: v});
+  document.documentElement.dataset.panelWidth = v;
+});
 on('fontSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({fontSize:v}); document.documentElement.style.setProperty('--font-size',v+'px');}});
 on('tabSize','change',(e)=>{const v=Number((e.target as HTMLInputElement).value); if(v>0){saveUISettings({tabSize:v}); document.documentElement.style.setProperty('--tab-size',String(v));}});
 on('wrapChk','change',(e)=>{const v=(e.target as HTMLInputElement).checked; saveUISettings({wrap:v}); document.documentElement.style.setProperty('--editor-wrap',v?'pre-wrap':'pre');});
 
 applyUISettings();
+renderHostVersionStatus();
 
 on('refreshTree','click',async()=>{await renderTree(); toast('Tree direfresh')});
 on('contextRefreshBtn','click',async()=>{
@@ -496,7 +548,7 @@ on('ignoreInput','change',()=>applyIgnore());
 on('ignoreInput','blur',()=>applyIgnore());
 on('searchInput','input',()=>{clearTimeout(searchTimer); searchTimer=setTimeout(doSearch,250)}); on('caseChk','change',doSearch); on('regexChk','change',doSearch);
 on('modalOk','click',()=>{modalCb&&modalCb(); closeModal()}); on('modalCancel','click',closeModal); on('modalClose','click',closeModal); on('modalBackdrop','click',(e:any)=>{if(e.target.id==='modalBackdrop')closeModal()}); document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeModal()});
-try{ ($('extId') as HTMLElement).textContent=chrome.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
+try{ ($('extId') as HTMLElement).textContent=browser.runtime.id }catch{ ($('extId') as HTMLElement).textContent='(dev)' }
 // After a rebuild this page already runs the new code, but Chrome still holds the old
 // manifest (content scripts, site access) until the extension reloads: do that once.
 void reloadIfManifestStale();

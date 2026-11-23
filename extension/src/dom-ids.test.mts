@@ -33,3 +33,18 @@ test('every $(id) / getElementById(id) lookup has a matching element', () => {
   }
   assert.deepEqual([...new Set(missing)], []);
 });
+
+test('approval and shell safety strings exist in both locales', () => {
+  const en = JSON.parse(readFileSync(join(srcDir, 'i18n/en.json'), 'utf8'));
+  const id = JSON.parse(readFileSync(join(srcDir, 'i18n/id.json'), 'utf8'));
+  const keys = [
+    'shellTrustTitle', 'shellTrustDesc', 'shellChangeTitle', 'shellChangeDesc', 'shellConfirm', 'shellConfirmed',
+    'approvalContextLabel', 'riskLabel', 'riskRead', 'riskWrite', 'riskHigh',
+    'approvalShellSummary', 'approvalMcp', 'approvalNoPaths', 'approvalPaths', 'approvalTruncated',
+    'askOnceShell', 'askOnceTool', 'waitingApproval', 'allow', 'deny',
+  ];
+  for (const key of keys) {
+    assert.equal(typeof en[key], 'string', `en:${key}`);
+    assert.equal(typeof id[key], 'string', `id:${key}`);
+  }
+});

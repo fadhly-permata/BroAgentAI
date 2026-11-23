@@ -11,6 +11,7 @@
 // When the manifest on disk differs from the loaded one in what matters for
 // the relay, reload the extension once. A loop guard keeps a manifest that
 // Chrome normalizes differently from triggering reload after reload.
+import { browser } from './browser.ts';
 
 export interface ManifestLike {
   version?: string;
@@ -48,21 +49,21 @@ export function guardBlocks(last: unknown, now: number): boolean {
 export async function reloadIfManifestStale(): Promise<boolean> {
   let disk: ManifestLike;
   try {
-    const res = await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' });
+    const res = await fetch(browser.runtime.getURL('manifest.json'), { cache: 'no-store' });
     if (!res.ok) return false;
     disk = await res.json();
   } catch {
     return false;
   }
-  if (!isStale(chrome.runtime.getManifest() as ManifestLike, disk)) return false;
+  if (!isStale(browser.runtime.getManifest() as ManifestLike, disk)) return false;
   try {
-    const stored = await chrome.storage.local.get(GUARD_KEY);
+    const stored = await browser.storage.local.get(GUARD_KEY);
     if (guardBlocks(stored[GUARD_KEY], Date.now())) return false;
-    await chrome.storage.local.set({ [GUARD_KEY]: Date.now() });
+    await browser.storage.local.set({ [GUARD_KEY]: Date.now() });
   } catch {
     return false; // without a working guard, do not risk a reload loop
   }
   console.warn('[BroAgentAI] manifest on disk is newer than the loaded one; reloading the extension');
-  chrome.runtime.reload();
+  browser.runtime.reload();
   return true;
 }

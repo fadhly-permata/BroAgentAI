@@ -715,25 +715,29 @@ broagentai/
 ### 12.3 Host build
 
 - Current: `tsup` bundles `bridge/src/index.ts` to `bridge/dist/index.js`, run by the user's Node.js (>= 22.6) through a launcher script. Native modules (`node-pty`) stay external and load from `node_modules`.
-- Post-MVP option: a single executable via Node SEA or `bun build --compile`.
+- `npm run host:build:binaries` verifies the current platform release bundle. `.github/workflows/release.yml` builds Windows/macOS/Linux bundles on their own runners; cross-compilation is not attempted because `node-pty` is native.
+- Post-MVP option: a single executable via Node SEA or `bun build --compile`, still requiring per-platform native module handling.
 - Dev registration script writes the host manifest, allowed origins, and registry key.
 
 ### 12.4 Dev scripts
 
 | Script | Purpose |
 | --- | --- |
-| `npm run host:build` | Build the native host executable. |
+| `npm run host:build` | Build the native host bundle output. |
+| `npm run host:build:binaries` | Verify the current platform release bundle. |
 | `npm run host:install:dev` | Register the host with Chrome for the current extension ID. |
 | `npm run host:uninstall:dev` | Remove the registry entry and host manifest. |
+| `npm run install:gui` | Launch the OS GUI installer wrapper with console fallback. |
+| `npm run update` | User-run checksum-verified update and host re-registration. |
 | `npm run typecheck` | TypeScript checks across workspaces. |
-| `npm run test` | Host unit/integration tests. |
+| `npm run test` | Script, host, extension unit/integration tests. |
 
 ### 12.5 Post-MVP installer
 
-- Windows: NSIS/MSI, writes HKCU registry key and copies the host binary.
-- macOS: signed `.pkg`, writes the user manifest, notarization.
-- Linux: `.deb`/AppImage or a shell installer, writes the user manifest.
-- The extension detects a missing/outdated host and links to the installer (user-run).
+- Windows: WinForms GUI wrapper around `install.ps1`, writes the HKCU registry key and launcher. Signed MSI/NSIS remains pending a code-signing certificate.
+- macOS: zenity/osascript wrapper around `install.sh`, writes the user manifest. Signed/notarized `.pkg` remains pending Apple Developer credentials.
+- Linux: zenity/terminal wrapper around `install.sh`, writes the user manifest.
+- The extension detects a missing/outdated host from `system.info` and links to user-run update instructions.
 
 ## 13. Testing strategy
 

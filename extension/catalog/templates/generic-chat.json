@@ -1,0 +1,19 @@
+{
+  "apiVersion": 1,
+  "id": "my-chat",
+  "name": "My Chat",
+  "version": "1.0.0",
+  "description": "Selector-only starter for a new web chat",
+  "homepage": "https://chat.example.com/",
+  "matches": ["https://chat.example.com/*"],
+  "status": "experimental",
+  "verified": "Not checked on a live page. Fill in real selectors, then run the full read-write-answer loop before relying on this plugin.",
+  "selectors": {
+    "composer": "textarea, div[contenteditable='true']",
+    "submit": "",
+    "assistantMessage": "[data-role='assistant']",
+    "userMessage": "[data-role='user']",
+    "generating": "",
+    "messageKeyFallback": true
+  }
+}

@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **All remaining non-installer backlog items.** Added Claude, Grok, Kimi, GLM, Mistral and Arena provider plugins, Provider Lab with a bundled local catalog, allowlisted project scripts, approved skill runs, multi-root path resolution, Git blame/stash/per-line staging, quick actions, session resume from the bridge store, transcript export, layout settings and full en/id i18n parity.
+- **Plugin hardening.** Gemini/Qwen get stable message-order fallback keys; DeepSeek quota errors are detected by a `detectError` hook and suggested as a provider switch; a plugin template, `docs/write-a-webchat-plugin.md`, isolated-plugin e2e, and ADR-020 acceptance complete web chat P5.
+- **Cross-platform CI.** `.github/workflows/ci.yml` runs typecheck, unit tests, build, the shell benchmark gate, and browser e2e on Windows, macOS and Linux.
 - **Linux installer (`install.sh`).** Prepares everything on the first run: Node.js 22.6+ (a portable, SHA-256-checked copy from nodejs.org in `.runtime/` when the one on `PATH` is missing or too old), the build tools node-pty needs (shows the apt/dnf/yum/pacman/zypper/apk command, asks, then runs it with `sudo`), `npm ci`, the build, and the native host registration for every detected browser (Chrome, Chromium, Edge, Brave). Without build tools the bridge still installs; only the Terminal tab is unavailable. `--uninstall` removes the registration.
 - **Brave** is a supported browser for the native host (`--browser brave`) on Windows, Linux and macOS.
 - **Co-authors on commits.** Every commit made through BroAgentAI (Git panel and agent) carries a `Co-authored-by` trailer for BroAgentAI's author. More co-authors can be added as `coAuthors` (a list of `"Name <email>"`) in `~/.broagentai/config.json`, `broagentai.jsonc` or `.broagentai/config.json`; the most specific layer wins, `[]` removes the added ones, malformed entries are skipped and a co-author already named in the message is not repeated.
@@ -19,7 +22,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **ChatGPT and Ptero providers** (experimental). ChatGPT works signed in and logged out; Ptero needs its **Quick Answer** mode, because in Smart mode its server-side agent runs the commands itself. Official favicons on the Home cards.
 - **`codeBlock` provider selector.** Providers whose code blocks are not a `<pre>` (ChatGPT's CodeMirror only draws on-screen lines) read each block's full code from the page's React props, then from `codeLine` lines.
 - **Side panel rail on the window edge.** The activity rail now sits on the right, next to the browser edge, and follows the panel to the left when Chrome docks it there (`chrome.sidePanel.getLayout()`). About sits right above Settings.
-- **Plan for runtime-installable web chat plugins** (docs only): `specs/09-WEBCHAT-PLUGINS.md`, ADR-020 (Proposed), backlog Fase 9.
+- **Runtime-installable web chat plugins**: `specs/09-WEBCHAT-PLUGINS.md`, ADR-020 (Accepted), plugin template and guide.
 
 - **Live refresh.** The bridge now watches the active workspace (`bridge/src/watcher.ts`) and emits debounced `fs.changed` / `git.changed` events. The Explorer and Source Control panels redraw on their own when files change on disk, after a commit or branch switch made outside the panel, or when a terminal command touches the repo. Expanded folders survive the redraw.
 
@@ -44,6 +47,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The agent never types into a **hidden composer** anymore (ChatGPT keeps the previous chat view hidden in the page), which caused `NOT_ACCEPTED` and messages landing in another chat.
 - DeepSeek's "generating" check no longer matches the **warning button** next to an error reply, which made a chat with an error look busy forever.
 - Saving from the side-panel preview now refreshes the Explorer tree as well as the Source Control panel, so the file's size and Git badge are no longer stale.
+
+## [0.2.0] - 2026-11-23
+
+### Added
+
+- **GUI and CLI installers** for Windows, macOS and Linux. Windows uses a native WinForms wizard; macOS and Linux use zenity/osascript with a terminal fallback. Firefox native host registration is covered, and setup/uninstall is documented in `docs/installer.md`.
+- **User-run updater** (`npm run update:check` / `npm run update`) that finds the latest GitHub release, verifies SHA-256 checksums, extracts ZIPs safely, backs up the current install with rollback, and re-registers the native host. Settings shows the installed host version against the extension version.
+- **Release tooling**: `npm run release` and `npm run host:build:binaries` build local bundles, plus a tag-driven release workflow for per-OS artifacts when the user decides to publish. Agent publishing to GitHub remains forbidden.
+- **Semver rule**: every modification bumps `MAJOR.MINOR.PATCH` across manifests, `HOST_VERSION`, CHANGELOG and release notes.
+
+### Changed
+
+- `install.sh` gained macOS and Firefox support; installer, Firefox, PRD, BRD, TSD, ADR and roadmap docs were reconciled with the shipped state.
+
+### Fixed
+
+- The native host client no longer reports a false **Host ready** state when the port disconnects before `system.ping` completes; the side panel now shows the honest offline state. Covered by the Chromium e2e offline checks.
 
 ## [0.1.0] - 2026-11-17
 
@@ -79,5 +99,6 @@ First public release. Everything below is new.
 - Only this extension's id may talk to the native host (`allowed_origins`).
 - No telemetry, no cloud backend, no API keys, and no stored Git credentials.
 
-[Unreleased]: https://github.com/fadhly-permata/BroAgentAI/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/fadhly-permata/BroAgentAI/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/fadhly-permata/BroAgentAI/tree/v0.2.0
 [0.1.0]: https://github.com/fadhly-permata/BroAgentAI/tree/v0.1.0

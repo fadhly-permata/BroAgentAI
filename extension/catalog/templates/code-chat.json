@@ -1,0 +1,22 @@
+{
+  "apiVersion": 1,
+  "id": "my-code-chat",
+  "name": "My Code Chat",
+  "version": "1.0.0",
+  "description": "Selector-only starter for a chat with editor-style code blocks",
+  "homepage": "https://chat.example.com/",
+  "matches": ["https://chat.example.com/*"],
+  "status": "experimental",
+  "verified": "Not checked on a live page. Fill in real selectors, then run the full read-write-answer loop before relying on this plugin.",
+  "selectors": {
+    "composer": "textarea[placeholder], div[contenteditable='true'][role='textbox']",
+    "submit": "",
+    "assistantMessage": "[data-role='assistant'], .markdown",
+    "userMessage": "[data-role='user']",
+    "generating": "",
+    "codeBlock": ".code-block, [data-testid='code-block']",
+    "codeLine": ".code-line, .cm-line",
+    "exclude": ".code-header, .code-actions",
+    "messageKeyFallback": true
+  }
+}

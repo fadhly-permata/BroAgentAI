@@ -7,9 +7,13 @@
 // the chat as the next turn. The loop lives in the side panel on purpose:
 // closing the panel stops it, so nothing runs without the approval UI open.
 import { bridge } from './bridge-client.js';
+import { browser, type Tab } from './browser.ts';
 import { NATIVE_CALL_REMINDER, NOTE_TAG, formatCorrection, formatToolResult, parseReply, redactSecrets } from './agent-parser.js';
 import { SEND_ATTEMPTS, retryBackoffMs, sendDelayMs, toolTimeoutMs } from './agent-timing.js';
 import { buildHandoffSnapshot, classifyChatMessage, emptyWorkSummary, formatHandoffContext, handoffMessage, normalizeTranscript, noteToolCall, validateHandoffSnapshot, workspaceFromGitStatus, type HandoffSnapshot, type HandoffTurn, type WorkSummary, type WorkspaceState } from './agent-handoff.js';
+import { SessionResumeService, normalizeSessionId, type SessionSummary } from './session-resume.js';
+import { buildQuickActionPrompt, isQuickActionId } from './quick-actions.js';
+import { buildTranscriptHistory, downloadTranscript, toTranscriptJson, toTranscriptMarkdown } from './transcript-export.js';
 import { t } from './i18n.js';
 import { providers, providerForUrl } from './providers/registry.js';
 import type { ProviderInfo, ProviderReply } from './providers/types.js';
@@ -107,6 +111,13 @@ const REMINDER_EVERY = 8;
 const MODE_KEY = 'broagentai.agentMode';
 const NOTICE_KEY = 'broagentai.agentNoticeDismissed';
 const DELAY_KEY = 'broagentai.agentDelaySeconds';
+const sessionStorageAdapter = {
+  get: (key: string) => browser.storage.local.get(key),
+  set: (items: Record<string, unknown>) => browser.storage.local.set(items),
+};
+const resumeService = new SessionResumeService(bridge, sessionStorageAdapter);
+let pendingResumeId: string | null = null;
+let bridgeSaving: Promise<void> = Promise.resolve();
 /** The panel nudges the chat tab this often; see relay.ts poll(). */
 const TICK_MS = 1000;
 /** Re-activate a relay that lost its state only once the reloaded chat page settled. */
@@ -158,7 +169,7 @@ let phaseBeforePause: Phase | null = null;
 function notify(title: string, message: string): void {
   deps.toast(message);
   try {
-    chrome.notifications.create({
+    void Promise.resolve(browser.notifications.create({
       type: 'basic',
       title,
       message,
@@ -167,7 +178,7 @@ function notify(title: string, message: string): void {
       iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" rx="24" fill="#2563eb"/><text x="64" y="84" font-size="72" text-anchor="middle" fill="#fff" font-family="sans-serif">B</text></svg>',
       ),
-    }, () => { /* notifications unavailable */ });
+    })).catch(() => {});
   } catch { /* notifications unavailable */ }
 }
 
@@ -262,7 +273,7 @@ function renderStatus(): void {
 
 
 async function tabMessage(tabId: number, message: unknown): Promise<any> {
-  return chrome.tabs.sendMessage(tabId, message);
+  return browser.tabs.sendMessage(tabId, message);
 }
 
 /** Activate a chat tab's relay; it runs the plugin's prepare hook first. Logs what the hook did. */
@@ -274,20 +285,20 @@ async function activateRelay(tabId: number, provider: ProviderInfo): Promise<voi
 }
 
 /** Find an open tab of a bundled provider; the active tab wins. */
-async function findChatTab(preferredTabId?: number): Promise<{ tab: chrome.tabs.Tab; provider: ProviderInfo } | null> {
-  const tabs = await chrome.tabs.query({});
+async function findChatTab(preferredTabId?: number): Promise<{ tab: Tab; provider: ProviderInfo } | null> {
+  const tabs = await browser.tabs.query({});
   const matches = tabs
     .map((tab) => ({ tab, provider: tab.url ? providerForUrl(tab.url) : null }))
-    .filter((m): m is { tab: chrome.tabs.Tab; provider: ProviderInfo } => m.provider !== null && m.tab.id !== undefined);
+    .filter((m): m is { tab: Tab; provider: ProviderInfo } => m.provider !== null && m.tab.id !== undefined);
   matches.sort((a, b) => Number(b.tab.id === preferredTabId) - Number(a.tab.id === preferredTabId) || Number(b.tab.active) - Number(a.tab.active));
   return matches[0] ?? null;
 }
 
 /** An open tab of `provider` other than `exclude`: the active one wins, then the most recently used. */
-async function findProviderTab(provider: ProviderInfo, exclude?: number): Promise<chrome.tabs.Tab | null> {
-  const tabs = (await chrome.tabs.query({}))
+async function findProviderTab(provider: ProviderInfo, exclude?: number): Promise<Tab | null> {
+  const tabs = (await browser.tabs.query({}))
     .filter((tab) => tab.id !== undefined && tab.id !== exclude && !!tab.url && providerForUrl(tab.url)?.id === provider.id);
-  const used = (tab: chrome.tabs.Tab) => (tab as { lastAccessed?: number }).lastAccessed ?? 0;
+  const used = (tab: Tab) => (tab as { lastAccessed?: number }).lastAccessed ?? 0;
   tabs.sort((a, b) => Number(b.active) - Number(a.active) || used(b) - used(a));
   return tabs[0] ?? null;
 }
@@ -302,7 +313,7 @@ async function waitForChatReady(tabId: number, timeoutMs: number, launch?: Launc
   const end = Date.now() + timeoutMs;
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   while (Date.now() < end && !launch?.cancelled) {
-    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    const tab = await browser.tabs.get(tabId).catch(() => null);
     if (!tab) return null;
     if (tab.status === 'complete') break;
     await sleep(300);
@@ -395,6 +406,96 @@ function saveWorkspaceHandoff(active: Session): Promise<void> {
   return saving;
 }
 
+function saveBridgeHandoff(active: Session): Promise<void> {
+  bridgeSaving = bridgeSaving.then(async () => {
+    const snapshot = snapshotOf(active, await collectTranscript(active), await currentWorkspace());
+    if (!worthResuming(snapshot)) return;
+    await resumeService.save(snapshot);
+  }).catch((err) => { console.warn('Failed to save bridge session:', err); });
+  return bridgeSaving;
+}
+
+export function checkpoint(active: Session): void {
+  void saveWorkspaceHandoff(active);
+  void saveBridgeHandoff(active);
+}
+
+export async function refreshSavedSessions(): Promise<void> {
+  const list = $('sessionList');
+  if (!list) return;
+  try {
+    const sessions: SessionSummary[] = await resumeService.list();
+    const current = resumeService.currentSessionId();
+    list.innerHTML = sessions.length ? sessions.map((item) => {
+      const id = esc(item.id);
+      const when = esc(new Date(item.createdAt).toLocaleString());
+      return '<div class="session-row" data-session-id="' + id + '">'
+        + '<span class="session-meta"><b>' + id + '</b><small>' + when + ' · ' + esc(item.provider) + ' · ' + item.totalCalls + '</small></span>'
+        + '<button class="mini" data-session-resume="' + id + '">' + t('sessionResume') + '</button>'
+        + '<button class="mini" data-session-delete="' + id + '">' + t('sessionDelete') + '</button>'
+        + (item.id === current ? '<span class="session-current">' + t('sessionCurrent') + '</span>' : '')
+        + '</div>';
+    }).join('') : '<p class="muted">' + t('sessionEmpty') + '</p>';
+  } catch {
+    list.innerHTML = '<p class="muted">' + t('sessionUnavailable') + '</p>';
+  }
+}
+
+export async function resumeBridgeSession(id: string): Promise<boolean> {
+  const sessionId = normalizeSessionId(id);
+  if (!sessionId) { deps.toast(t('sessionIdInvalid')); return false; }
+  if (session || launching) { deps.toast(t('sessionStopFirst')); return false; }
+  let snapshot: HandoffSnapshot | null = null;
+  try { snapshot = await resumeService.load(sessionId); } catch { snapshot = null; }
+  if (!snapshot || !worthResuming(snapshot)) {
+    deps.toast(t('sessionResumeNotFound'));
+    return false;
+  }
+  try { await resumeService.useSessionId(sessionId); } catch { deps.toast(t('sessionIdInvalid')); return false; }
+  pendingResumeId = sessionId;
+  log({ tool: 'session.resume', category: snapshot.provider, decision: 'bridge', status: 'info', ms: 0, detail: t('sessionResumeLog').replace('{0}', sessionId) });
+  try {
+    await startAgentSession();
+    return true;
+  } finally {
+    pendingResumeId = null;
+  }
+}
+
+export async function useSessionId(id: string): Promise<boolean> {
+  const sessionId = normalizeSessionId(id);
+  if (!sessionId) { deps.toast(t('sessionIdInvalid')); return false; }
+  try {
+    await resumeService.useSessionId(sessionId);
+  } catch {
+    deps.toast(t('sessionIdInvalid'));
+    return false;
+  }
+  deps.toast(t('sessionIdSet'));
+  await refreshSavedSessions();
+  return true;
+}
+
+export async function deleteBridgeSession(id: string): Promise<boolean> {
+  const sessionId = normalizeSessionId(id);
+  if (!sessionId) return false;
+  const ok = await deps.confirm(t('sessionDeleteTitle'), '<p>' + t('sessionDeleteDesc').replace('{0}', esc(sessionId)) + '</p>');
+  if (!ok) return false;
+  const cleared = await resumeService.clear(sessionId);
+  log({ tool: 'session.clear', category: sessionId, decision: cleared ? 'done' : 'missing', status: 'info', ms: 0, detail: t('sessionDeleteLog').replace('{0}', sessionId) });
+  deps.toast(cleared ? t('sessionDeleted') : t('sessionResumeNotFound'));
+  await refreshSavedSessions();
+  return cleared;
+}
+
+export async function saveCurrentSession(): Promise<void> {
+  const active = session;
+  if (!active) { deps.toast(t('quickActionNeedsSession')); return; }
+  await saveBridgeHandoff(active);
+  await refreshSavedSessions();
+  deps.toast(t('sessionSaved'));
+}
+
 async function readWorkspaceHandoff(): Promise<HandoffSnapshot | null> {
   try {
     const res: any = await bridge.call('fs.readFile', { path: HANDOFF_FILE });
@@ -483,10 +584,10 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   let targetTab = await findProviderTab(target, oldTabId).catch(() => null);
   try {
     if (targetTab?.id !== undefined) {
-      await chrome.tabs.update(targetTab.id, { active: true });
-      await chrome.windows.update(targetTab.windowId, { focused: true }).catch(() => {});
+      await browser.tabs.update(targetTab.id, { active: true });
+      await browser.windows.update(targetTab.windowId, { focused: true }).catch(() => {});
     } else {
-      targetTab = await chrome.tabs.create({ url: target.homepage, active: true });
+      targetTab = await browser.tabs.create({ url: target.homepage, active: true });
     }
   } catch (err: any) {
     deps.toast('Gagal membuka tab ' + target.label + ': ' + (err?.message || err));
@@ -544,7 +645,7 @@ async function moveSession(active: Session, target: ProviderInfo): Promise<void>
   try {
     await send(promptToSend);
     setPhase('waiting', 'Menunggu balasan AI');
-    void saveWorkspaceHandoff(active);
+    checkpoint(active);
   } catch (err: any) {
     setPhase('failed', 'Ringkasan gagal terkirim: ' + (err?.message || err));
     deps.toast('Ringkasan handoff gagal terkirim. Coba Resend di tab baru.');
@@ -703,7 +804,7 @@ function giveUpRenew(active: Session, label: string, reason: string, why: string
   log({ tool: 'chat.renew', category: label, decision: 'stopped', status: 'error', ms: 0, detail: `${label}: ${reason}. Chat baru otomatis dihentikan (${why}). Klik "New chat" sendiri di tab chat, lalu Stop dan Start sesi untuk melanjutkan.` });
   setPhase('failed', `${label}: ${reason} - lanjutkan manual`);
   notify('BroAgentAI - ' + label, `${label}: ${reason}. Chat baru otomatis dihentikan (${why}). Lanjutkan manual dari side panel.`);
-  void saveWorkspaceHandoff(active);
+  checkpoint(active);
 }
 
 /**
@@ -771,7 +872,7 @@ async function renewChat(active: Session, id: string, pending: string | null): P
     notify('BroAgentAI - ' + label, `${label}: ${reason} - dilanjutkan di chat baru`);
     active.renewing = false;
     await deliver(prompt, false);
-    if (session === active) void saveWorkspaceHandoff(active);
+    if (session === active) checkpoint(active);
   } finally {
     active.renewing = false;
   }
@@ -841,9 +942,9 @@ function watchBlockingPrompt(active: Session, id: string | null): void {
  */
 async function isChatTabFocused(tabId: number): Promise<boolean> {
   try {
-    const tab = await chrome.tabs.get(tabId);
+    const tab = await browser.tabs.get(tabId);
     if (!tab || !tab.active) return false;
-    const win = await chrome.windows.get(tab.windowId);
+    const win = await browser.windows.get(tab.windowId);
     return !!win?.focused;
   } catch {
     // The tab is gone; treat as not focused (the close handler stops the session).
@@ -934,7 +1035,7 @@ export async function launchAgentSession(provider: ProviderInfo, waitMs: number)
     setPhase('opening', `Membuka ${provider.label}`);
     let tabId: number | undefined;
     try {
-      tabId = (await chrome.tabs.create({ url: provider.homepage, active: true })).id;
+      tabId = (await browser.tabs.create({ url: provider.homepage, active: true })).id;
     } catch (err: any) {
       log({ tool: 'session.start', category: provider.label, decision: '-', status: 'error', ms: 0, detail: 'tab chat gagal dibuka: ' + (err?.message || err) });
       deps.toast('Gagal membuka tab: ' + (err?.message || err));
@@ -975,7 +1076,7 @@ async function ensureRelay(tabId: number, launch?: Launch): Promise<any> {
     await new Promise((r) => setTimeout(r, 400));
   }
   // Still nothing: reload the tab so Chrome injects the content script again.
-  try { await chrome.tabs.reload(tabId); } catch { return null; }
+  try { await browser.tabs.reload(tabId); } catch { return null; }
   // Wait for the reload to reach "complete", then keep pinging while it boots.
   for (let i = 0; i < 20; i++) {
     if (launch?.cancelled) return null;
@@ -996,7 +1097,7 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
   if (launch.cancelled) return;
   if (!found) {
     const provider = providers[0];
-    if (provider) await chrome.tabs.create({ url: provider.homepage });
+    if (provider) await browser.tabs.create({ url: provider.homepage });
     return fail('Tab chat dibuka. Login di sana, lalu klik Start session lagi.');
   }
   const tabId = found.tab.id!;
@@ -1014,8 +1115,24 @@ async function connect(launch: Launch, preferredTabId?: number): Promise<void> {
     const pending: Session = { tabId, provider: found.provider, toolCalls: 0, totalCalls: 0, allowed: new Set(), lastSent: null, lastReplyText: null, resumeGuard: null, paused: false, carried: [], recorded: [], work: emptyWorkSummary() };
     await guardCustomAutoApprove(pending, () => !launch.cancelled);
     if (launch.cancelled) return;
-    // A saved session in this workspace: continue it (its conversation goes into the first prompt) or start fresh.
-    const resume = await offerWorkspaceResume(launch);
+    let resume: HandoffSnapshot | null = null;
+    if (pendingResumeId) {
+      const requested = pendingResumeId;
+      try {
+        resume = await resumeService.load(requested);
+      } catch {
+        resume = null;
+      }
+      if (!resume || !worthResuming(resume)) {
+        deps.toast(t('sessionResumeNotFound'));
+        log({ tool: 'session.resume', category: requested, decision: 'missing', status: 'error', ms: 0, detail: t('sessionResumeNotFound') });
+        resume = null;
+      } else {
+        await resumeService.useSessionId(requested);
+        log({ tool: 'session.resume', category: resume.provider, decision: 'bridge', status: 'info', ms: 0, detail: t('sessionResumeLog').replace('{0}', requested) });
+      }
+    }
+    if (!resume) resume = await offerWorkspaceResume(launch);
     if (launch.cancelled) return;
     setPhase('connecting', resume ? 'Mengirim instruksi + percakapan sebelumnya' : 'Mengirim instruksi agent');
     // handoff: the prompt does not end with "reply READY" (that reply would end the loop).
@@ -1092,7 +1209,7 @@ async function stopSession(reason = 'dihentikan', opts: { notifyUser?: boolean }
   const stopped = session;
   const tabId = stopped.tabId;
   // Keep the conversation for a later session (read before the relay is retired).
-  void saveWorkspaceHandoff(stopped);
+  checkpoint(stopped);
   session = null;
   phase = null;
   phaseBeforePause = null;
@@ -1116,7 +1233,14 @@ function hideApproval(): void {
 }
 
 function shellSignatureOf(info: any): string {
-  return [info?.family, info?.environment, info?.file, info?.platform, info?.arch].join('|');
+  return [info?.family, info?.version, info?.environment, info?.file, info?.platform, info?.arch].join('|');
+}
+
+function riskText(value: unknown, category: unknown): string {
+  const risk = String(value ?? category ?? '').toLowerCase();
+  if (risk === 'read') return t('riskRead');
+  if (risk === 'high') return t('riskHigh');
+  return t('riskWrite');
 }
 
 function hideShellBanner(): void {
@@ -1152,29 +1276,29 @@ async function ensureShellStable(active: Session): Promise<boolean> {
   $('shellBanner').classList.remove('hidden');
   setPhase('approval', t('shellChangeTitle'));
   log({ tool: 'shell.change', category: '-', decision: 'blocked', status: 'denied', ms: 0, detail: $('shellBannerText').textContent });
-  void saveWorkspaceHandoff(active);
+  checkpoint(active);
   return false;
 }
 
 function askApproval(check: any, params: Record<string, unknown>, remember: boolean): Promise<'allow' | 'deny'> {
   const ctx = check.approvalContext;
-  $('apRisk').textContent = String(check.risk || check.category).toUpperCase();
+  $('apRisk').textContent = riskText(check.risk, check.category).toUpperCase();
   $('apRisk').className = 'risk risk-' + (check.category === 'read' ? 'read' : 'write');
   $('apTool').textContent = check.command;
   $('apSummary').textContent = check.category === 'execute'
-    ? 'Perintah shell. Berjalan dengan hak akunmu dan TIDAK dibatasi ke workspace.'
-    : (check.source === 'mcp' ? 'MCP tool. ' : '') + (check.paths?.length ? 'Path: ' + check.paths.join(', ') : 'Tidak ada path spesifik.');
+    ? t('approvalShellSummary')
+    : (check.source === 'mcp' ? t('approvalMcp') + ' ' : '') + (check.paths?.length ? t('approvalPaths').replace('{0}', check.paths.join(', ')) : t('approvalNoPaths'));
   $('apContext').textContent = ctx
-    ? `${t('approvalContextLabel')}: ${ctx.shellFamily} (${ctx.environment}) · ${t('workspace')}: ${ctx.workspacePath} · cwd: ${ctx.cwd} · ${t('riskLabel')}: ${ctx.risk}`
+    ? `${t('approvalContextLabel')}: ${ctx.shellFamily} (${ctx.environment}) · ${t('workspace')}: ${ctx.workspacePath} · cwd: ${ctx.cwd} · ${t('riskLabel')}: ${riskText(ctx.risk, check.category)}`
     : '';
   $('apContext').classList.toggle('hidden', !ctx);
   $('apDiff').textContent = redactSecrets(check.preview || '');
   $('apDiff').classList.toggle('hidden', !check.preview);
   const shown = redactSecrets(JSON.stringify(params, null, 2));
-  $('apParams').textContent = shown.length > 4000 ? shown.slice(0, 4000) + '\n... (dipotong)' : shown;
+  $('apParams').textContent = shown.length > 4000 ? shown.slice(0, 4000) + t('approvalTruncated') : shown;
   $('apNote').textContent = !remember ? ''
-    : check.category === 'execute' ? 'Tanya sekali: perintah yang persis sama tidak akan ditanyakan lagi di sesi ini.'
-    : `Tanya sekali: ${check.command} tidak akan ditanyakan lagi di sesi ini.`;
+    : check.category === 'execute' ? t('askOnceShell')
+    : t('askOnceTool').replace('{0}', check.command);
   $('approvalCard').classList.remove('hidden');
   return new Promise((resolve) => {
     pendingApproval = (decision) => { hideApproval(); resolve(decision); };
@@ -1203,7 +1327,7 @@ async function handleErrorReply(active: Session, text: string): Promise<void> {
     setPhase('failed', `${label} gagal membalas`);
     deps.toast(`${label} gagal membalas setelah ${MAX_ERROR_RETRIES}x coba ulang. Klik Kirim ulang.`);
     notify('BroAgentAI - ' + label + ' gagal membalas', 'Pesan agent sudah dikirim ulang ' + MAX_ERROR_RETRIES + 'x. Klik Kirim ulang di side panel.');
-    void saveWorkspaceHandoff(active);
+    checkpoint(active);
     return;
   }
   active.errorRetries = attempt;
@@ -1238,7 +1362,7 @@ async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
     active.toolCalls = 0;
     log({ tool: 'assistant', category: '-', decision: '-', status: 'info', ms: 0, detail: parsed.text.slice(0, 200) });
     setPhase('idle', 'Selesai - menunggu pesanmu di chat');
-    void saveWorkspaceHandoff(active);
+    checkpoint(active);
     return;
   }
   if (parsed.kind === 'error') {
@@ -1276,12 +1400,12 @@ async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
   }
   if (check.decision === 'ask') {
     // ask-once: an approval is remembered under the key the bridge returned.
-    const remember = currentMode === 'ask-once';
+    const remember = currentMode === 'ask-once' && check.rememberApproval !== false;
     if (remember && active.allowed.has(check.approvalKey)) {
       approved = true;
       decision = 'approved earlier';
     } else {
-      setPhase('approval', `Menunggu persetujuan ${command}`);
+      setPhase('approval', t('waitingApproval').replace('{0}', command));
       const answer = await askApproval(check, params, remember);
       if (session !== active) return; // session stopped while waiting
       if (answer === 'deny') {
@@ -1315,14 +1439,71 @@ async function handleReply(reply: ProviderReply, epoch = 0): Promise<void> {
     message += '\n\n[BroAgentAI reminder - automatic, do not reply to it] One fenced JSON command per reply; plain prose when done.';
   }
   await deliver(message);
-  if (session === active) void saveWorkspaceHandoff(active);
+  if (session === active) checkpoint(active);
+}
+
+async function transcriptHistory() {
+  if (session) {
+    return buildTranscriptHistory({ transcript: await collectTranscript(session), logs, createdAt: new Date() });
+  }
+  const saved = await resumeService.load().catch(() => null) ?? await readWorkspaceHandoff();
+  return buildTranscriptHistory({
+    transcript: saved?.transcript ?? [],
+    logs: saved?.logs ?? [],
+    createdAt: saved?.createdAt ?? new Date(),
+  });
+}
+
+export async function refreshTranscript(): Promise<void> {
+  const view = $('transcriptView');
+  if (!view) return;
+  const history = await transcriptHistory();
+  view.textContent = toTranscriptMarkdown(history, t);
+}
+
+export async function exportTranscript(format: 'json' | 'md'): Promise<void> {
+  const history = await transcriptHistory();
+  const content = format === 'json' ? toTranscriptJson(history) : toTranscriptMarkdown(history, t);
+  downloadTranscript(content, `broagentai-transcript-${Date.now()}.${format === 'json' ? 'json' : 'md'}`, format === 'json' ? 'application/json' : 'text/markdown');
+  deps.toast(t('transcriptExported'));
+}
+
+export async function runQuickAction(id: string): Promise<void> {
+  if (!isQuickActionId(id)) return;
+  const active = session;
+  if (!active) { deps.toast(t('quickActionNeedsSession')); return; }
+  const prompt = buildQuickActionPrompt(id, t, active.provider.label);
+  if (!prompt) return;
+  log({ tool: 'quickAction', category: active.provider.label, decision: id, status: 'info', ms: 0, detail: t('quickActionLog').replace('{0}', id) });
+  queue = queue.then(() => deliver(prompt, false)).catch((err) => {
+    log({ tool: 'quickAction', category: '-', decision: id, status: 'error', ms: 0, detail: err?.message || String(err) });
+  });
+  deps.toast(t('quickActionSent'));
+}
+
+function handlePluginError(message: any): void {
+  if (!message || message.type !== 'ba.pluginError') return;
+  if (typeof message.pluginId !== 'string' || typeof message.message !== 'string') return;
+  if (message.kind !== 'quota' && message.kind !== 'blocked' && message.kind !== 'other') return;
+  const detail = redactSecrets(message.message).slice(0, 2000);
+  if (message.kind === 'quota') {
+    deps.toast(t('pluginQuotaToast').replace('{0}', message.pluginId));
+    log({ tool: 'pluginError', category: message.pluginId, decision: 'quota', status: 'error', ms: 0, detail: t('pluginQuotaLog').replace('{0}', detail) });
+    return;
+  }
+  log({ tool: 'pluginError', category: message.pluginId, decision: message.kind, status: 'error', ms: 0, detail: t('pluginWarningLog').replace('{0}', detail) });
 }
 
 export function initAgent(dependencies: AgentDeps): void {
   deps = dependencies;
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (sender.id !== chrome.runtime.id || message?.type !== 'ba.reply') return;
+  browser.runtime.onMessage.addListener((message, sender) => {
+    if (sender.id !== browser.runtime.id) return;
+    handlePluginError(message);
+  });
+
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (sender.id !== browser.runtime.id || message?.type !== 'ba.reply') return;
     // Not ours (no session, or another window's panel owns it): stay silent so that panel can answer.
     if (!session || sender.tab?.id !== session.tabId) return;
     // Acknowledge, so the relay re-offers a reply nobody took instead of dropping it.
@@ -1339,25 +1520,25 @@ export function initAgent(dependencies: AgentDeps): void {
       log({ tool: 'relay', category: '-', decision: '-', status: 'error', ms: 0, detail: err?.message || String(err) });
     });
   });
-  chrome.tabs.onRemoved.addListener((tabId) => {
+  browser.tabs.onRemoved.addListener((tabId) => {
     if (session?.tabId === tabId) stopSession('Tab chat ditutup - sesi dihentikan.', { notifyUser: true });
   });
 
   // Pause the session when the chat tab loses focus, resume it when the user
   // returns. A tab switch fires onActivated; switching apps or minimizing fires
   // onFocusChanged. Both are cheap: syncFocusWithSession only acts on a change.
-  chrome.tabs.onActivated.addListener(() => { void syncFocusWithSession(); });
-  chrome.windows.onFocusChanged.addListener(() => { void syncFocusWithSession(); });
+  browser.tabs.onActivated.addListener(() => { void syncFocusWithSession(); });
+  browser.windows.onFocusChanged.addListener(() => { void syncFocusWithSession(); });
 
   // Closable "Monitoring & Approval Agent" banner; dismissal persists across reloads.
   const setNoticeDismissed = (dismissed: boolean, persist: boolean) => {
     $('agentNotice').classList.toggle('hidden', dismissed);
     $('agentNoticeShow').classList.toggle('hidden', !dismissed);
     if (!persist) return;
-    try { chrome.storage.local.set({ [NOTICE_KEY]: dismissed }).catch(() => {}); } catch { /* storage unavailable */ }
+    try { browser.storage.local.set({ [NOTICE_KEY]: dismissed }).catch(() => {}); } catch { /* storage unavailable */ }
   };
   try {
-    chrome.storage.local.get(NOTICE_KEY).then((stored) => setNoticeDismissed(stored[NOTICE_KEY] === true, false)).catch(() => {});
+    browser.storage.local.get(NOTICE_KEY).then((stored) => setNoticeDismissed(stored[NOTICE_KEY] === true, false)).catch(() => {});
   } catch { /* storage unavailable: banner stays visible */ }
   $('agentNoticeClose').addEventListener('click', () => setNoticeDismissed(true, true));
   $('agentNoticeShow').addEventListener('click', () => setNoticeDismissed(false, true));
@@ -1379,7 +1560,7 @@ export function initAgent(dependencies: AgentDeps): void {
   // Delay before each automatic message (Settings > Agent). Read on every send, so a change applies to the next command.
   const delayInput = $('agentDelay') as HTMLInputElement;
   try {
-    chrome.storage.local.get(DELAY_KEY).then((stored) => {
+    browser.storage.local.get(DELAY_KEY).then((stored) => {
       const raw = stored[DELAY_KEY];
       if (typeof raw === 'number' && raw >= 0) delayInput.value = String(raw);
     });
@@ -1387,7 +1568,7 @@ export function initAgent(dependencies: AgentDeps): void {
   delayInput.addEventListener('change', () => {
     const seconds = sendDelayMs(delayInput.value) / 1000;
     delayInput.value = String(seconds);
-    chrome.storage.local.set({ [DELAY_KEY]: seconds }).catch(() => {});
+    browser.storage.local.set({ [DELAY_KEY]: seconds }).catch(() => {});
     deps.toast(seconds > 0 ? `Jeda agent: ${seconds} detik sebelum tiap kirim` : 'Jeda agent dimatikan');
   });
 
@@ -1399,6 +1580,26 @@ export function initAgent(dependencies: AgentDeps): void {
   $('copyLog').addEventListener('click', () => {
     navigator.clipboard.writeText(JSON.stringify(logs, null, 2)).then(() => deps.toast('Log disalin'));
   });
+  document.querySelectorAll<HTMLElement>('[data-quick-action]').forEach((button) => {
+    button.addEventListener('click', () => { void runQuickAction(button.dataset.quickAction ?? ''); });
+  });
+  $('transcriptRefresh').addEventListener('click', () => { void refreshTranscript(); });
+  $('transcriptExportJson').addEventListener('click', () => { void exportTranscript('json'); });
+  $('transcriptExportMd').addEventListener('click', () => { void exportTranscript('md'); });
+  $('sessionRefresh').addEventListener('click', () => { void refreshSavedSessions(); });
+  $('sessionSave').addEventListener('click', () => { void saveCurrentSession(); });
+  $('sessionUse').addEventListener('click', () => {
+    void useSessionId(($('sessionIdInput') as HTMLInputElement).value);
+  });
+  $('sessionList').addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    const resumeId = target.dataset.sessionResume;
+    const deleteId = target.dataset.sessionDelete;
+    if (resumeId) void resumeBridgeSession(resumeId);
+    else if (deleteId) void deleteBridgeSession(deleteId);
+  });
+  void refreshSavedSessions();
+  void refreshTranscript();
 
   const select = $('modeSel') as HTMLSelectElement;
   const HINTS: Record<string, string> = {
@@ -1408,7 +1609,7 @@ export function initAgent(dependencies: AgentDeps): void {
   // Values saved before the four-mode model.
   const LEGACY: Record<string, string> = { ask: 'always-ask', 'auto-edit': 'ask-once', 'full-auto': 'auto-approve' };
   try {
-    chrome.storage.local.get(MODE_KEY).then((stored) => {
+    browser.storage.local.get(MODE_KEY).then((stored) => {
       const raw = stored[MODE_KEY];
       const value = typeof raw === 'string' ? (LEGACY[raw] ?? raw) : null;
       if (value && [...select.options].some((o) => o.value === value)) select.value = value;
@@ -1416,7 +1617,7 @@ export function initAgent(dependencies: AgentDeps): void {
     });
   } catch { /* storage unavailable */ }
   select.addEventListener('change', () => {
-    chrome.storage.local.set({ [MODE_KEY]: select.value }).catch(() => {});
+    browser.storage.local.set({ [MODE_KEY]: select.value }).catch(() => {});
     // Leaving ask-once (or tightening the mode) must not carry old approvals along.
     session?.allowed.clear();
     showHint();
@@ -1441,4 +1642,6 @@ export function hasAgentSession(): boolean { return !!session; }
 
 export function showAgent(): void {
   refreshDetected();
+  void refreshSavedSessions();
+  void refreshTranscript();
 }

@@ -17,7 +17,7 @@
 **Consequences:**
 
 - No port, token, or manual bridge process.
-- One-time native host registration is still required (dev script now, GUI installer later).
+- One-time native host registration is still required, now handled by the GUI/CLI installers.
 - Chrome limits host→extension messages to 1 MB, so responses need caps and pagination.
 - The host exits when Chrome disconnects; long-running work must be resumable or idempotent.
 - Debugging requires logging to stderr/files, never stdout.
@@ -304,7 +304,7 @@
 
 ## ADR-020: Web chat plugins are installable at runtime
 
-**Status:** Proposed (see `09-WEBCHAT-PLUGINS.md`)
+**Status:** Accepted (2026-11-22; see `09-WEBCHAT-PLUGINS.md`)
 
 **Context:** ADR-018 bundles every provider at build time and keeps provider files declarative. In practice each site needed core changes for its quirks (ChatGPT CodeMirror code blocks and hidden composer, DeepSeek warning button, Ptero's server-side agent mode), users cannot add or fix a chat without a rebuild, and one shared agent-marks CSS looks broken on some sites.
 

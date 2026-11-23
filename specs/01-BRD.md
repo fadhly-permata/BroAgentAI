@@ -71,7 +71,7 @@ Differentiators:
 
 ### 5.2 Out of scope
 
-- GUI installer and auto-update (post-MVP).
+- Signed/notarized distributables (post-MVP, pending credentials).
 - Arbitrary shell/terminal.
 - BroAgentAI acting as a general MCP server for external apps.
 - MCP marketplace and remote plugin marketplace.
@@ -95,7 +95,7 @@ Differentiators:
 ### 6.2 Native companion distribution
 
 - MVP: developer builds the host with `npm run host:build` and registers it with `npm run host:install:dev`.
-- Post-MVP: a signed GUI installer per OS registers the native host manifest and binary once.
+- Post-MVP: GUI installers per OS register the native host manifest and launcher; the user-run updater verifies checksums before replacing files. Signed/notarized packages remain pending credentials.
 - Chrome Web Store policy does not allow an extension to install a native host silently; the installer must be a user action.
 
 ### 6.3 Licensing
@@ -127,7 +127,7 @@ Decision is tracked in `05-ADR.md`; the default assumption for the MVP is clean-
 | Risk | Likelihood | Impact | Mitigation |
 | --- | --- | --- | --- |
 | AI provider UI changes break adapters | High | High | Adapter isolation, fixture tests, health checks, quick releases |
-| Native host installation confuses users | Medium | High | Dev script now, GUI installer later, setup card with exact steps |
+| Native host installation confuses users | Medium | High | GUI/CLI installers now, setup card with exact steps |
 | Git auth hangs or fails | Medium | Medium | Non-interactive Git, credential-helper guidance, Test remote |
 | Security incident from broad local access | Low | High | Path confinement, approvals, no shell, no secrets, logs |
 | Chrome Web Store rejection | Medium | Medium | Minimal permissions, privacy policy, native-host install flow |
@@ -162,7 +162,7 @@ Estimates assume one experienced developer and no major provider breakage. Total
 The MVP is free and open source. No monetization is planned. Potential future options (not committed):
 
 - Sponsorships or donations.
-- Optional paid GUI installer/updater with code signing.
+- Optional paid code-signing/notarization for the existing GUI installer/updater.
 - Optional team configuration or managed MCP catalog.
 
 No telemetry, ads, or data sale is planned. Any future monetization must preserve local-first operation and user trust.

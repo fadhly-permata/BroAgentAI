@@ -1,0 +1,21 @@
+{
+  "apiVersion": 1,
+  "id": "claude",
+  "name": "Claude",
+  "version": "0.1.0",
+  "author": "BroAgentAI",
+  "description": "Anthropic Claude web chat (experimental selector defaults)",
+  "homepage": "https://claude.ai/",
+  "matches": [
+    "https://claude.ai/*"
+  ],
+  "status": "experimental",
+  "icon": "icon.svg",
+  "verified": "Not verified against the live site or a local fixture. Conservative best-effort selectors; check and adjust them on the actual page before relying on this plugin.",
+  "selectors": {
+    "composer": "textarea[data-testid='chat-input'], textarea#prompt-textarea, div[contenteditable='true']#prompt-textarea",
+    "assistantMessage": "[data-message-author-role='assistant'], .font-claude-message",
+    "userMessage": "[data-message-author-role='user']",
+    "messageKeyFallback": true
+  }
+}

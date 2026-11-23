@@ -11,18 +11,21 @@ import './plugin-scripts.js';
 import { DomAdapter, NOT_ACCEPTED } from '../providers/dom-adapter.js';
 import { providerForUrl, refreshProviders } from '../providers/registry.js';
 import type { ProviderInfo } from '../providers/types.js';
-import { PREPARE_TIMEOUT_MS, runPrepare } from '../plugins/hooks.js';
+import { DETECT_ERROR_TIMEOUT_MS, parsePluginError, pluginErrorMessage, PREPARE_TIMEOUT_MS, runDetectError, runPrepare, type PluginError } from '../plugins/hooks.js';
 import { callUserHook } from '../plugins/user-world.ts';
 import { createHookApi } from '../plugins/hook-api.js';
 import { startAgentMarks } from './agent-marks.js';
 import { BLOCKED } from '../providers/blocking-prompt.js';
 import { ReplyTracker } from './reply-tracker.js';
+import { browser } from '../browser.ts';
 
 const POLL_MS = 400;
 /** A reply counts as finished after its text stayed unchanged this long. */
 const STABLE_MS = 1200;
 /** Stop polling after deliveries kept failing this long (the side panel is gone). */
 const GIVE_UP_MS = 60_000;
+const ERROR_POLL_MS = 3_000;
+const ERROR_REPEAT_MS = 30_000;
 
 const loadedAt = Date.now();
 
@@ -57,7 +60,7 @@ function startRelay(provider: ProviderInfo): void {
   // Agent-typed messages get their own look, session or not (they persist in the chat history).
   startAgentMarks(provider);
   const adapter = new DomAdapter(provider);
-  const tracker = new ReplyTracker(STABLE_MS);
+  const tracker = new ReplyTracker(STABLE_MS, { orderedKeys: !provider.selectors.messageKeyFallback });
   let active = false;
   /**
    * Set when the panel asks us to hold (the chat tab lost focus). The page keeps
@@ -67,12 +70,44 @@ function startRelay(provider: ProviderInfo): void {
    */
   let paused = false;
   let timer: number | undefined;
+  let errorTimer: number | undefined;
+  let checkingError = false;
+  const reportedErrors = new Map<string, number>();
   let failingSince = 0;
 
   const stop = () => {
     active = false;
     paused = false;
     window.clearInterval(timer);
+    window.clearInterval(errorTimer);
+  };
+
+  const checkErrors = async (): Promise<void> => {
+    if (checkingError || !provider.hooks?.detectError || !active) return;
+    checkingError = true;
+    try {
+      let error: PluginError | null = null;
+      if (provider.source === 'user') {
+        if (!provider.hasScript) return;
+        const result = await callUserHook(provider.id, 'detectError', DETECT_ERROR_TIMEOUT_MS);
+        if (result.error) return;
+        error = parsePluginError(result.value);
+      } else {
+        const result = await runDetectError(provider.id, createHookApi());
+        if (result.error) return;
+        error = result.result ?? null;
+      }
+      if (!error) return;
+      const key = `${error.kind}|${error.message}`;
+      const now = Date.now();
+      if (now - (reportedErrors.get(key) ?? 0) < ERROR_REPEAT_MS) return;
+      reportedErrors.set(key, now);
+      void browser.runtime.sendMessage(pluginErrorMessage(provider.id, error)).catch(() => {});
+    } catch {
+      return;
+    } finally {
+      checkingError = false;
+    }
   };
 
   const deliver = (reply: ReturnType<DomAdapter['readLatestReply']>) => {
@@ -83,7 +118,7 @@ function startRelay(provider: ProviderInfo): void {
       if (failingSince === 0) failingSince = Date.now();
       else if (Date.now() - failingSince > GIVE_UP_MS) stop();
     };
-    chrome.runtime.sendMessage({ type: 'ba.reply', provider: provider.id, reply })
+    browser.runtime.sendMessage({ type: 'ba.reply', provider: provider.id, reply })
       .then((res) => {
         if (!res?.ok) return failed();
         failingSince = 0;
@@ -110,9 +145,9 @@ function startRelay(provider: ProviderInfo): void {
     try { return adapter.blockingPrompt()?.rule.id ?? null; } catch { return null; }
   };
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Only this extension's own pages may drive the relay.
-    if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string') return;
+    if (sender.id !== browser.runtime.id || !message || typeof message.type !== 'string') return;
 
     // The blocking-prompt scan never depends on isGenerating(): ChatGPT's
     // `generating` selector also matches the composer's send button, which
@@ -144,11 +179,17 @@ function startRelay(provider: ProviderInfo): void {
       void prepareFor(provider).then((prepare) => {
         // Replies already on the page belong to the past; only new ones are reported.
         tracker.reset(adapter.readLatestReply());
+        reportedErrors.clear();
         failingSince = 0;
         active = true;
         paused = false;
         window.clearInterval(timer);
+        window.clearInterval(errorTimer);
         timer = window.setInterval(poll, POLL_MS);
+        if (provider.hooks?.detectError) {
+          errorTimer = window.setInterval(() => void checkErrors(), ERROR_POLL_MS);
+          void checkErrors();
+        }
         sendResponse({ ok: true, prepare });
       });
       return true;
@@ -196,6 +237,7 @@ function startRelay(provider: ProviderInfo): void {
           // Refused or no composer: the banner may have just appeared. Say so, so the panel opens a new chat instead of calling it a rate limit.
           const after = blocking();
           if (after) { sendResponse({ ok: false, code: BLOCKED, blocking: after, error: `blocking prompt "${after}" is showing (${text})` }); return; }
+          void checkErrors();
           sendResponse({ ok: false, code: text.startsWith(NOT_ACCEPTED) ? NOT_ACCEPTED : 'SEND_FAILED', error: text });
         });
       return true; // async response

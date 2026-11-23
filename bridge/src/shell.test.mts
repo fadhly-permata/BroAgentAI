@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
-import { shellFor } from "./shell.ts";
+import { additionalShellPlan, detectShell, normalizeShellError, shellFor, shellInfoReport } from "./shell.ts";
+import { ErrorCode } from "./rpc.ts";
+import { WorkspaceError } from "./workspace.ts";
 
 const win = process.platform === "win32";
 
@@ -16,16 +18,25 @@ async function fixture() {
   const s = new RpcServer({ store: new WorkspaceStore({ configDir: mkdtempSync(join(tmpdir(), "ba-shell-cfg-")) }) });
   await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
   let id = 1;
-  const call = (params: unknown) => s.handle({ id: id++, method: "shell.run", params });
+  const request = (method: string, params?: unknown) => s.handle({ id: id++, method, params });
+  const call = (params: unknown) => request("shell.run", params);
   const run = async (params: unknown) => {
     const res = await call(params);
     assert.equal(res.error, undefined, res.error?.message);
     return res.result as any;
   };
-  return { ws, call, run };
+  return { ws, s, request, call, run };
 }
 
-test("shellFor picks the shell for the OS", () => {
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 5000): Promise<void> {
+  const started = Date.now();
+  while (!(await check())) {
+    if (Date.now() - started > timeoutMs) throw new Error("condition timed out");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+test("shellFor keeps the fallback shell for the OS", () => {
   assert.equal(shellFor("win32").name, "powershell");
   assert.equal(shellFor("linux").name, "sh");
   assert.equal(shellFor("darwin").name, "sh");
@@ -33,22 +44,118 @@ test("shellFor picks the shell for the OS", () => {
   assert.equal(shellFor("win32").args("dir").at(-1)?.endsWith("dir"), true);
 });
 
+test("detectShell uses deterministic priority, caches, and reports missing shells", () => {
+  const linux = detectShell({ platform: "linux", probe: (file) => file === "/bin/bash" });
+  assert.equal(linux.family, "bash");
+  assert.equal(linux.file, "/bin/bash");
+  assert.equal(linux.environment, "native-linux");
+
+  const mac = detectShell({ platform: "darwin", probe: (file) => file === "/bin/zsh" });
+  assert.equal(mac.family, "zsh");
+
+  const windows = detectShell({ platform: "win32", probe: (file) => file === "powershell.exe" });
+  assert.equal(windows.family, "powershell");
+  assert.equal(windows.file, "powershell.exe");
+
+  assert.throws(
+    () => detectShell({ platform: "linux", probe: () => false }),
+    (error: any) => error?.code === -32023,
+  );
+  assert.equal(detectShell().file.length > 0, true);
+});
+
+test("detectShell keeps pwsh and Windows PowerShell families distinct", () => {
+  const pwsh = detectShell({ platform: "win32", probe: (file) => file === "pwsh.exe" });
+  assert.equal(pwsh.family, "pwsh");
+  assert.equal(pwsh.file, "pwsh.exe");
+  assert.deepEqual(pwsh.args("Write-Output hi").slice(0, 4), ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+
+  const powershell = detectShell({ platform: "win32", probe: (file) => file === "powershell.exe" });
+  assert.equal(powershell.family, "powershell");
+  assert.equal(powershell.file, "powershell.exe");
+});
+
+test("shell errors normalize to stable RPC codes", () => {
+  const missing = Object.assign(new Error("spawn missing"), { code: "ENOENT" });
+  assert.equal(normalizeShellError(missing, "missing shell").code, ErrorCode.SHELL_NOT_AVAILABLE);
+  assert.equal(normalizeShellError(missing, "missing shell").message, "missing shell");
+
+  const denied = Object.assign(new Error("spawn denied"), { code: "EACCES" });
+  assert.equal(normalizeShellError(denied, "failed to start").code, ErrorCode.SHELL_START_FAILED);
+
+  const unsupported = new WorkspaceError(ErrorCode.SHELL_UNSUPPORTED, "unsupported");
+  assert.equal(normalizeShellError(unsupported, "failed to start").code, ErrorCode.SHELL_UNSUPPORTED);
+
+  const notDirectory = Object.assign(new Error("not a directory"), { code: "ENOTDIR" });
+  assert.equal(normalizeShellError(notDirectory, "invalid cwd").code, ErrorCode.SHELL_CWD_INVALID);
+});
+
+test("shellInfoReport exposes read-only version, encoding, and fallbacks", () => {
+  const info = shellInfoReport();
+  assert.equal(info.family, detectShell().family);
+  assert.equal(typeof info.version, "string");
+  assert.ok(info.version.length > 0);
+  assert.equal(info.encoding, "utf8");
+  assert.ok(Array.isArray(info.fallbacks));
+  for (const fallback of info.fallbacks) {
+    assert.equal(typeof fallback.family, "string");
+    assert.equal(typeof fallback.file, "string");
+  }
+});
+
+test("additionalShellPlan evaluates deferred environments without enabling them", () => {
+  const windows = additionalShellPlan({ platform: "win32", probe: (file) => file === "cmd.exe" });
+  assert.equal(windows.enabled, false);
+  assert.equal(windows.policy, "evaluation-only");
+  assert.equal(windows.mvpGate, "B1.7-benchmark-and-MVP-matrix");
+  assert.deepEqual(windows.environments.map((entry) => entry.id), ["cmd", "wsl", "git-bash"]);
+  const cmd = windows.environments.find((entry) => entry.id === "cmd");
+  assert.ok(cmd);
+  assert.equal(cmd.available, true);
+  assert.equal(cmd.file, "cmd.exe");
+  assert.equal(cmd.status, "deferred");
+  assert.ok(cmd.requirements.length > 0);
+
+  const mac = additionalShellPlan({ platform: "darwin", probe: (file) => file === "fish" });
+  assert.deepEqual(mac.environments.map((entry) => entry.id), ["fish", "nushell"]);
+  const fish = mac.environments.find((entry) => entry.id === "fish");
+  assert.ok(fish);
+  assert.equal(fish.available, true);
+  assert.equal(fish.file, "fish");
+
+  for (const entry of windows.environments) {
+    assert.equal(entry.status, "deferred");
+    assert.equal(entry.environment, "native-windows");
+  }
+  for (const entry of mac.environments) {
+    assert.equal(entry.status, "deferred");
+    assert.equal(entry.environment, "native-macos");
+  }
+});
+
 test("shell.run returns stdout, stderr and the exit code", async () => {
   const { run } = await fixture();
   const ok = await run({ command: win ? "Select-String -Path notes.txt -Pattern needle | ForEach-Object Line" : "grep needle notes.txt" });
   assert.equal(ok.exitCode, 0);
   assert.equal(ok.stdout.trim(), "needle here");
-  assert.equal(ok.shell, win ? "powershell" : "sh");
-  assert.equal(ok.shellFamily, win ? "powershell" : "sh");
+  assert.equal(win ? ["pwsh", "powershell"].includes(ok.shell) : ["bash", "zsh", "sh"].includes(ok.shell), true);
+  assert.equal(ok.shellFamily, ok.shell);
   assert.equal(ok.encoding, "utf8");
   assert.equal(ok.terminationReason, "completed");
-  assert.match(ok.executionId, /[-a-f0-9]{36}/);
+  assert.match(ok.executionId, /^[-A-Za-z0-9_]{1,128}$/);
   assert.deepEqual(ok.truncation, { stdout: false, stderr: false, stdoutBytes: Buffer.byteLength(ok.stdout), stderrBytes: 0, limitBytes: 256 * 1024 });
 
   const failed = await run({ command: win ? "[Console]::Error.WriteLine('bad'); exit 3" : "echo bad >&2; exit 3" });
   assert.equal(failed.exitCode, 3);
   assert.match(failed.stderr, /bad/);
   assert.equal(failed.timedOut, false);
+});
+
+test("shell.run handles quoting and non-ASCII output", async () => {
+  const { run } = await fixture();
+  const res = await run({ command: win ? `$word = "héllo world"; Write-Output $word` : `printf '%s\n' "héllo world"` });
+  assert.equal(res.stdout.trim(), "héllo world");
+  assert.equal(res.exitCode, 0);
 });
 
 test("shell.run starts in the workspace root, or a confined sub-directory", async () => {
@@ -69,6 +176,113 @@ test("shell.run kills a command that exceeds its timeout", async () => {
   assert.ok(Date.now() - started < 15000, "timeout did not stop the command");
 });
 
+test("shell.run cancels a stable executionId", async () => {
+  const { request, run } = await fixture();
+  const executionId = "cancel_me_1";
+  const pending = run({ command: win ? "Start-Sleep -Seconds 20; 'done'" : "sleep 20; echo done", executionId, timeoutMs: 10000 });
+  await waitFor(async () => {
+    const status = await request("shell.status", {});
+    return (status.result as any)?.active?.includes(executionId) === true;
+  });
+  const cancelled = await request("shell.cancel", { executionId });
+  assert.equal(cancelled.error, undefined, cancelled.error?.message);
+  const res = await pending;
+  assert.equal(res.executionId, executionId);
+  assert.equal(res.terminationReason, "cancelled");
+  assert.equal(res.exitCode, null);
+  assert.equal(res.timedOut, false);
+});
+
+test("shell.start returns a background handle using the same execution contract", async () => {
+  const { request } = await fixture();
+  const started = await request("shell.start", {
+    command: win ? "Write-Output 'bg-ok'" : "echo bg-ok",
+    sessionId: "bg_session_1",
+    taskId: "bg_task_1",
+    timeoutMs: 10000,
+  });
+  assert.equal(started.error, undefined, started.error?.message);
+  const handle = started.result as any;
+  assert.equal(handle.status, "running");
+  assert.equal(handle.sessionId, "bg_session_1");
+  assert.equal(handle.taskId, "bg_task_1");
+  assert.match(handle.command, /bg\-ok/);
+
+  const status = await request("shell.status", {});
+  assert.equal((status.result as any).background.includes(handle.executionId), true);
+
+  let polled: any;
+  await waitFor(async () => {
+    const result = await request("shell.poll", { executionId: handle.executionId });
+    polled = result.result as any;
+    return polled.status !== "running";
+  });
+  assert.equal(polled.status, "completed");
+  assert.equal(polled.result.executionId, handle.executionId);
+  assert.equal(polled.result.exitCode, 0);
+  assert.equal(polled.result.stdout.trim(), "bg-ok");
+  assert.equal(polled.result.shellFamily, handle.shellFamily);
+
+  const output = await request("shell.output", { executionId: handle.executionId, stream: "stdout", offsetBytes: 0 });
+  assert.match((output.result as any).data, /bg\-ok/);
+});
+
+test("shell.run rejects work beyond the concurrency limit", async () => {
+  const { request, run } = await fixture();
+  const ids = ["busy_a_1", "busy_b_1"];
+  const pending = ids.map((executionId) => run({
+    command: win ? "Start-Sleep -Seconds 8" : "sleep 8",
+    executionId,
+    timeoutMs: 12000,
+  }));
+  await waitFor(async () => {
+    const status = await request("shell.status", {});
+    return (status.result as any)?.active?.length >= 2;
+  });
+  const excess = await request("shell.run", { command: win ? "'x'" : "echo x", executionId: "busy_c_1" });
+  assert.equal(excess.error?.code, -32027);
+  for (const executionId of ids) await request("shell.cancel", { executionId });
+  for (const result of await Promise.all(pending)) assert.equal(result.terminationReason, "cancelled");
+});
+
+test("shell.output exposes bounded continuation from the redacted archive", async () => {
+  const { request, run } = await fixture();
+  const res = await run({ command: win ? "Write-Output 'alpha'; [Console]::Error.WriteLine('beta')" : "echo alpha; echo beta >&2" });
+  const stdout = await request("shell.output", { executionId: res.executionId, stream: "stdout", offsetBytes: 0 });
+  const stderr = await request("shell.output", { executionId: res.executionId, stream: "stderr", offsetBytes: 0 });
+  assert.equal(stdout.error, undefined, stdout.error?.message);
+  assert.equal((stdout.result as any).data.trim(), "alpha");
+  assert.equal((stderr.result as any).data.trim(), "beta");
+
+  const secret = await run({ command: win ? "Write-Output 'token=hunter2secret'" : "echo token=hunter2secret" });
+  const redacted = await request("shell.output", { executionId: secret.executionId, stream: "stdout" });
+  assert.doesNotMatch((redacted.result as any).data, /hunter2secret/);
+});
+
+test("shell.run keeps bounded session-linked history with redacted commands", async () => {
+  const { request, run, call } = await fixture();
+  const res = await run({
+    command: win ? "Write-Output 'token=hunter2secret'" : "echo token=hunter2secret",
+    sessionId: "session_history_1",
+    taskId: "task_history_1",
+  });
+  assert.equal(res.sessionId, "session_history_1");
+  assert.equal(res.taskId, "task_history_1");
+
+  const history = await request("shell.history", { sessionId: "session_history_1", limit: 2 });
+  assert.equal(history.error, undefined, history.error?.message);
+  const payload = history.result as any;
+  assert.equal(payload.limit, 32);
+  assert.equal(payload.total, 1);
+  assert.equal(payload.entries[0].executionId, res.executionId);
+  assert.doesNotMatch(JSON.stringify(payload), /hunter2secret/);
+  assert.equal("stdout" in payload.entries[0], false);
+
+  const status = await request("shell.status", {});
+  assert.ok((status.result as any).historyCount <= 32);
+  assert.equal((await call({ command: "echo hi", taskId: "../escape" })).error?.code, -32602);
+});
+
 test("shell.run caps output and validates input", async () => {
   const { run, call } = await fixture();
   const big = await run({ command: win ? "'x' * 400000" : "head -c 400000 /dev/zero | tr '\\0' x" });
@@ -80,6 +294,14 @@ test("shell.run caps output and validates input", async () => {
   assert.equal((await call({ command: "x".repeat(9000) })).error?.code, -32602);
   assert.equal((await call({ command: "echo hi", shell: "cmd.exe" })).error?.code, -32602);
   assert.equal((await call({ command: "echo hi", executable: "/bin/bash" })).error?.code, -32602);
+});
+
+test("shell.run kills detached children on POSIX", { skip: win }, async () => {
+  const { run } = await fixture();
+  const res = await run({ command: "sleep 30 & echo $!; wait", timeoutMs: 1000 });
+  const pid = Number(res.stdout.trim());
+  assert.ok(Number.isInteger(pid) && pid > 0);
+  assert.throws(() => process.kill(pid, 0));
 });
 
 test("shell.run requires an active workspace", async () => {

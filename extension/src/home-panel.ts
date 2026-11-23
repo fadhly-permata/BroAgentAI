@@ -4,6 +4,7 @@
 // Start/Stop button as the Agent tab's own "Start session". The Home button
 // mirrors that state: Stop Session while a session is starting or running.
 import './home.css';
+import { browser } from './browser.ts';
 import { providers } from './providers/registry.js';
 import type { ProviderInfo } from './providers/types.js';
 import { t } from './i18n.js';
@@ -154,7 +155,7 @@ export function initHome(dependencies: HomeDeps): void {
     const p = el.closest('[data-prov]') as HTMLElement | null;
     if (p) {
       selected = p.dataset.prov!;
-      try { chrome.storage.local.set({ [PROVIDER_KEY]: selected }).catch(() => {}); } catch { /* storage unavailable */ }
+      try { browser.storage.local.set({ [PROVIDER_KEY]: selected }).catch(() => {}); } catch { /* storage unavailable */ }
       renderHome();
       return;
     }
@@ -162,7 +163,7 @@ export function initHome(dependencies: HomeDeps): void {
     if (el.closest('#homeStart')) onCta();
   });
   try {
-    chrome.storage.local.get(PROVIDER_KEY).then((stored) => {
+    browser.storage.local.get(PROVIDER_KEY).then((stored) => {
       const id = stored[PROVIDER_KEY];
       // Kept even when its plugin is not merged yet (user plugins load async); renderHome falls back if it is gone.
       if (typeof id === 'string') { selected = id; renderHome(); }

@@ -2,6 +2,9 @@
 import type { ConversationMessage, ProviderHealth, ProviderInfo, ProviderReply } from './types.js';
 import { findBlockingPrompt, type BlockingPromptMatch } from './blocking-prompt.js';
 import { PAGE_SOURCE_ATTR, PAGE_SOURCE_EVENT, cutText, fencedBlocks, joinLines, spliceCode } from './reply-text.js';
+import { messageKeyOf } from './message-key.ts';
+
+export { boundedMessageKey, MESSAGE_KEY_LIMIT, messageKeyOf, stableMessageKey } from './message-key.ts';
 
 function visible(el: Element | null): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
@@ -49,11 +52,7 @@ export class DomAdapter {
   }
 
   #keyOf(el: HTMLElement): number | null {
-    const attr = this.provider.selectors.messageKeyAttr;
-    if (!attr) return null;
-    const raw = el.closest(`[${attr}]`)?.getAttribute(attr);
-    const key = raw === null || raw === undefined ? NaN : Number(raw);
-    return Number.isFinite(key) ? Math.abs(key) : null;
+    return messageKeyOf(el, this.provider);
   }
 
   health(): ProviderHealth {

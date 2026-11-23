@@ -304,7 +304,7 @@ Declarative selectors are data, not code. They can be prototyped in a "Provider 
 - Project config may enable/disable bundled providers, but cannot add selectors, host permissions, or code.
 - A provider plugin cannot access files, Git, or MCP directly; it only relays prompts/replies through the core.
 
-> **Planned change:** runtime-installable web chat plugins (selectors, per-site CSS and hook scripts, no rebuild) are designed in `09-WEBCHAT-PLUGINS.md` and proposed as ADR-020. Until ADR-020 is accepted, the rules above still apply.
+> **Superseded:** runtime-installable web chat plugins (selectors, per-site CSS and hook scripts, no rebuild) are specified in `09-WEBCHAT-PLUGINS.md` and accepted as ADR-020. The rules above remain historical context for bundled provider packs; they no longer block runtime plugins.
 
 ## 5. MCP architecture
 
@@ -435,18 +435,18 @@ Error codes: `CONFIG_INVALID`, `MCP_UNTRUSTED`, `MCP_NOT_READY`, `MCP_ERROR` (pl
 
 ## 8. Security review checklist
 
-- [ ] Project config cannot execute code or start MCP without trust.
-- [ ] MCP commands are arrays, never shell strings.
-- [ ] Env interpolation never logs secret values.
-- [ ] MCP tools are risk-classified and approval-gated.
-- [ ] Config risk overrides cannot downgrade a tool's risk.
-- [ ] Read-only mode blocks non-read MCP tools at the service worker and host.
-- [ ] Remote MCP URLs require HTTPS except localhost.
-- [ ] Provider plugins only relay prompts/replies; no fs/Git/MCP access.
-- [ ] Runtime config cannot add host permissions or content scripts.
-- [ ] Skill scripts are never executed automatically.
-- [ ] Resource discovery is path-confined and bounded.
-- [ ] Config parse errors surface without blocking the whole app.
+- [x] Project config cannot execute code or start MCP without trust.
+- [x] MCP commands are arrays, never shell strings.
+- [x] Env interpolation never logs secret values.
+- [x] MCP tools are risk-classified and approval-gated.
+- [x] Config risk overrides cannot downgrade a tool's risk.
+- [x] Read-only mode blocks non-read MCP tools at the service worker and host.
+- [x] Remote MCP URLs require HTTPS except localhost.
+- [x] Provider plugins only relay prompts/replies; no fs/Git/MCP access.
+- [x] Runtime config cannot add host permissions or content scripts.
+- [x] Skill scripts are never executed automatically.
+- [x] Resource discovery is path-confined and bounded.
+- [x] Config parse errors surface without blocking the whole app.
 
 ## 9. Implementation phases
 
@@ -462,14 +462,14 @@ Mapping: P0 spans M0–M1, P1 lands in M5–M6, P2 in M7, P3 in M8, and P4 is po
 
 ## 10. Acceptance criteria
 
-- [ ] A `broagentai.jsonc` file with comments loads without errors; invalid JSONC produces a line/column diagnostic.
-- [ ] Global/project/local precedence is deterministic and tested.
-- [ ] `AGENTS.md`, rules, skills, agents, and commands are discovered without executing anything.
-- [ ] Skills are listed by metadata and read on demand.
-- [ ] Adding a provider folder with `provider.json` + `plugin.ts` updates the manifest and registry without core edits.
-- [ ] Project provider config cannot add host permissions or content scripts.
-- [ ] A local MCP server can be started, listed, called, stopped, and restarted.
-- [ ] Project MCP servers require trust and an explicit start; changing the command/URL/working directory/env-header/risk fields invalidates trust and stops them; no config key can grant trust.
-- [ ] MCP tool risk maps from annotations, overrides cannot downgrade it, and approval mode enforces it.
-- [ ] No MCP command is run through a shell.
-- [ ] Output caps and timeouts are enforced.
+- [x] A `broagentai.jsonc` file with comments loads without errors; invalid JSONC produces a line/column diagnostic.
+- [x] Global/project/local precedence is deterministic and tested.
+- [x] `AGENTS.md`, rules, skills, agents, and commands are discovered without executing anything.
+- [x] Skills are listed by metadata and read on demand.
+- [x] Adding a provider folder with `provider.json` + `plugin.ts` updates the manifest and registry without core edits.
+- [x] Project provider config cannot add host permissions or content scripts.
+- [x] A local MCP server can be started, listed, called, stopped, and restarted.
+- [x] Project MCP servers require trust and an explicit start; changing the command/URL/working directory/env-header/risk fields invalidates trust and stops them; no config key can grant trust.
+- [x] MCP tool risk maps from annotations, overrides cannot downgrade it, and approval mode enforces it.
+- [x] No MCP command is run through a shell.
+- [x] Output caps and timeouts are enforced.

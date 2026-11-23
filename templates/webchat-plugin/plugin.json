@@ -1,0 +1,27 @@
+{
+  "apiVersion": 1,
+  "id": "my-chat",
+  "name": "My Chat",
+  "version": "1.0.0",
+  "author": "Your name",
+  "description": "Example web chat plugin: copy this folder and edit it",
+  "homepage": "https://chat.example.com/",
+  "matches": [
+    "https://chat.example.com/*"
+  ],
+  "status": "experimental",
+  "icon": "icon.svg",
+  "script": "plugin.js",
+  "style": "style.css",
+  "hooks": {
+    "detectError": true
+  },
+  "selectors": {
+    "composer": "textarea[placeholder], div[contenteditable='true'][role='textbox']",
+    "submit": "",
+    "assistantMessage": "[data-message-role='assistant'], .markdown",
+    "userMessage": "[data-message-role='user']",
+    "generating": "",
+    "messageKeyFallback": true
+  }
+}

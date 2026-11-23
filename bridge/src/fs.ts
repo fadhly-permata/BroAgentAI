@@ -18,7 +18,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 import { ErrorCode } from "./rpc.ts";
-import { WorkspaceError } from "./workspace.ts";
+import { WorkspaceError, displayRootPath, resolveRootPath } from "./workspace.ts";
 import type { WorkspaceStore } from "./workspace.ts";
 
 export const DEFAULT_MAX_FILE_BYTES = 512 * 1024; // 512 KB
@@ -103,12 +103,10 @@ export interface FsListDirResult {
  * List contents of a directory within the active workspace.
  */
 export function listDir(store: WorkspaceStore, requestedPath: string, showIgnored: boolean = false): FsListDirResult[] {
-  const active = store.active();
-  if (!active) {
-    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
-  }
+  const resolved = resolveRootPath(store, requestedPath);
+  const active = resolved.root;
 
-  const realPath = confinePath(active.path, requestedPath);
+  const realPath = confinePath(active.path, resolved.relativePath);
   const stat = statSync(realPath);
   if (!stat.isDirectory()) {
     throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "Path is not a directory");
@@ -121,7 +119,7 @@ export function listDir(store: WorkspaceStore, requestedPath: string, showIgnore
     .filter((entry) => showIgnored || !isIgnored(entry.name, ignorePatterns))
     .map((entry) => {
       const fullPath = join(realPath, entry.name);
-      const relPath = relative(active.path, fullPath).replace(/\\/g, "/");
+      const relPath = displayRootPath(active, relative(active.path, fullPath).replace(/\\/g, "/"), store.active()?.id ?? null);
       let size: number | undefined;
       if (!entry.isDirectory()) {
         try {
@@ -158,16 +156,15 @@ export function listTree(
   maxDepth: number = 3,
   showIgnored: boolean = false
 ): FsListTreeResult | null {
-  const active = store.active();
-  if (!active) {
-    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
-  }
+  const resolved = resolveRootPath(store, requestedPath);
+  const active = resolved.root;
+  const activeId = store.active()?.id ?? null;
 
-  const realPath = confinePath(active.path, requestedPath);
+  const realPath = confinePath(active.path, resolved.relativePath);
   const ignorePatterns = store.settings().ignore;
 
   function buildTree(currentPath: string, currentDepth: number): FsListTreeResult | null {
-    const relPath = relative(active!.path, currentPath).replace(/\\/g, "/") || ".";
+    const relPath = displayRootPath(active!, relative(active!.path, currentPath).replace(/\\/g, "/") || ".", activeId);
     const ignored = isIgnored(relPath, ignorePatterns);
     if (ignored && !showIgnored) return null;
 
@@ -217,14 +214,12 @@ export interface FsStatResult {
  * Get file stats, including binary detection.
  */
 export function statFile(store: WorkspaceStore, requestedPath: string): FsStatResult {
-  const active = store.active();
-  if (!active) {
-    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
-  }
+  const resolved = resolveRootPath(store, requestedPath);
+  const active = resolved.root;
 
-  const realPath = confinePath(active.path, requestedPath);
+  const realPath = confinePath(active.path, resolved.relativePath);
   const stat = statSync(realPath);
-  const relPath = relative(active.path, realPath).replace(/\\/g, "/");
+  const relPath = displayRootPath(active, relative(active.path, realPath).replace(/\\/g, "/"), store.active()?.id ?? null);
 
   let isBinaryFile = false;
   if (!stat.isDirectory()) {
@@ -255,12 +250,10 @@ export interface FsReadFileResult {
  * Read a UTF-8 text file within the active workspace.
  */
 export function readFile(store: WorkspaceStore, requestedPath: string): FsReadFileResult {
-  const active = store.active();
-  if (!active) {
-    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
-  }
+  const resolved = resolveRootPath(store, requestedPath);
+  const active = resolved.root;
 
-  const realPath = confinePath(active.path, requestedPath);
+  const realPath = confinePath(active.path, resolved.relativePath);
   const stat = statSync(realPath);
 
   if (stat.isDirectory()) {
@@ -279,7 +272,7 @@ export function readFile(store: WorkspaceStore, requestedPath: string): FsReadFi
     throw new WorkspaceError(ErrorCode.BINARY_FILE, "File appears to be binary");
   }
 
-  const relPath = relative(active.path, realPath).replace(/\\/g, "/");
+  const relPath = displayRootPath(active, relative(active.path, realPath).replace(/\\/g, "/"), store.active()?.id ?? null);
   return {
     path: relPath,
     content: buffer.toString("utf8"),
@@ -304,12 +297,10 @@ export function readFileLines(
   startLine?: number,
   endLine?: number
 ): FsReadFileLinesResult {
-  const active = store.active();
-  if (!active) {
-    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
-  }
+  const resolved = resolveRootPath(store, requestedPath);
+  const active = resolved.root;
 
-  const realPath = confinePath(active.path, requestedPath);
+  const realPath = confinePath(active.path, resolved.relativePath);
   const stat = statSync(realPath);
 
   if (stat.isDirectory()) {
@@ -336,7 +327,7 @@ export function readFileLines(
   let end = endLine !== undefined && endLine >= 0 ? Math.min(totalLines, endLine + 1) : totalLines;
 
   const slicedContent = lines.slice(start, end).join("\n");
-  const relPath = relative(active.path, realPath).replace(/\\/g, "/");
+  const relPath = displayRootPath(active, relative(active.path, realPath).replace(/\\/g, "/"), store.active()?.id ?? null);
 
   return {
     path: relPath,
@@ -361,12 +352,10 @@ export function writeFile(
   content: string,
   expectedMtime?: number
 ): FsWriteFileResult {
-  const active = store.active();
-  if (!active) {
-    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
-  }
+  const resolved = resolveRootPath(store, requestedPath);
+  const active = resolved.root;
 
-  const realPath = confinePath(active.path, requestedPath);
+  const realPath = confinePath(active.path, resolved.relativePath);
 
   // Check for MTIME_CONFLICT if file exists and expectedMtime is provided
   if (expectedMtime !== undefined && existsSync(realPath)) {
@@ -388,7 +377,7 @@ export function writeFile(
   writeFileSync(realPath, content, "utf8");
 
   const newStat = statSync(realPath);
-  const relPath = relative(active.path, realPath).replace(/\\/g, "/");
+  const relPath = displayRootPath(active, relative(active.path, realPath).replace(/\\/g, "/"), store.active()?.id ?? null);
 
   return {
     path: relPath,
@@ -412,13 +401,12 @@ export function searchFiles(
   caseSensitive?: boolean,
   regex?: boolean
 ): FsSearchFilesResult[] {
-  const active = store.active();
-  if (!active) {
-    throw new WorkspaceError(ErrorCode.WORKSPACE_NOT_FOUND, "No active workspace");
-  }
+  const resolved = resolveRootPath(store, requestedPath);
+  const active = resolved.root;
+  const activeId = store.active()?.id ?? null;
 
   const activePath = active.path;
-  const realPath = confinePath(activePath, requestedPath);
+  const realPath = confinePath(activePath, resolved.relativePath);
   const ignorePatterns = store.settings().ignore;
   const results: FsSearchFilesResult[] = [];
 
@@ -459,7 +447,7 @@ export function searchFiles(
               const lines = content.split("\n");
               lines.forEach((line, index) => {
                 if (searchRegex.test(line)) {
-                  const relPath = relative(activePath, fullPath).replace(/\\/g, "/");
+                  const relPath = displayRootPath(active, relative(activePath, fullPath).replace(/\\/g, "/"), activeId);
                   results.push({
                     file: relPath,
                     line: index + 1,

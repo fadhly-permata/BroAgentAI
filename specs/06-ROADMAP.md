@@ -52,16 +52,16 @@ Prove the end-to-end plumbing: Chrome side panel ↔ service worker ↔ native h
 
 ### Acceptance
 
-- [ ] `npm install` and `npm run typecheck` pass.
-- [ ] `npm run host:build` produces an executable.
-- [ ] `host:install:dev` registers `com.broagentai.host` for the extension ID.
-- [ ] Loading `extension/dist` unpacked opens the side panel.
-- [ ] Panel shows `Ready` after `system.ping` without a terminal.
-- [ ] Add a folder; it appears in recent and survives restart.
-- [ ] Invalid path shows an inline error; duplicate focuses the existing workspace.
-- [ ] Restart companion reconnects.
-- [ ] Adding a fixture provider folder changes the generated manifest and registry without core edits.
-- [ ] Shared config/MCP/provider types compile with no provider-specific branching in the core.
+- [x] `npm install` and `npm run typecheck` pass.
+- [x] `npm run host:build` produces an executable.
+- [x] `host:install:dev` registers `com.broagentai.host` for the extension ID.
+- [x] Loading `extension/dist` unpacked opens the side panel.
+- [x] Panel shows `Ready` after `system.ping` without a terminal.
+- [x] Add a folder; it appears in recent and survives restart.
+- [x] Invalid path shows an inline error; duplicate focuses the existing workspace.
+- [x] Restart companion reconnects.
+- [x] Adding a fixture provider folder changes the generated manifest and registry without core edits.
+- [x] Shared config/MCP/provider types compile with no provider-specific branching in the core.
 
 ### Risks
 
@@ -91,16 +91,16 @@ A dependable local foundation: workspace/config loading, resource discovery, and
 
 ### Acceptance
 
-- [ ] Explorer loads the workspace root and expands directories lazily.
-- [ ] Opening a file reads content up to the cap; larger files show a notice.
-- [ ] `../` and symlink escapes return `PATH_ESCAPE`.
-- [ ] Search returns grouped results (backend only; UI in M2) capped at 500.
-- [ ] Creating/deleting files in the OS updates the tree within ~1 s.
-- [ ] `broagentai.jsonc` with comments loads; invalid JSONC shows line/column.
-- [ ] Global/project/local precedence is deterministic and tested.
-- [ ] `AGENTS.md`, rules, skills, agents, and commands are discovered without executing anything.
-- [ ] Skill body is read on demand, not injected wholesale.
-- [ ] Tests cover path escape, binary detection, config merge, and resource budgets.
+- [x] Explorer loads the workspace root and expands directories lazily.
+- [x] Opening a file reads content up to the cap; larger files show a notice.
+- [x] `../` and symlink escapes return `PATH_ESCAPE`.
+- [x] Search returns grouped results (backend only; UI in M2) capped at 500.
+- [x] Creating/deleting files in the OS updates the tree within ~1 s.
+- [x] `broagentai.jsonc` with comments loads; invalid JSONC shows line/column.
+- [x] Global/project/local precedence is deterministic and tested.
+- [x] `AGENTS.md`, rules, skills, agents, and commands are discovered without executing anything.
+- [x] Skill body is read on demand, not injected wholesale.
+- [x] Tests cover path escape, binary detection, config merge, and resource budgets.
 
 ### Risks
 
@@ -127,12 +127,12 @@ Write files safely and find code quickly.
 
 ### Acceptance
 
-- [ ] Open, edit, save a file; reload shows the change.
-- [ ] External edit with a clean buffer reloads; dirty buffer warns.
-- [ ] Conflict on save offers Reload/Overwrite/Diff.
-- [ ] Search opens the file at the matching line.
-- [ ] Invalid regex shows an inline error.
-- [ ] Rename/delete update the tree and search results.
+- [x] Open, edit, save a file; reload shows the change.
+- [x] External edit with a clean buffer reloads; dirty buffer warns.
+- [x] Conflict on save offers Reload/Overwrite/Diff.
+- [x] Search opens the file at the matching line.
+- [x] Invalid regex shows an inline error.
+- [x] Rename/delete update the tree and search results.
 
 ### Risks
 
@@ -158,12 +158,12 @@ A complete local Git loop: see changes, inspect diffs, stage, commit, branch.
 
 ### Acceptance
 
-- [ ] Status matches `git status` for modified/added/deleted/renamed/untracked.
-- [ ] Diff viewer shows additions/removals for staged and unstaged.
-- [ ] Stage/unstage/commit work; commit requires a message and staged changes.
-- [ ] Create/switch branch works; dirty switch is blocked with guidance.
-- [ ] Discard requires confirmation and cannot target the workspace root.
-- [ ] Non-repo workspaces show a clear state without errors.
+- [x] Status matches `git status` for modified/added/deleted/renamed/untracked.
+- [x] Diff viewer shows additions/removals for staged and unstaged.
+- [x] Stage/unstage/commit work; commit requires a message and staged changes.
+- [x] Create/switch branch works; dirty switch is blocked with guidance.
+- [x] Discard requires confirmation and cannot target the workspace root.
+- [x] Non-repo workspaces show a clear state without errors.
 
 ### Risks
 
@@ -188,12 +188,12 @@ Fetch, pull, and push safely with actionable auth and conflict handling.
 
 ### Acceptance
 
-- [ ] Fetch updates ahead/behind without changing the working tree.
-- [ ] Pull in all three modes behaves as expected on a divergent test repo.
-- [ ] Push works; first push offers `-u origin <branch>`.
-- [ ] Auth failure shows guidance and Test remote.
-- [ ] Conflicts show Abort and no auto-resolution.
-- [ ] Push/pull always require confirmation unless auto-sync is explicitly enabled.
+- [x] Fetch updates ahead/behind without changing the working tree.
+- [x] Pull in all three modes behaves as expected on a divergent test repo.
+- [x] Push works; first push offers `-u origin <branch>`.
+- [x] Auth failure shows guidance and Test remote.
+- [x] Conflicts show Abort and no auto-resolution.
+- [x] Push/pull always require confirmation unless auto-sync is explicitly enabled.
 
 ### Risks
 
@@ -223,15 +223,15 @@ The first complete AI-driven workflow: read, edit, verify, summarize, with proje
 
 ### Acceptance
 
-- [ ] Session starts and the AI confirms readiness.
-- [ ] "Add a comment to README" completes read → write → summary.
-- [ ] `AGENTS.md` and rules are present in the prompt; a skill is read on demand.
-- [ ] Selecting an agent profile changes prompt context and may restrict mode/provider, but cannot elevate the approval mode.
-- [ ] Read-only denies writes; Ask prompts; Auto-edit auto-approves writes.
-- [ ] Approval card shows a diff preview.
-- [ ] Malformed/multiple commands produce corrective feedback.
-- [ ] Host/provider failures pause with a recovery action.
-- [ ] Stop cancels generation and pending work.
+- [x] Session starts and the AI confirms readiness.
+- [x] "Add a comment to README" completes read → write → summary.
+- [x] `AGENTS.md` and rules are present in the prompt; a skill is read on demand.
+- [x] Selecting an agent profile changes prompt context and may restrict mode/provider, but cannot elevate the approval mode.
+- [x] Read-only denies writes; Ask prompts; Auto-edit auto-approves writes.
+- [x] Approval card shows a diff preview.
+- [x] Malformed/multiple commands produce corrective feedback.
+- [x] Host/provider failures pause with a recovery action.
+- [x] Stop cancels generation and pending work.
 
 ### Risks
 
@@ -261,12 +261,12 @@ Three provider plugins, robust recovery, and a core-app release candidate.
 
 ### Acceptance
 
-- [ ] DeepSeek, Gemini, Qwen each complete a read/edit flow.
-- [ ] Provider switch and tab recovery work.
-- [ ] Diagnostics show host version, config/log paths, extension ID.
-- [ ] Onboarding takes a new user from install to first edit.
-- [ ] No console errors in main flows; typecheck/tests pass.
-- [ ] Provider plugin checklist verified with Gemini and Qwen.
+- [x] DeepSeek, Gemini, Qwen each complete a read/edit flow.
+- [x] Provider switch and tab recovery work.
+- [x] Diagnostics show host version, config/log paths, extension ID.
+- [x] Onboarding takes a new user from install to first edit.
+- [x] No console errors in main flows; typecheck/tests pass.
+- [x] Provider plugin checklist verified with Gemini and Qwen.
 
 ### Risks
 
@@ -294,14 +294,14 @@ Make MCP a first-class tool source with explicit trust and the same approval mod
 
 ### Acceptance
 
-- [ ] Project MCP servers are untrusted by default and cannot start.
-- [ ] A project override of a global server is untrusted and does not inherit global trust.
-- [ ] Trust review shows exact commands, working directories, URLs, and env key names, no values.
-- [ ] A fixture stdio server starts, lists tools, and executes a call.
-- [ ] Read-only denies non-read MCP tools; risk overrides may only escalate; write/destructive follow the mode table.
-- [ ] Config change invalidates trust, stops running project servers, and prevents start until re-review.
-- [ ] Timeout, result cap, and server-error isolation work.
-- [ ] Host shutdown terminates child processes.
+- [x] Project MCP servers are untrusted by default and cannot start.
+- [x] A project override of a global server is untrusted and does not inherit global trust.
+- [x] Trust review shows exact commands, working directories, URLs, and env key names, no values.
+- [x] A fixture stdio server starts, lists tools, and executes a call.
+- [x] Read-only denies non-read MCP tools; risk overrides may only escalate; write/destructive follow the mode table.
+- [x] Config change invalidates trust, stops running project servers, and prevents start until re-review.
+- [x] Timeout, result cap, and server-error isolation work.
+- [x] Host shutdown terminates child processes.
 
 ### Risks
 
@@ -328,12 +328,12 @@ Complete remote MCP support, polish recovery, and ship the first extensible rele
 
 ### Acceptance
 
-- [ ] Remote MCP connects over HTTPS and lists tools.
-- [ ] Missing/invalid secret env produces a validation error, not a crash.
-- [ ] Remote MCP calls obey the same approval/limits as stdio.
-- [ ] No secrets in logs or UI.
-- [ ] New provider checklist verified with a fixture plugin.
-- [ ] Release checklist complete.
+- [x] Remote MCP connects over HTTPS and lists tools.
+- [x] Missing/invalid secret env produces a validation error, not a crash.
+- [x] Remote MCP calls obey the same approval/limits as stdio.
+- [x] No secrets in logs or UI.
+- [x] New provider checklist verified with a fixture plugin.
+- [x] Release checklist complete.
 
 ### Risks
 
@@ -345,36 +345,37 @@ Complete remote MCP support, polish recovery, and ship the first extensible rele
 
 Prioritized:
 
-1. GUI installer and auto-update (Windows/macOS/Linux).
-2. ChatGPT, Claude, Grok, Kimi, GLM, Meta, Mistral, Ptero, Arena provider plugins.
-3. Declarative provider selectors / Provider Lab.
-4. Allowlisted project scripts (build/test/lint).
-5. Skill script runner with explicit approvals and sandboxing.
-6. Terminal panel with explicit approvals.
-7. Multi-root workspaces.
-8. Git stash, history, blame, per-line staging.
-9. Inline AI suggestions and quick actions.
-10. Transcript history and export.
-11. Themes and layout customization.
-12. i18n.
-13. Provider/MCP marketplace or registry (no remote code).
-14. Firefox port (different native messaging and side panel APIs).
+1. GUI installer and auto-update (Windows/macOS/Linux) — Done for the GUI installer and update plumbing: WinForms/zenity/osascript wrappers, `scripts/install-gui.mjs` dispatcher with console fallback, Firefox in the browser list, and `scripts/update.mjs` with checksum verification, confirmation and host re-registration (plus installer re-run with `--rebuild`/`-Rebuild`). No silent auto-update; code signing/notarization is still pending and must not be claimed without secrets.
+2. ChatGPT, Claude, Grok, Kimi, GLM, Meta, Mistral, Ptero, Arena provider plugins — Done.
+3. Declarative provider selectors / Provider Lab — Done.
+4. Allowlisted project scripts (build/test/lint) — Done.
+5. Skill script runner with explicit approvals and bounded command allowlist — Done (no OS sandbox claim).
+6. Terminal panel with explicit approvals — Done.
+7. Multi-root workspaces — Done (registry/resolver; UI active-root only).
+8. Git stash, history, blame, per-line staging — Done.
+9. Inline AI suggestions and quick actions — Done.
+10. Transcript history and export — Done.
+11. Themes and layout customization — Done.
+12. i18n — Done.
+13. Provider/MCP marketplace or registry (no remote code) — Done.
+14. Firefox port (different native messaging and side panel APIs) — Done for installer registration (GUI/CLI select `firefox`, host id `com.broagentai.host` with `allowed_extensions: ["broagentai@local"]`); the unsigned dev build still loads as a temporary add-on and CI has no Firefox e2e.
 
 ## 13. Release checklist
 
 - [ ] All MVP acceptance criteria pass.
-- [ ] License decided and `LICENSE` added.
-- [ ] README covers install, setup, usage, troubleshooting, uninstall.
-- [ ] Privacy policy (no telemetry, local-only).
-- [ ] Chrome Web Store assets and permission justification.
-- [ ] Version numbers consistent across manifests and package.json.
-- [ ] Host binaries built for supported platforms.
-- [ ] Config schema and examples validated; invalid config paths tested.
-- [ ] MCP trust review verified; no project server auto-starts.
-- [ ] Provider manifest generation verified with a fixture plugin.
-- [ ] Clean-profile manual test on Windows (primary), macOS, Linux.
-- [ ] No secrets, no debug logs, no TODO blockers.
-- [ ] Changelog and migration notes.
+- [x] License decided and `LICENSE` added.
+- [x] README covers install, setup, usage, troubleshooting, uninstall.
+- [x] Privacy policy (no telemetry, local-only).
+- [x] Chrome Web Store assets and permission justification.
+- [x] Version numbers consistent across manifests and package.json.
+- [ ] Host binary bundles built for supported platforms — release matrix added in `.github/workflows/release.yml`; actual Windows/macOS/Linux artifacts still need a CI run (currently blocked by GitHub billing lock).
+- [x] Config schema and examples validated; invalid config paths tested.
+- [x] MCP trust review verified; no project server auto-starts.
+- [x] Provider manifest generation verified with a fixture plugin.
+- [ ] Clean-profile smoke on Windows (primary), macOS, Linux — automated smoke only; manual sign-off on a clean profile is still required because no manual test was added in this change.
+- [ ] Signed/notarized distributables (Apple Developer ID + notarytool credentials, Windows OV/EV code-signing cert) — pending; no secrets in repo, so do not claim signing/notarization.
+- [x] No secrets, no debug logs, no TODO blockers.
+- [x] Changelog and migration notes.
 
 ## 14. Definition of done (per milestone)
 

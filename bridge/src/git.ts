@@ -9,7 +9,7 @@
  * repository" so no action can touch files outside the workspace.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
@@ -748,4 +748,278 @@ export async function gitCommitDiff(store: WorkspaceStore, hash: unknown, path: 
   const diff = await git(root, args);
   const truncated = Buffer.byteLength(diff, "utf8") > MAX_DIFF_BYTES;
   return { hash: commit.hash, path: paths[0], diff: truncated ? diff.slice(0, MAX_DIFF_BYTES) : diff, truncated };
+}
+
+export const MAX_BLAME_LINES = 500;
+export const MAX_STASH_ENTRIES = 50;
+export const MAX_STASH_MESSAGE_CHARS = 200;
+export const MAX_STAGE_LINES = 500;
+
+export interface GitBlameLine {
+  line: number;
+  hash: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  summary: string;
+  text: string;
+}
+
+export interface GitBlameResult {
+  path: string;
+  lines: GitBlameLine[];
+  truncated: boolean;
+}
+
+export function parseBlamePorcelain(out: string): GitBlameLine[] {
+  const lines: GitBlameLine[] = [];
+  let current: Partial<GitBlameLine> | null = null;
+  for (const raw of out.split("\n")) {
+    if (raw === "") continue;
+    const header = /^([0-9a-f]{40})\s+\d+\s+(\d+)(?:\s+\d+)?$/.exec(raw);
+    if (header) {
+      if (current?.text !== undefined && current.line !== undefined && current.hash) {
+        lines.push(current as GitBlameLine);
+      }
+      current = { line: Number(header[2]), hash: header[1], author: "", authorEmail: "", date: "", summary: "", text: "" };
+      continue;
+    }
+    if (!current) continue;
+    if (raw.startsWith("\t")) {
+      current.text = raw.slice(1);
+      if (current.line !== undefined && current.hash) lines.push(current as GitBlameLine);
+      current = null;
+      continue;
+    }
+    const split = raw.indexOf(" ");
+    const key = split === -1 ? raw : raw.slice(0, split);
+    const value = split === -1 ? "" : raw.slice(split + 1);
+    if (key === "author") current.author = value;
+    else if (key === "author-mail") current.authorEmail = value.replace(/^<|>$/g, "");
+    else if (key === "author-time") {
+      const seconds = Number(value);
+      current.date = Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : "";
+    }
+    else if (key === "summary") current.summary = value;
+  }
+  return lines;
+}
+
+export async function gitBlame(store: WorkspaceStore, path: unknown): Promise<GitBlameResult> {
+  const { root } = await requireRepo(store);
+  const [rel] = normalizePaths(root, [path]);
+  const out = await git(root, ["blame", "--line-porcelain", "--", rel]);
+  const lines = parseBlamePorcelain(out);
+  return { path: rel, lines: lines.slice(0, MAX_BLAME_LINES), truncated: lines.length > MAX_BLAME_LINES };
+}
+
+export interface GitStashEntry {
+  index: number;
+  ref: string;
+  hash: string;
+  branch: string;
+  message: string;
+  date: string;
+}
+
+export interface GitStashListResult {
+  entries: GitStashEntry[];
+  truncated: boolean;
+}
+
+export function parseStashList(out: string): GitStashEntry[] {
+  const entries: GitStashEntry[] = [];
+  for (const raw of out.split("\n")) {
+    if (raw.trim() === "") continue;
+    const [ref, hash, subject, date] = raw.split("\0");
+    const match = /^stash@\{(\d+)\}$/.exec(ref ?? "");
+    if (!match) continue;
+    const description = subject ?? "";
+    const details = /^(?:WIP on|On)\s+(.+?):\s+(.*)$/.exec(description);
+    entries.push({
+      index: Number(match[1]),
+      ref,
+      hash: hash ?? "",
+      branch: details?.[1] ?? "",
+      message: details?.[2] ?? description,
+      date: date ?? "",
+    });
+  }
+  return entries;
+}
+
+async function readStashList(root: string): Promise<GitStashListResult> {
+  const out = await git(root, ["stash", "list", `-n${MAX_STASH_ENTRIES}`, "--format=%gd%x00%H%x00%gs%x00%aI"]);
+  const entries = parseStashList(out);
+  return { entries: entries.slice(0, MAX_STASH_ENTRIES), truncated: entries.length > MAX_STASH_ENTRIES };
+}
+
+export async function gitStashList(store: WorkspaceStore): Promise<GitStashListResult> {
+  const { root } = await requireRepo(store);
+  return readStashList(root);
+}
+
+export async function gitStashPush(store: WorkspaceStore, message: unknown): Promise<GitStashListResult> {
+  const { root } = await requireRepo(store);
+  const args = ["stash", "push"];
+  if (message !== undefined && message !== null) {
+    if (typeof message !== "string" || message.trim() === "" || message.length > MAX_STASH_MESSAGE_CHARS || /[\0\r\n]/.test(message)) {
+      throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "message must be a short single-line string");
+    }
+    args.push("-m", message);
+  }
+  await git(root, args);
+  return readStashList(root);
+}
+
+function stashRef(index: unknown): string {
+  const value = typeof index === "number" ? index : Number(index);
+  if (!Number.isInteger(value) || value < 0 || value > 99) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "index must be an integer from 0 to 99");
+  }
+  return `stash@{${value}}`;
+}
+
+function requireStashConfirm(confirmed: unknown): void {
+  if (confirmed !== true) {
+    throw new WorkspaceError(ErrorCode.NOT_ALLOWED, "destructive stash operations require explicit confirmation");
+  }
+}
+
+export async function gitStashPop(store: WorkspaceStore, index: unknown, confirmed: unknown): Promise<GitStashListResult> {
+  requireStashConfirm(confirmed);
+  const { root } = await requireRepo(store);
+  await git(root, ["stash", "pop", "--", stashRef(index)]);
+  return readStashList(root);
+}
+
+export async function gitStashDrop(store: WorkspaceStore, index: unknown, confirmed: unknown): Promise<GitStashListResult> {
+  requireStashConfirm(confirmed);
+  const { root } = await requireRepo(store);
+  await git(root, ["stash", "drop", stashRef(index)]);
+  return readStashList(root);
+}
+
+interface ZeroDiffGroup {
+  oldStart: number;
+  newStart: number;
+  lines: string[];
+  added: number[];
+}
+
+export function parseZeroDiff(diff: string): { preamble: string[]; groups: ZeroDiffGroup[] } {
+  const preamble: string[] = [];
+  const groups: ZeroDiffGroup[] = [];
+  let current: ZeroDiffGroup | null = null;
+  let oldLine = 0;
+  let newLine = 0;
+  let inHunk = false;
+  const flush = () => { if (current) { groups.push(current); current = null; } };
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      flush();
+      inHunk = false;
+      if (line !== "") preamble.push(line);
+      continue;
+    }
+    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (header) {
+      flush();
+      inHunk = true;
+      oldLine = Number(header[1]);
+      newLine = Number(header[2]);
+      continue;
+    }
+    if (!inHunk) {
+      if (line !== "") preamble.push(line);
+      continue;
+    }
+    if (line.startsWith(" ")) {
+      oldLine++;
+      newLine++;
+      continue;
+    }
+    if (line.startsWith("-")) {
+      if (!current) current = { oldStart: oldLine, newStart: newLine, lines: [], added: [] };
+      current.lines.push(line);
+      oldLine++;
+      continue;
+    }
+    if (line.startsWith("+")) {
+      if (!current) current = { oldStart: oldLine, newStart: newLine, lines: [], added: [] };
+      current.lines.push(line);
+      current.added.push(newLine);
+      newLine++;
+      continue;
+    }
+    if (line.startsWith("\\")) current?.lines.push(line);
+  }
+  flush();
+  return { preamble, groups };
+}
+
+function buildLinePatch(diff: string, lines: number[]): string {
+  const { preamble, groups } = parseZeroDiff(diff);
+  const selected = groups
+    .filter((group) => group.added.some((line) => lines.includes(line)))
+    .sort((a, b) => a.newStart - b.newStart);
+  if (selected.length === 0) return "";
+  const hunks = selected.map((group) => {
+    const oldCount = group.lines.filter((line) => line.startsWith("-")).length;
+    const newCount = group.lines.filter((line) => line.startsWith("+")).length;
+    return [`@@ -${group.oldStart},${oldCount} +${group.newStart},${newCount} @@`, ...group.lines].join("\n");
+  });
+  return [...preamble, ...hunks].join("\n") + "\n";
+}
+
+function gitApplyPatch(root: string, patch: string): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn("git", ["-c", "core.quotepath=false", "--literal-pathspecs", "apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "-"], {
+      cwd: root,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_OPTIONAL_LOCKS: "0",
+        GIT_EDITOR: "true",
+        LC_ALL: "C",
+      },
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("error", (error) => reject(new WorkspaceError(ErrorCode.GIT_OPERATION_FAILED, error.message)));
+    child.on("close", (code) => {
+      if (code === 0) { resolvePromise(); return; }
+      const detail = stderr.trim().slice(0, 2000) || `git apply exited with code ${code}`;
+      reject(new WorkspaceError(ErrorCode.GIT_OPERATION_FAILED, detail));
+    });
+    child.stdin?.end(patch, "utf8");
+  });
+}
+
+export async function gitStageLines(store: WorkspaceStore, params: unknown): Promise<{ path: string; stagedLines: number[]; patchBytes: number; status: GitStatusResult }> {
+  const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
+  const lines = p.lines;
+  if (!Array.isArray(lines) || lines.length === 0 || lines.length > MAX_STAGE_LINES) {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, `lines must contain 1 to ${MAX_STAGE_LINES} line numbers`);
+  }
+  const selected = [...new Set(lines.map((line) => {
+    if (!Number.isInteger(line) || (line as number) < 1) {
+      throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "lines must contain positive integers");
+    }
+    return line as number;
+  }))].sort((a, b) => a - b);
+  const { root } = await requireRepo(store);
+  const [rel] = normalizePaths(root, [p.path]);
+  const diff = await git(root, ["diff", "--no-color", "--no-ext-diff", "-U0", "--", rel]);
+  const patch = buildLinePatch(diff, selected);
+  if (patch === "") {
+    throw new WorkspaceError(ErrorCode.INVALID_PARAMS, "no unstaged change matches the selected lines; use git.stage for untracked or deletion-only files");
+  }
+  if (Buffer.byteLength(patch, "utf8") > MAX_DIFF_BYTES) {
+    throw new WorkspaceError(ErrorCode.GIT_OPERATION_FAILED, "generated patch exceeds the diff size cap");
+  }
+  await gitApplyPatch(root, patch);
+  return { path: rel, stagedLines: selected, patchBytes: Buffer.byteLength(patch, "utf8"), status: await gitStatus(store) };
 }

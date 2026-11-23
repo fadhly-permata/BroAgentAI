@@ -2,7 +2,9 @@
 // (specs/09-WEBCHAT-PLUGINS.md §4.4–4.6). Install from a folder or .zip after a
 // review, update, export, remove/reset, turn on/off, re-grant site access,
 // reload open tabs and check a plugin on an open chat tab.
+import { browser, userScriptsApi, type Tab } from './browser.ts';
 import { builtInPlugins, pluginEntries, refreshProviders } from './providers/registry.js';
+import { validatePluginManifest } from './plugins/manifest.ts';
 import { buildPackage, packageFiles, type PackageResult, type PluginPackage } from './plugins/package.ts';
 import { readZip, rootFiles, safeRelativePath, writeZip, ZIP_LIMITS, ZipError } from './plugins/zip.ts';
 import { manifestsOverlap, planInstall, type DomainConflict, type InstallPlan, type InstalledPlugin } from './plugins/conflicts.ts';
@@ -19,6 +21,27 @@ export interface PluginsDeps {
 /** Built-in plugin scripts as text, only for "Export .zip". */
 const builtInScripts = import.meta.glob('../plugins/*/*.js', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>;
 
+interface CatalogEntry { id: string; name: string; description: string; file: string }
+const catalogIndex = import.meta.glob('../../catalog/index.json', { eager: true, import: 'default' }) as Record<string, { version: number; entries: CatalogEntry[] }>;
+const catalogTemplates = import.meta.glob('../../catalog/templates/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
+
+const LAB_SKELETON = JSON.stringify({
+  apiVersion: 1,
+  id: 'my-chat',
+  name: 'My Chat',
+  version: '1.0.0',
+  description: 'Selector-only plugin made in Provider Lab',
+  homepage: 'https://chat.example.com/',
+  matches: ['https://chat.example.com/*'],
+  status: 'experimental',
+  verified: 'Not checked on a live page yet.',
+  selectors: {
+    composer: 'textarea, div[contenteditable=\'true\']',
+    assistantMessage: '[data-role=\'assistant\']',
+    messageKeyFallback: true,
+  },
+}, null, 2);
+
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const esc = (text: string) => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
 /** Strings follow the panel language (Settings > Display & Language). */
@@ -29,7 +52,7 @@ let deps: PluginsDeps;
 let access = new Map<string, boolean>();
 
 /** chrome.userScripts is undefined while "Allow User Scripts" is off (P0 finding, R14). */
-const userScriptsOn = () => typeof (chrome as unknown as { userScripts?: { register?: unknown } }).userScripts?.register === 'function';
+const userScriptsOn = () => userScriptsApi() !== null;
 let lastScriptSyncAttempt = '';
 /** What the service worker last did with plugin scripts (plugins/sync.ts). */
 let scriptSync: { at: number; available: boolean; registered: string[]; error?: string } | null = null;
@@ -42,7 +65,7 @@ async function computeAccess(): Promise<void> {
   const next = new Map<string, boolean>();
   for (const e of pluginEntries) {
     if (e.source !== 'user') continue;
-    next.set(e.id, await chrome.permissions.contains({ origins: e.manifest.matches }).catch(() => false));
+    next.set(e.id, await browser.permissions.contains({ origins: e.manifest.matches }).catch(() => false));
   }
   access = next;
 }
@@ -81,11 +104,80 @@ function row(e: PluginEntry): string {
     + `<div class="btn-row pl-actions">${acts.join('')}</div></div>`;
 }
 
+function labValue(): string {
+  return (document.getElementById('providerLabJson') as HTMLTextAreaElement | null)?.value || LAB_SKELETON;
+}
+
+function labResult(html: string): void {
+  const el = document.getElementById('providerLabResult');
+  if (el) el.innerHTML = html;
+}
+
+function labHtml(): string {
+  return `<section class="pl-section" data-pl-section="lab"><h3>${tr('Provider Lab', 'Lab Penyedia')}</h3>`
+    + `<p class="setting-desc">${tr('Write selector-only plugin.json here. Provider Lab never runs script or style files; the same review, site permission and one-plugin-per-site checks apply before it is installed.', 'Tulis plugin.json selector-only di sini. Provider Lab tidak pernah menjalankan file script atau style; peninjauan, izin site dan aturan satu plugin per site tetap berlaku sebelum dipasang.')}</p>`
+    + `<textarea id="providerLabJson" class="pl-code" rows="16" spellcheck="false">${esc(labValue())}</textarea>`
+    + `<div class="btn-row"><button class="mini primary" data-pl-act="lab-check">${tr('Validate & review', 'Validasi & tinjau')}</button><button class="mini" data-pl-act="lab-reset">${tr('Reset example', 'Reset contoh')}</button></div>`
+    + '<div id="providerLabResult" class="muted"></div></section>';
+}
+
+function catalogHtml(): string {
+  const entries = Object.values(catalogIndex)[0]?.entries ?? [];
+  return `<section class="pl-section" data-pl-section="catalog"><h3>${tr('Local catalog', 'Katalog lokal')}</h3>`
+    + `<p class="setting-desc">${tr('Starter templates shipped with BroAgentAI. Nothing is downloaded or updated automatically; a template opens in Provider Lab and still goes through review.', 'Template awal yang ikut dikirim bersama BroAgentAI. Tidak ada unduhan atau pembaruan otomatis; template dibuka di Provider Lab dan tetap melewati peninjauan.')}</p>`
+    + `<div class="pl-list">${entries.map((e) => `<div class="pl-row"><div class="pl-title"><b>${esc(e.name)}</b><div class="muted">${esc(e.description)}</div></div><div class="btn-row"><button class="mini" data-pl-act="catalog-load" data-catalog-id="${esc(e.id)}">${tr('Load in Provider Lab', 'Buka di Provider Lab')}</button></div></div>`).join('')}</div></section>`;
+}
+
+function labReview(): void {
+  const area = document.getElementById('providerLabJson') as HTMLTextAreaElement | null;
+  if (!area) return;
+  let raw: unknown;
+  try { raw = JSON.parse(area.value); } catch (err) {
+    labResult(`<p class="err">${esc(tr('plugin.json is not valid JSON: ', 'plugin.json bukan JSON valid: ') + (err instanceof Error ? err.message : String(err)))}</p>`);
+    return;
+  }
+  const checked = validatePluginManifest(raw);
+  const warnings = checked.warnings.map((w) => `<li>${esc(w)}</li>`).join('');
+  if (!checked.ok) {
+    labResult(`<p class="err">${tr('Fix these problems:', 'Perbaiki masalah ini:')}</p><ul class="pl-list-items err">${checked.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>${warnings ? `<ul class="pl-list-items warn">${warnings}</ul>` : ''}`);
+    return;
+  }
+  const m = checked.plugin;
+  if (m.script || m.style || m.icon || m.hooks) {
+    labResult(`<p class="err">${esc(tr('Provider Lab accepts selector-only plugin.json files: remove script, style, icon and hooks, then import the full plugin folder instead.', 'Provider Lab hanya menerima plugin.json selector-only: hapus script, style, icon dan hooks, lalu import folder plugin lengkap sebagai gantinya.'))}</p>`);
+    return;
+  }
+  const result = buildPackage(new Map([['plugin.json', new TextEncoder().encode(JSON.stringify(m, null, 2))]]));
+  if (!result.ok) {
+    labResult(`<p class="err">${esc(result.errors.join(' · '))}</p>`);
+    return;
+  }
+  labResult(`<p>${esc(tr('Manifest is valid. Review the plugin in the window that just opened.', 'Manifest valid. Tinjau plugin di jendela yang baru terbuka.'))}</p>`);
+  void review(result);
+}
+
+function loadCatalogTemplate(id: string): void {
+  const entry = Object.values(catalogIndex)[0]?.entries.find((e) => e.id === id);
+  if (!entry) return;
+  const path = Object.keys(catalogTemplates).find((key) => key.endsWith('/' + entry.file));
+  const raw = path ? catalogTemplates[path] : undefined;
+  if (!raw) return;
+  const area = document.getElementById('providerLabJson') as HTMLTextAreaElement | null;
+  if (!area) return;
+  area.value = JSON.stringify(raw, null, 2);
+  area.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  area.focus();
+  const checked = validatePluginManifest(raw);
+  labResult(checked.ok
+    ? `<p>${esc(tr(`Loaded "${entry.name}". It is a local, selector-only template; edit the id and domain before validating.`, `Muat "${entry.name}". Ini template lokal selector-only; ubah id dan domain sebelum validasi.`))}</p>`
+    : `<p class="err">${esc(checked.errors.join(' · '))}</p>`);
+}
+
 export async function renderPlugins(): Promise<void> {
   const body = document.getElementById('pluginsBody');
   if (!body || !deps) return;
   await computeAccess();
-  const stored: Record<string, unknown> = await chrome.storage.local.get('broagentai.plugins.scriptSync').catch(() => ({}));
+  const stored: Record<string, unknown> = await browser.storage.local.get('broagentai.plugins.scriptSync').catch(() => ({}));
   scriptSync = (stored['broagentai.plugins.scriptSync'] as typeof scriptSync) ?? null;
   const anyScript = pluginEntries.some((e) => e.source === 'user' && e.hasScript);
   // Scripts that should run but are not registered: the service worker may predate the toggle (it then
@@ -100,7 +192,9 @@ export async function renderPlugins(): Promise<void> {
       ? `<div class="callout callout-warn"><span>${tr('plugin.js of your custom plugins is off: Chrome only runs it when "Allow User Scripts" is on for BroAgentAI. Open chrome://extensions → BroAgentAI → Details → turn on "Allow User Scripts", then press Check again. Until then those plugins run on their selectors and style.css only.', 'plugin.js milik plugin custom Anda mati: Chrome hanya menjalankannya kalau "Allow User Scripts" nyala untuk BroAgentAI. Buka chrome://extensions → BroAgentAI → Details → nyalakan "Allow User Scripts", lalu tekan Cek lagi. Sampai itu, plugin tersebut jalan dengan selector dan style.css saja.')}</span><button class="mini" data-pl-act="recheck">${tr('Check again', 'Cek lagi')}</button></div>`
       : '')
     + (scriptSync?.error ? `<p class="err">${esc(tr('Registering plugin scripts failed: ', 'Gagal mendaftarkan script plugin: ') + scriptSync.error)}</p>` : '')
-    + `<div class="pl-list">${pluginEntries.map(row).join('')}</div>`;
+    + `<div class="pl-list">${pluginEntries.map(row).join('')}</div>`
+    + labHtml()
+    + catalogHtml();
 }
 
 // ---------- reading a package ----------
@@ -226,7 +320,7 @@ async function review(result: PackageResult): Promise<void> {
     + code;
   deps.openModal(title, body, () => {
     // Runs inside the OK click: permissions.request needs that user gesture (R8).
-    const asked = chrome.permissions.request({ origins: m.matches });
+    const asked = browser.permissions.request({ origins: m.matches });
     // A failure must stay on screen with its reason (a toast disappears after 4 s).
     const fail = (why: string) => setTimeout(() => deps.openModal(tr('Plugin not installed', 'Plugin tidak dipasang'), `<p class="err">${esc(why)}</p>`, () => {}), 0);
     void (async () => {
@@ -251,8 +345,8 @@ function entryOf(el: HTMLElement): PluginEntry | undefined {
   return rowEl ? pluginEntries.find((e) => e.id === rowEl.dataset.plId && e.source === rowEl.dataset.plSource) : undefined;
 }
 
-async function tabsOf(e: PluginEntry): Promise<chrome.tabs.Tab[]> {
-  return chrome.tabs.query({ url: e.manifest.matches }).catch(() => []);
+async function tabsOf(e: PluginEntry): Promise<Tab[]> {
+  return browser.tabs.query({ url: e.manifest.matches }).catch(() => []);
 }
 
 function download(name: string, bytes: Uint8Array): void {
@@ -290,7 +384,7 @@ async function toggle(e: PluginEntry, on: boolean, input: HTMLInputElement): Pro
   const ref: PluginRef = { id: e.id, source: e.source };
   if (!on) { await setPluginEnabled(ref, false); return; }
   // Turning on: site access first (still inside the click), then one plugin per site (R2).
-  const granted = e.source === 'builtin' || await chrome.permissions.request({ origins: e.manifest.matches }).catch(() => false);
+  const granted = e.source === 'builtin' || await browser.permissions.request({ origins: e.manifest.matches }).catch(() => false);
   if (!granted) { input.checked = false; deps.toast(tr('Site access not granted.', 'Akses site tidak diizinkan.')); return; }
   const rivals = pluginEntries.filter((x) => x.enabled && !x.problem && x.id !== e.id && manifestsOverlap(e.manifest, x.manifest).length > 0);
   if (rivals.length === 0) { await setPluginEnabled(ref, true); return; }
@@ -313,7 +407,7 @@ async function remove(e: PluginEntry): Promise<void> {
         // Give back site access nobody else needs (static/built-in hosts cannot be removed and are skipped).
         const still = new Set(pluginEntries.filter((x) => x.id !== e.id).flatMap((x) => x.manifest.matches));
         const release = e.manifest.matches.filter((m) => !still.has(m));
-        if (release.length) await chrome.permissions.remove({ origins: release }).catch(() => false);
+        if (release.length) await browser.permissions.remove({ origins: release }).catch(() => false);
         deps.toast(reset ? tr('Built-in plugin restored.', 'Plugin bawaan dipakai lagi.') : tr('Plugin removed.', 'Plugin dihapus.'));
       })();
     });
@@ -323,7 +417,7 @@ async function health(e: PluginEntry): Promise<void> {
   const tabs = await tabsOf(e);
   if (tabs.length === 0) { deps.toast(tr(`Open ${e.manifest.homepage} in a tab first.`, `Buka ${e.manifest.homepage} di tab dulu.`)); return; }
   const tab = tabs.find((t) => t.active) ?? tabs[0];
-  const res: any = await chrome.tabs.sendMessage(tab.id!, { type: 'ba.ping' }).catch(() => null);
+  const res: any = await browser.tabs.sendMessage(tab.id!, { type: 'ba.ping' }).catch(() => null);
   const lines = !res
     ? [tr('The relay is not running on that tab. Use "Reload open tabs" (or reload the tab) and check again.', 'Relay belum jalan di tab itu. Pakai "Muat ulang tab" lalu cek lagi.')]
     : res.provider !== e.id
@@ -345,23 +439,31 @@ export function initPlugins(dependencies: PluginsDeps): void {
     if (act === 'import-folder') { void importFrom('folder'); return; }
     if (act === 'recheck') {
       lastScriptSyncAttempt = '';
-      void (userScriptsOn() ? syncUserScripts() : chrome.runtime.sendMessage({ type: 'ba.plugins.sync' }).catch(() => {})).then(() => renderPlugins());
+      void (userScriptsOn() ? syncUserScripts() : browser.runtime.sendMessage({ type: 'ba.plugins.sync' }).catch(() => {})).then(() => renderPlugins());
       deps.toast(userScriptsOn() ? tr('User scripts are on; plugin.js runs after reloading the chat tabs.', 'User scripts nyala; plugin.js jalan setelah tab chat dimuat ulang.') : tr('"Allow User Scripts" is still off.', '"Allow User Scripts" masih mati.'));
       return;
     }
     if (act === 'import-zip' || act === 'update') { void importFrom('zip'); return; }
+    if (act === 'lab-check') { labReview(); return; }
+    if (act === 'lab-reset') {
+      const area = document.getElementById('providerLabJson') as HTMLTextAreaElement | null;
+      if (area) area.value = LAB_SKELETON;
+      labResult('');
+      return;
+    }
+    if (act === 'catalog-load') { loadCatalogTemplate(el.dataset.catalogId ?? ''); return; }
     const e = entryOf(el);
     if (!e) return;
     if (act === 'toggle') { void toggle(e, (el as HTMLInputElement).checked, el as HTMLInputElement); return; }
     if (act === 'export') { void exportPlugin(e); return; }
     if (act === 'remove') { void remove(e); return; }
     if (act === 'health') { void health(e); return; }
-    if (act === 'reload') { void tabsOf(e).then((tabs) => { tabs.forEach((t) => t.id !== undefined && chrome.tabs.reload(t.id)); deps.toast(tr(`${tabs.length} tab(s) reloaded.`, `${tabs.length} tab dimuat ulang.`)); }); return; }
-    if (act === 'grant') { void chrome.permissions.request({ origins: e.manifest.matches }).then(() => renderPlugins()); return; }
+    if (act === 'reload') { void tabsOf(e).then((tabs) => { tabs.forEach((t) => t.id !== undefined && browser.tabs.reload(t.id)); deps.toast(tr(`${tabs.length} tab(s) reloaded.`, `${tabs.length} tab dimuat ulang.`)); }); return; }
+    if (act === 'grant') { void browser.permissions.request({ origins: e.manifest.matches }).then(() => renderPlugins()); return; }
   });
   void refreshProviders().then(() => renderPlugins());
   // The service worker reports plugin-script registration separately; show it as it lands.
-  chrome.storage.onChanged.addListener((changes, area) => {
+  browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes['broagentai.plugins.scriptSync']) void renderPlugins();
   });
 }

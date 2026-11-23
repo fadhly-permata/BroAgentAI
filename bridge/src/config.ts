@@ -18,6 +18,23 @@ import type { WorkspaceStore } from "./workspace.ts";
 /** Approval mode for tool execution. */
 export type ApprovalMode = "auto" | "ask" | "deny";
 
+export function normalizeApprovalMode(value: unknown, fallback: ApprovalMode = "ask"): ApprovalMode {
+  if (value === "auto" || value === "ask" || value === "deny") return value;
+  return fallback;
+}
+
+function normalizeToolOverrides(value: unknown): ToolApproval[] {
+  if (!Array.isArray(value)) return [];
+  const out: ToolApproval[] = [];
+  for (const entry of value as unknown[]) {
+    if (!entry || typeof entry !== "object") continue;
+    const tool = (entry as { tool?: unknown }).tool;
+    if (typeof tool !== "string" || tool === "") continue;
+    out.push({ tool, approval: normalizeApprovalMode((entry as { approval?: unknown }).approval) });
+  }
+  return out;
+}
+
 /** Risk class for tool categorization. */
 export type RiskClass = "read" | "write" | "execute" | "network";
 
@@ -25,6 +42,22 @@ export type RiskClass = "read" | "write" | "execute" | "network";
 export interface ToolApproval {
   tool: string;
   approval: ApprovalMode;
+}
+
+export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
+
+export interface ProjectScriptAllowlistEntry {
+  manager: PackageManager;
+  args?: string[];
+  cwd?: string;
+  timeoutMs?: number;
+}
+
+export interface SkillRunAllowlistEntry {
+  command: string[];
+  cwd?: string;
+  env?: string[];
+  timeoutMs?: number;
 }
 
 /** Project-level configuration from broagentai.jsonc. */
@@ -35,6 +68,8 @@ export interface ProjectConfig {
   maxFileBytes?: number;
   /** Co-authored-by entries ("Name <email>") for commits; replaces the global list. */
   coAuthors?: string[];
+  scripts?: Record<string, ProjectScriptAllowlistEntry>;
+  skillRuns?: Record<string, SkillRunAllowlistEntry>;
   [key: string]: unknown;
 }
 
@@ -45,6 +80,8 @@ export interface GlobalConfig {
   defaultMaxFileBytes?: number;
   /** Co-authored-by entries ("Name <email>") added to every commit made through BroAgentAI. */
   coAuthors?: string[];
+  scripts?: Record<string, ProjectScriptAllowlistEntry>;
+  skillRuns?: Record<string, SkillRunAllowlistEntry>;
   [key: string]: unknown;
 }
 
@@ -54,13 +91,18 @@ export interface LocalConfig {
   toolOverrides?: ToolApproval[];
   /** Co-authored-by entries; replaces the project/global list ([] turns them off here). */
   coAuthors?: string[];
+  scripts?: Record<string, ProjectScriptAllowlistEntry>;
+  skillRuns?: Record<string, SkillRunAllowlistEntry>;
   [key: string]: unknown;
 }
 
 /** Merged configuration with all layers applied. */
 export interface MergedConfig {
   approval: ApprovalMode;
+  approvalConfigured: boolean;
   toolOverrides: ToolApproval[];
+  scripts: Record<string, ProjectScriptAllowlistEntry>;
+  skillRuns: Record<string, SkillRunAllowlistEntry>;
   ignore: string[];
   maxFileBytes: number;
   /** Co-authored-by entries for commits; the most specific layer that sets coAuthors wins. */
@@ -145,7 +187,10 @@ export function mergeConfig(
   // Start with defaults from store settings
   const merged: MergedConfig = {
     approval: "ask",
+    approvalConfigured: false,
     toolOverrides: [],
+    scripts: {},
+    skillRuns: {},
     ignore: [...storeSettings.ignore],
     maxFileBytes: storeSettings.maxFileBytes,
     coAuthors: [],
@@ -154,8 +199,15 @@ export function mergeConfig(
 
   // Apply global config
   if (global) {
-    if (global.defaultApproval) {
-      merged.approval = global.defaultApproval;
+    if (global.defaultApproval !== undefined) {
+      merged.approval = normalizeApprovalMode(global.defaultApproval);
+      merged.approvalConfigured = true;
+    }
+    if (global.scripts) {
+      merged.scripts = { ...merged.scripts, ...global.scripts };
+    }
+    if (global.skillRuns) {
+      merged.skillRuns = { ...merged.skillRuns, ...global.skillRuns };
     }
     if (global.defaultIgnore) {
       merged.ignore = [...new Set([...merged.ignore, ...global.defaultIgnore])];
@@ -171,11 +223,18 @@ export function mergeConfig(
 
   // Apply project config (overrides global)
   if (project) {
-    if (project.approval) {
-      merged.approval = project.approval;
+    if (project.approval !== undefined) {
+      merged.approval = normalizeApprovalMode(project.approval);
+      merged.approvalConfigured = true;
     }
-    if (project.toolOverrides) {
-      merged.toolOverrides = [...merged.toolOverrides, ...project.toolOverrides];
+    if (project.toolOverrides !== undefined) {
+      merged.toolOverrides = [...merged.toolOverrides, ...normalizeToolOverrides(project.toolOverrides)];
+    }
+    if (project.scripts) {
+      merged.scripts = { ...merged.scripts, ...project.scripts };
+    }
+    if (project.skillRuns) {
+      merged.skillRuns = { ...merged.skillRuns, ...project.skillRuns };
     }
     if (project.ignore) {
       merged.ignore = [...new Set([...merged.ignore, ...project.ignore])];
@@ -191,12 +250,18 @@ export function mergeConfig(
 
   // Apply local config (overrides project)
   if (local) {
-    if (local.approval) {
-      merged.approval = local.approval;
+    if (local.approval !== undefined) {
+      merged.approval = normalizeApprovalMode(local.approval);
+      merged.approvalConfigured = true;
     }
-    if (local.toolOverrides) {
-      // Local overrides take precedence, so we prepend them
-      merged.toolOverrides = [...local.toolOverrides, ...merged.toolOverrides];
+    if (local.toolOverrides !== undefined) {
+      merged.toolOverrides = [...normalizeToolOverrides(local.toolOverrides), ...merged.toolOverrides];
+    }
+    if (local.scripts) {
+      merged.scripts = { ...merged.scripts, ...local.scripts };
+    }
+    if (local.skillRuns) {
+      merged.skillRuns = { ...merged.skillRuns, ...local.skillRuns };
     }
     if (local.coAuthors !== undefined) {
       merged.coAuthors = normalizeCoAuthors(local.coAuthors);

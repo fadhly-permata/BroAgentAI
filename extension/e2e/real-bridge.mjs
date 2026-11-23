@@ -113,7 +113,7 @@ export async function attachBridge(ctx, bridge) {
       const message = JSON.parse(json);
       openPorts.forEach((deliver) => deliver(message));
     };
-    chrome.runtime.connectNative = () => {
+    const connectNative = () => {
       const messageListeners = [];
       const disconnectListeners = [];
       let open = true;
@@ -135,5 +135,7 @@ export async function attachBridge(ctx, bridge) {
       if (offline) setTimeout(() => { open = false; disconnectListeners.forEach((fn) => fn(port)); }, 0);
       return port;
     };
+    globalThis.chrome.runtime.connectNative = connectNative;
+    if (globalThis.browser?.runtime) globalThis.browser.runtime.connectNative = connectNative;
   });
 }

@@ -11,6 +11,7 @@ import { keymap } from '@codemirror/view';
 import { defaultKeymap, historyKeymap } from '@codemirror/commands';
 import { searchKeymap } from '@codemirror/search';
 import { bridge, BridgeErrorCode } from './bridge-client.js';
+import { browser, currentTab } from './browser.ts';
 import { applyTheme, t, type Theme } from './i18n.js';
 import { installContextMenuGuard } from './context-guard.js';
 import { createWorkbench, type EditorTab } from './file-preview.js';
@@ -202,8 +203,8 @@ async function openTarget(target: EditorTarget): Promise<void> {
 
 // The side panel opens later files here instead of a new browser tab.
 let myTabId: number | undefined;
-try { chrome.tabs.getCurrent((tab) => { myTabId = tab?.id; }); } catch { /* not in a tab */ }
-chrome.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
+void currentTab().then((tab) => { myTabId = tab?.id; }).catch(() => { /* not in a tab */ });
+browser.runtime.onMessage.addListener((msg: any, _sender, sendResponse) => {
   if (msg?.type !== OPEN_MESSAGE || msg.tabId !== myTabId || !msg.target?.path) return;
   void openTarget(msg.target as EditorTarget);
   sendResponse({ ok: true });

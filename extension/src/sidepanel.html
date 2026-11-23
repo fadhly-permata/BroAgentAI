@@ -139,7 +139,23 @@
       <p id="modeHint" class="hint"></p>
     </div>
 
-    <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><p id="apContext" class="hint hidden"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><p id="apNote" class="hint"></p><div class="btn-row"><button id="apAllow" class="primary">Allow</button><button id="apDeny" class="danger">Deny</button></div></div>
+    <div class="section quick-actions">
+      <span class="section-title" data-i18n="quickActionsTitle">Quick actions</span>
+      <div class="quick-action-row">
+        <button class="mini" data-quick-action="summarizeWorkspace" data-i18n="quickActionSummarize">Summarize workspace</button>
+        <button class="mini" data-quick-action="runTests" data-i18n="quickActionRunTests">Run tests</button>
+        <button class="mini" data-quick-action="explainDiff" data-i18n="quickActionExplainDiff">Explain diff</button>
+        <button class="mini" data-quick-action="fixLint" data-i18n="quickActionFixLint">Fix lint</button>
+      </div>
+      <p class="hint" data-i18n="quickActionsHint">Actions ask the AI to use existing tools; approval mode is unchanged.</p>
+    </div>
+
+    <div id="approvalCard" class="card approval hidden"><div class="ap-head"><span id="apRisk" class="risk risk-write">WRITE</span><b id="apTool"></b></div><p id="apSummary"></p><p id="apContext" class="hint hidden"></p><pre id="apDiff" class="diff"></pre><pre id="apParams"></pre><p id="apNote" class="hint"></p><div class="btn-row"><button id="apAllow" class="primary" data-i18n="allow">Allow</button><button id="apDeny" class="danger" data-i18n="deny">Deny</button></div></div>
+
+    <div class="section transcript-section">
+      <div class="log-head"><span class="section-title" data-i18n="transcriptTitle">Transcript</span><div class="log-tools"><button id="transcriptRefresh" class="action" data-i18n-title="refresh" title="Refresh"><i data-icon="refresh"></i></button><button id="transcriptExportJson" class="mini" data-i18n="transcriptExportJson">JSON</button><button id="transcriptExportMd" class="mini" data-i18n="transcriptExportMd">Markdown</button></div></div>
+      <pre id="transcriptView" class="transcript-view" aria-live="polite"></pre>
+    </div>
 
     <div class="log-section">
       <div class="log-head"><span class="section-title" data-i18n="activity">Aktivitas</span><div class="log-tools"><select id="logFilter" class="compact" aria-label="Filter"><option value="all" data-i18n="all">Semua</option><option value="ok" data-i18n="success">Sukses</option><option value="denied" data-i18n="denied">Ditolak</option><option value="error" data-i18n="error">Error</option></select><button id="copyLog" class="action" data-i18n-title="copy" title="Copy"><i data-icon="copy"></i></button><button id="clearLog" class="action" data-i18n-title="clear" title="Clear"><i data-icon="clear-all"></i></button></div></div>
@@ -180,6 +196,8 @@
     <h3 data-i18n="displayLang">Tampilan, Tema &amp; Bahasa</h3>
     <div class="setting"><label class="setting-title" for="langSel" data-i18n="langLabel">Bahasa / Language</label><p class="setting-desc" data-i18n="langDesc">Language of the panel interface.</p><select id="langSel" class="setting-control"><option value="id">Bahasa Indonesia</option><option value="en">English</option></select></div>
     <div class="setting"><label class="setting-title" for="themeSel" data-i18n="themeLabel">Tema</label><p class="setting-desc" data-i18n="themeDesc">Color theme. System follows the operating system setting.</p><select id="themeSel" class="setting-control"><option value="system" data-i18n="systemTheme">System (Otomatis)</option><option value="dark" data-i18n="darkTheme">Dark</option><option value="light" data-i18n="lightTheme">Light</option></select></div>
+    <div class="setting"><label class="setting-title" for="densitySel" data-i18n="densityLabel">Layout density</label><p class="setting-desc" data-i18n="densityDesc">Row and spacing density of the panel.</p><select id="densitySel" class="setting-control"><option value="comfortable" data-i18n="densityComfortable">Comfortable</option><option value="compact" data-i18n="densityCompact">Compact</option></select></div>
+    <div class="setting"><label class="setting-title" for="panelWidthSel" data-i18n="panelWidthLabel">Panel width</label><p class="setting-desc" data-i18n="panelWidthDesc">Compact keeps narrow side panels dense; wide uses more breathing room.</p><select id="panelWidthSel" class="setting-control"><option value="compact" data-i18n="panelWidthCompact">Compact</option><option value="wide" data-i18n="panelWidthWide">Wide</option></select></div>
     <div class="setting"><label class="setting-title" for="fontSize" data-i18n="fontSizeLabel">Font Size</label><p class="setting-desc" data-i18n="fontSizeDesc">Font size in pixels for the panel and the file preview.</p><div class="num-row"><input type="number" id="fontSize" value="13" min="9" max="24" class="input-sm"><span class="muted">px</span></div></div>
     <div class="setting"><label class="setting-title" for="tabSize" data-i18n="tabSizeLabel">Tab Size</label><p class="setting-desc" data-i18n="tabSizeDesc">Number of spaces a tab is equal to in the file preview.</p><div class="num-row"><input type="number" id="tabSize" value="2" min="1" max="8" class="input-sm"></div></div>
     <div class="setting"><span class="setting-title" data-i18n="wordWrapLabel">Word wrap</span><label class="chk"><input type="checkbox" id="wrapChk"><span data-i18n="wordWrapDesc">Wrap long lines in the file preview.</span></label></div>
@@ -188,9 +206,12 @@
 
   <div id="set-companion" class="set-panel">
     <h3 data-i18n="companionHost">Companion Host</h3>
-    <div class="kv"><span class="kv-key" data-i18n="versionLabel">Version</span><b class="kv-val">0.1.0-dev</b></div>
+    <div class="kv"><span class="kv-key" data-i18n="hostVersionLabel">Host version</span><b id="hostVersion" class="kv-val" data-i18n="hostVersionUnknownValue">unknown</b></div>
+    <div class="kv"><span class="kv-key" data-i18n="hostUpdateStatusLabel">Update status</span><span id="hostUpdateStatus" class="kv-val pill pill-warn" data-i18n="hostVersionUnknown">Version unavailable; companion may be offline</span></div>
+    <div class="btn-row"><button id="hostUpdateBtn" class="mini" disabled data-i18n="hostUpdateBtn">How to update</button></div>
     <div class="kv"><span class="kv-key" data-i18n="extIdLabel">Extension ID</span><code id="extId" class="kv-val"></code></div>
     <div class="kv"><span class="kv-key" data-i18n="protocolLabel">Protocol</span><span id="protocolStatus" class="kv-val"></span></div>
+    <div class="kv"><span class="kv-key" data-i18n="shellLabel">Shell</span><span id="shellStatus" class="kv-val"></span></div>
     <div class="btn-row"><button id="diagBtn"><i data-icon="stethoscope"></i><span data-i18n="diagnostics">Diagnostik</span></button><button id="restart2Btn"><i data-icon="debug-restart"></i><span data-i18n="restartCompanion">Restart Companion</span></button></div>
     <pre id="diagOut" class="code-block hidden"></pre>
   </div>
@@ -198,6 +219,7 @@
   <div id="set-agent" class="set-panel">
     <h3 data-i18n="agentSettings">Agent</h3>
     <div class="setting"><label class="setting-title" data-i18n="contextTitle">Project context</label><p class="setting-desc" data-i18n="contextRefreshDesc">Re-read the BroAgentAI section of AGENTS.md. An active session receives the refreshed context without a restart.</p><div class="btn-row"><button id="contextRefreshBtn" class="mini"><i data-icon="refresh"></i><span data-i18n="contextRefresh">Refresh context</span></button></div><p id="contextStatus" class="muted"></p></div>
+    <div class="setting"><label class="setting-title" for="sessionIdInput" data-i18n="sessionResumeTitle">Saved sessions</label><p class="setting-desc" data-i18n="sessionResumeDesc">Use a Session ID in another window or profile to continue the same task. The workspace handoff file stays as a fallback.</p><div class="btn-row"><input id="sessionIdInput" class="input setting-control" data-i18n-placeholder="sessionIdPlaceholder" placeholder="task-2026-11-23" maxlength="64" /><button id="sessionUse" class="mini" data-i18n="sessionUse">Use ID</button><button id="sessionSave" class="mini" data-i18n="sessionSave">Save now</button><button id="sessionRefresh" class="mini" data-i18n="refresh">Refresh</button></div><div id="sessionList" class="session-list"></div></div>
     <div class="setting"><label class="setting-title" for="agentDelay" data-i18n="agentDelayLabel">Jeda sebelum tiap kirim</label><p class="setting-desc" data-i18n="agentDelayDesc">Detik yang ditunggu agent sebelum mengetik hasil tool ke chat.</p><div class="num-row"><input type="number" id="agentDelay" value="0" min="0" max="300" step="0.5" class="input-sm"><span class="muted" data-i18n="seconds">detik</span></div></div>
   </div>
 

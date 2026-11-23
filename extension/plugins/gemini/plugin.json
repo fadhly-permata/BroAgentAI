@@ -19,6 +19,7 @@
     "assistantMessage": "model-response message-content",
     "userMessage": "user-query .user-query-bubble-with-background",
     "generating": ".send-button-container mat-icon[fonticon='stop']",
+    "messageKeyFallback": true,
     "exclude": "elicitations, .code-block-decoration"
   }
 }

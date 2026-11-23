@@ -1,0 +1,10 @@
+{
+  "apiVersion": 1,
+  "id": "plugin-a",
+  "name": "Fake chat A",
+  "version": "1.0.0",
+  "homepage": "https://chat-a.example.test/",
+  "matches": ["https://chat-a.example.test/*"],
+  "status": "experimental",
+  "selectors": { "composer": "textarea", "assistantMessage": ".reply" }
+}

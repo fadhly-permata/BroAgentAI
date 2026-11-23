@@ -9,25 +9,31 @@
 
 import { ErrorCode } from "./rpc.ts";
 import type { RpcRequest, RpcResponse } from "./rpc.ts";
-import { WorkspaceError, WorkspaceStore, validateWorkspacePath } from "./workspace.ts";
+import { WorkspaceError, WorkspaceStore, validateWorkspacePath, resolveRootPath } from "./workspace.ts";
 import type { WorkspaceInfo } from "./rpc.ts";
-import { listDir, listTree, statFile, readFile, readFileLines, writeFile, searchFiles } from "./fs.ts";
+import { listDir, listTree, statFile, readFile, readFileLines, writeFile, searchFiles, confinePath } from "./fs.ts";
+import { listProjectScripts, runProjectScript } from "./scripts.ts";
+import { clearSkillRunHistory, listSkillRuns, runSkillScript, skillRunHistory } from "./skill-runs.ts";
 import { commitCoAuthors } from "./co-authors.ts";
 import { loadMergedConfig } from "./config.ts";
 import { loadAllResources, loadRule, loadSkill } from "./resources.ts";
 import { ensureContextTemplate, readContext } from "./context.ts";
+import { discoverEnvironment, refreshEnvironment } from "./environment.ts";
+import { clearDependencyHistory, dependencyHistory, discoverCapabilities, installDependency, planDependency, recommendCapabilities } from "./capabilities.ts";
 import { createLogger } from "./logger.ts";
 import { openFolderDialog } from "./dialog.ts";
 import { buildPrompt, callTool, checkTool, listTools } from "./agent.ts";
 import { createFile, deletePath, makeDir, renamePath } from "./fs-ops.ts";
 import { McpManager } from "./mcp.ts";
-import { detectedShell, runShell } from "./shell.ts";
+import { additionalShellPlan, cancelShell, clearShellHistory, detectedShell, runShell, shellHistory, shellInfoReport, shellOutput, shellPoll, shellStatus, shutdownShells, startShellBackground } from "./shell.ts";
+import { planWorkflow, runWorkflow } from "./workflow.ts";
+import { fallbackPlan } from "./fallback.ts";
 import { TerminalManager } from "./terminal.ts";
 import type { EmitEvent } from "./terminal.ts";
 import { WorkspaceWatcher } from "./watcher.ts";
 import {
-  gitAbort, gitBranches, gitCheckout, gitCommit, gitCommitDiff, gitCommitFiles, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitLog, gitPull, gitPush,
-  gitStage, gitStatus, gitTestRemote, gitUnstage,
+  gitAbort, gitBlame, gitBranches, gitCheckout, gitCommit, gitCommitDiff, gitCommitFiles, gitCreateBranch, gitDiff, gitDiscard, gitFetch, gitInit, gitLog, gitPull, gitPush,
+  gitStage, gitStashDrop, gitStashList, gitStashPop, gitStashPush, gitStageLines, gitStatus, gitTestRemote, gitUnstage,
 } from "./git.ts";
 import { SessionStore } from "./session-store.ts";
 
@@ -46,7 +52,7 @@ export const NOT_SANDBOX_NOTICE =
   "Workspace confinement is not a sandbox. Shell commands run with your account rights and can access anything you can.";
 
 /** Version of the bridge host, reported by `system.info`. */
-export const HOST_VERSION = "0.1.0";
+export const HOST_VERSION = "0.2.0";
 
 /** Host name used for the Native Messaging registration. */
 export const HOST_NAME = "com.broagentai.host";
@@ -114,6 +120,7 @@ export class RpcServer {
   async shutdown(): Promise<void> {
     this.#watcher?.close();
     this.#terminals.closeAll();
+    await shutdownShells();
     await this.#mcp.stopAll();
   }
 
@@ -218,6 +225,7 @@ export class RpcServer {
       protocolVersion: PROTOCOL_VERSION,
       protocol: PROTOCOL_INFO,
       detectedShell: detectedShell(),
+      environment: discoverEnvironment(),
       notSandbox: NOT_SANDBOX_NOTICE,
       hostName: HOST_NAME,
       platform: process.platform,
@@ -230,14 +238,63 @@ export class RpcServer {
     }));
 
     this.register("shell.info", () => ({
-      ...detectedShell(),
+      ...shellInfoReport(),
       notSandbox: NOT_SANDBOX_NOTICE,
+      ...shellStatus(),
     }));
+
+    this.register("shell.environmentPlan", () => additionalShellPlan());
+
+    this.register("environment.info", () => discoverEnvironment());
+    this.register("environment.refresh", () => refreshEnvironment());
+
+    this.register("capabilities.discover", (params) => discoverCapabilities(this.#store, readParams(params ?? {})));
+    this.register("capabilities.recommend", (params) => recommendCapabilities(readParams(params).need, this.#store, readParams(params)));
+    this.register("dependency.plan", (params) => planDependency(this.#store, readParams(params)));
+    this.register("dependency.install", (params) => installDependency(this.#store, readParams(params)));
+    this.register("dependency.history", (params) => dependencyHistory(readParams(params ?? {})));
+    this.register("dependency.history.clear", (params) => clearDependencyHistory(readParams(params ?? {})));
+
+    this.register("script.list", () => listProjectScripts(this.#store));
+    this.register("script.run", (params) => runProjectScript(this.#store, readParams(params)));
+    this.register("skill.list", () => listSkillRuns(this.#store));
+    this.register("skill.run", (params) => runSkillScript(this.#store, readParams(params)));
+    this.register("skill.history", () => skillRunHistory());
+    this.register("skill.history.clear", () => clearSkillRunHistory());
 
     this.register("workspace.list", () => ({
       workspaces: this.#store.list(),
       activeWorkspaceId: this.#store.active()?.id ?? null,
     }));
+
+    this.register("root.list", () => ({
+      roots: this.#store.roots(),
+      activeRootId: this.#store.active()?.id ?? null,
+    }));
+    this.register("root.setActive", (params) => {
+      const { id, rootId } = readParams(params);
+      const workspace = this.#store.setActive(typeof id === "string" ? id : rootId);
+      this.#watcher?.restart();
+      return { root: { ...workspace, rootId: workspace.id, active: true }, activeRootId: workspace.id };
+    });
+    this.register("root.remove", (params) => {
+      const { id, rootId } = readParams(params);
+      const result = this.#store.remove(typeof id === "string" ? id : rootId);
+      this.#watcher?.restart();
+      return result;
+    });
+    this.register("root.resolve", (params) => {
+      const { path } = readParams(params);
+      const resolved = resolveRootPath(this.#store, path);
+      const absolute = confinePath(resolved.root.path, resolved.relativePath);
+      const relativePath = absolute.slice(resolved.root.path.length).replace(/^[\\/]/, "").replace(/\\/g, "/") || ".";
+      return {
+        rootId: resolved.root.id,
+        rootPath: resolved.root.path,
+        relativePath,
+        path: absolute,
+      };
+    });
 
     this.register("workspace.add", (params) => {
       const { path, name } = readParams(params);
@@ -354,6 +411,18 @@ export class RpcServer {
     this.register("git.abort", () => gitAbort(this.#store));
     this.register("git.testRemote", (params) => gitTestRemote(this.#store, readParams(params).remote));
     this.register("git.log", (params) => gitLog(this.#store, params == null ? undefined : readParams(params).maxCount));
+    this.register("git.blame", (params) => gitBlame(this.#store, readParams(params).path));
+    this.register("git.stashList", () => gitStashList(this.#store));
+    this.register("git.stashPush", (params) => gitStashPush(this.#store, readParams(params ?? {}).message));
+    this.register("git.stashPop", (params) => {
+      const p = readParams(params);
+      return gitStashPop(this.#store, p.index, p.confirmed);
+    });
+    this.register("git.stashDrop", (params) => {
+      const p = readParams(params);
+      return gitStashDrop(this.#store, p.index, p.confirmed);
+    });
+    this.register("git.stageLines", (params) => gitStageLines(this.#store, params));
     this.register("git.commitFiles", (params) => gitCommitFiles(this.#store, readParams(params).hash));
     this.register("git.commitDiff", (params) => {
       const p = readParams(params);
@@ -392,8 +461,25 @@ export class RpcServer {
     // One-shot shell command for the agent. Not confined to the workspace; see shell.ts.
     this.register("shell.run", (params) => {
       const p = readParams(params);
-      return runShell(this.#store, p.command, p.cwd, p.timeoutMs, p);
+      return runShell(this.#store, p.command, p.cwd, p.timeoutMs, p, (info) => this.#emit("shell.started", info));
     });
+    this.register("shell.start", (params) => {
+      const p = readParams(params);
+      return startShellBackground(this.#store, p.command, p.cwd, p.timeoutMs, p, (event, payload) => this.#emit(event, payload));
+    });
+    this.register("shell.poll", (params) => shellPoll(readParams(params).executionId));
+    this.register("shell.cancel", (params) => cancelShell(readParams(params).executionId));
+    this.register("shell.output", (params) => {
+      const p = readParams(params);
+      return shellOutput(p.executionId, p.stream, p.offsetBytes);
+    });
+    this.register("shell.status", () => shellStatus());
+    this.register("shell.history", (params) => shellHistory(readParams(params ?? {})));
+    this.register("shell.history.clear", (params) => clearShellHistory(readParams(params ?? {})));
+
+    this.register("workflow.plan", (params) => planWorkflow(this.#store, readParams(params)));
+    this.register("workflow.run", (params) => runWorkflow(this.#store, readParams(params), (event, payload) => this.#emit(event, payload)));
+    this.register("shell.fallbackPlan", (params) => fallbackPlan(this.#store, readParams(params)));
 
     // Agent: tool catalog, approval policy and operating prompt. See agent.ts.
     this.register("tools.list", () => listTools(this));
@@ -407,7 +493,7 @@ export class RpcServer {
     });
     this.register("agent.callTool", (params) => {
       const p = readParams(params);
-      return callTool(this, p.command, p.params, p.mode, p.approved);
+      return callTool(this, p.command, p.params, p.mode, p.approved, { sessionId: p.sessionId, taskId: p.taskId });
     });
     // Cross-context session resume (spec 8.1): persist a handoff snapshot by Session ID
     // so the same task can resume in another window/profile. See session-store.ts.

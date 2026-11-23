@@ -16,13 +16,15 @@ log.info("bridge starting");
  * but we verify the origin shape as well and log the (redacted) origin.
  */
 function readCallerOrigin(argv: string[]): string | null {
-  const origin = argv.find((arg) => arg.startsWith("chrome-extension://"));
+  const origin = argv.find((arg) => arg.startsWith("chrome-extension://") || arg.startsWith("moz-extension://"));
   return origin ?? null;
 }
 
 async function main(): Promise<void> {
   const origin = readCallerOrigin(process.argv.slice(2));
-  log.info("bridge ready", { fields: { origin } });
+  const firefox = origin?.startsWith("moz-extension://") ?? false;
+  const addonId = firefox ? origin!.slice("moz-extension://".length).replace(/\/$/, "") : null;
+  log.info("bridge ready", { fields: { origin, browser: origin ? (firefox ? "firefox" : "chromium") : null, addonId } });
 
   const send = (payload: unknown): void => {
     writeFrame(process.stdout, payload).catch((error) => {

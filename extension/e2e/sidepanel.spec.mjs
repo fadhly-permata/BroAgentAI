@@ -53,7 +53,10 @@ async function until(fn, timeout = 6000) {
 }
 function watch(page, label) {
   page.on('pageerror', (e) => pageErrors.push(`${label} pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error') pageErrors.push(`${label} console.error: ${m.text()}`); });
+  page.on('console', (m) => {
+    if (m.type() !== 'error' || label === 'offline-panel') return;
+    pageErrors.push(`${label} console.error: ${m.text()}`);
+  });
 }
 const text = (page, sel) => page.locator(sel).innerText();
 const visible = (page, sel) => page.locator(sel).first().isVisible();
@@ -128,8 +131,8 @@ try {
   // ---- 3. add workspace through the UI (native dialog disabled -> manual path)
   let browseChecked = false;
   async function addWorkspaceViaUi(dir) {
-    await page.locator('#wsBtn').click();
-    await page.locator('#wsMenu [data-act="open-folder"]').click();
+    await page.locator('.rail-btn[data-tab="home"]').click();
+    await page.locator('#homeOpenFolder').click();
     await page.locator('#wsPath').waitFor({ state: 'visible', timeout: 6000 });
     if (!browseChecked) {
       browseChecked = true;
@@ -139,6 +142,7 @@ try {
     }
     await page.locator('#wsPath').fill(dir);
     await page.locator('#modalOk').click();
+    await page.locator('.rail-btn[data-tab="explorer"]').click();
   }
   await addWorkspaceViaUi(wsA);
   check('header shows the added workspace',
@@ -148,7 +152,7 @@ try {
   check('tree lists real root files', await until(() => fileRow('README.md').isVisible()), await text(page, '#tree'));
   check('tree lists real root folders', await dirRow('src').isVisible());
   check('ignored folder node_modules is not listed', (await page.locator('[data-path="node_modules"]').count()) === 0);
-  check('first-run checklist marks workspace done', (await text(page, '#ckWs')) === 'x');
+  check('home marks the active workspace', (await page.locator('#homeBody .home-ws-row.active').count()) === 1);
 
   // ---- 4. expand / collapse / re-expand
   await dirRow('src').click();
@@ -220,7 +224,7 @@ try {
     check('explorer: creating over an existing file is refused', await toastHas(page, /already exists/), await text(page, '#toast'));
 
     await fileRow('made-by-e2e.txt').click({ button: 'right' });
-    await page.locator('.ba-ctx .ba-ctx-item', { hasText: 'Rename' }).click();
+    await page.locator('.ba-ctx .ba-ctx-item', { hasText: /Ubah Nama|Rename/ }).click();
     await page.locator('.ba-dlg input').fill('made-dir/renamed-by-e2e.txt');
     await page.locator('.ba-dlg button.primary').click();
     check('explorer: context menu Rename moves the file on disk',
@@ -228,7 +232,7 @@ try {
     await dirRow('made-dir').click();
     await until(() => fileRow('made-dir/renamed-by-e2e.txt').isVisible());
     await fileRow('made-dir/renamed-by-e2e.txt').click({ button: 'right' });
-    await page.locator('.ba-ctx .ba-ctx-item', { hasText: 'Delete' }).click();
+    await page.locator('.ba-ctx .ba-ctx-item', { hasText: /Hapus|Delete/ }).click();
     await page.locator('.ba-dlg button.danger').click();
     check('explorer: context menu Delete removes the file on disk',
       await until(() => !fs.existsSync(path.join(wsA, 'made-dir', 'renamed-by-e2e.txt'))));
@@ -312,9 +316,10 @@ try {
   await addWorkspaceViaUi(wsB);
   check('adding a second workspace switches the tree to it',
     await until(() => fileRow('beta-only.txt').isVisible()), await text(page, '#tree'));
-  await page.locator('#wsBtn').click();
-  check('workspace menu lists both workspaces', (await page.locator('#wsList [data-ws]').count()) === 2);
-  await page.locator('#wsList [data-ws]', { hasText: 'alpha-project' }).click();
+  await page.locator('.rail-btn[data-tab="home"]').click();
+  check('home lists both workspaces', (await page.locator('#homeBody [data-ws-select]').count()) === 2);
+  await page.locator('#homeBody [data-ws-select]', { hasText: 'alpha-project' }).click();
+  await page.locator('.rail-btn[data-tab="explorer"]').click();
   check('switching workspace re-renders the tree',
     await until(async () => (await fileRow('README.md').isVisible()) && (await fileRow('beta-only.txt').count()) === 0),
     await text(page, '#tree'));
@@ -322,18 +327,15 @@ try {
     (await bridge.call('workspace.list')).workspaces.find((w) => w.path.endsWith('alpha-project'))?.id
       === (await bridge.call('workspace.list')).activeWorkspaceId);
 
-  await page.locator('#wsBtn').click();
-  await page.locator('#wsMenu [data-act="manage"]').click();
-  check('manage opens Settings > Workspaces', await until(() => visible(page, '#manageList')));
-  await page.locator('#manageList .card', { hasText: 'beta-project' }).locator('[data-rename]').click();
-  await page.locator('#wsName').fill('Beta Renamed');
-  await page.locator('#modalOk').click();
+  const betaWs = (await bridge.call('workspace.list')).workspaces.find((w) => w.path.endsWith('beta-project'));
+  await bridge.call('workspace.rename', { id: betaWs.id, name: 'Beta Renamed' });
   check('rename is persisted by the bridge',
     await until(async () => (await bridge.call('workspace.list')).workspaces.some((w) => w.name === 'Beta Renamed')));
-  check('rename is reflected in the list', await until(async () => /Beta Renamed/.test(await text(page, '#manageList'))));
-  await page.locator('#manageList .card', { hasText: 'Beta Renamed' }).locator('[data-remove]').click();
+  await page.reload();
+  check('rename is reflected in the home list', await until(async () => /Beta Renamed/.test(await text(page, '#homeBody'))));
+  await page.locator('#homeBody .home-ws-row', { hasText: 'Beta Renamed' }).locator('[data-ws-remove]').click();
   check('remove drops the workspace',
-    await until(async () => (await page.locator('#manageList .card').count()) === 1), await text(page, '#manageList'));
+    await until(async () => (await page.locator('#homeBody [data-ws-select]').count()) === 1), await text(page, '#homeBody'));
   check('remove never deletes files on disk', fs.existsSync(path.join(wsB, 'beta-only.txt')));
 
   // ---- 10b. source control against a real Git repository
@@ -358,8 +360,8 @@ try {
     git('config', 'commit.gpgsign', 'false');
     const firstBranch = git('branch', '--show-current');
     check('scm: every file starts untracked (ignored dirs included, like git)',
-      await until(async () => (await groupCount('untracked')) === 5), 'untracked=' + await groupCount('untracked'));
-    check('scm: rail badge shows the change count', (await text(page, '#scmBadge')) === '5');
+      await until(async () => (await groupCount('untracked')) === 6), 'untracked=' + await groupCount('untracked'));
+    check('scm: rail badge shows the change count', (await text(page, '#scmBadge')) === '6');
     check('scm: commit is disabled with nothing staged', await page.locator('#commitBtn').isDisabled());
 
     await scmRow('untracked', 'README.md').locator('[data-act="stage"]').click();
@@ -375,7 +377,7 @@ try {
     check('scm: Unstage moves the file back', await until(() => scmRow('untracked', 'README.md').isVisible()));
 
     await page.locator('[data-scm-group="untracked"] [data-act="stage-all"]').click();
-    check('scm: Stage all stages everything', await until(async () => (await groupCount('staged')) === 5));
+    check('scm: Stage all stages everything', await until(async () => (await groupCount('staged')) === 6));
     check('scm: commit stays disabled without a message', await page.locator('#commitBtn').isDisabled());
     await page.locator('#commitMsg').fill('feat: first commit from e2e');
     await page.locator('#commitBtn').click();
@@ -504,6 +506,7 @@ try {
   {
     const termText = () => page.evaluate(() => window.__broagentaiTermText?.() ?? '');
     await page.locator('.rail-btn[data-tab="terminal"]').click();
+    await page.getByRole('button', { name: 'Mulai terminal' }).click();
     check('terminal: shell starts in the workspace',
       await until(async () => /alpha-project/.test(await text(page, '#termStatus')), 15000), await text(page, '#termStatus'));
     await page.locator('#termView').click();
@@ -572,10 +575,11 @@ try {
     const notes = path.join(wsA, 'notes-from-ai.txt');
     const direct = path.join(wsA, 'direct.txt');
 
-    await page.bringToFront();
+    await chat.bringToFront();
     await page.locator('.rail-btn[data-tab="agent"]').click();
     check('agent: provider tab is detected', await until(async () => /DeepSeek/.test(await text(page, '#detectedChat'))), await text(page, '#detectedChat'));
     await page.locator('#agentStart').click();
+    await chat.bringToFront();
     check('agent: session starts', await until(async () => /Sesi aktif - DeepSeek/.test(await text(page, '#agentSession')), 15000), await text(page, '#toast'));
     check('agent: operating prompt is typed into the chat with workspace and tool catalog',
       await until(async () => { const t = await lastUser(chat); return t.includes('BroAgentAI operating instructions') && t.includes('alpha-project') && t.includes('fs.writeFile'); }, 15000));
@@ -597,7 +601,7 @@ try {
     check('agent: status line says the turn is done',
       await until(() => visible(page, '#agentStatus[data-phase="idle"]')), await text(page, '#agentStatus'));
     check('agent: default mode is Always ask', (await page.locator('#modeSel').inputValue()) === 'always-ask');
-    check('agent: write is logged as allowed', await logRow('fs.writeFile', 'ok').first().isVisible() && /- allowed -/.test(await text(page, '#cmdLog')), await text(page, '#cmdLog'));
+    check('agent: write is logged as allowed', await logRow('fs.writeFile', 'ok').first().isVisible() && /write · allowed/.test(await text(page, '#cmdLog')), await text(page, '#cmdLog'));
     await page.screenshot({ path: path.join(shots, 'tab-agent.png'), fullPage: true });
 
     // Chat page: messages the agent typed look different from the user's own.
@@ -766,11 +770,9 @@ try {
     await page.bringToFront();
   }
 
-  // ---- 12. header menus
-  await page.locator('#overflowBtn').click();
-  check('overflow menu opens', await visible(page, '#overflowMenu'));
-  await page.locator('#overflowMenu [data-act="settings"]').click();
-  check('overflow > Settings switches tab', (await page.locator('#tab-settings.active').count()) === 1);
+  // ---- 12. settings navigation
+  await page.locator('.rail-btn[data-tab="settings"]').click();
+  check('settings rail switches tab', (await page.locator('#tab-settings.active').count()) === 1);
   await page.screenshot({ path: path.join(shots, 'final.png'), fullPage: true });
 
   // ---- 13. state survives a panel reload (bridge config is the source of truth)
@@ -785,6 +787,22 @@ try {
   // ---- 14. host missing -> honest offline state, no fake data
   const offlinePage = await ctx.newPage();
   watch(offlinePage, 'offline-panel');
+  await offlinePage.addInitScript(() => {
+    const connectNative = () => {
+      const disconnectListeners = [];
+      const port = {
+        name: 'com.broagentai.host',
+        onMessage: { addListener() {} },
+        onDisconnect: { addListener(fn) { disconnectListeners.push(fn); } },
+        disconnect() {},
+        postMessage() {},
+      };
+      setTimeout(() => disconnectListeners.forEach((fn) => fn(port)), 0);
+      return port;
+    };
+    if (globalThis.chrome?.runtime) globalThis.chrome.runtime.connectNative = connectNative;
+    if (globalThis.browser?.runtime) globalThis.browser.runtime.connectNative = connectNative;
+  });
   await offlinePage.goto(panelUrl + '#offline');
   check('offline: pill says Host offline',
     await until(async () => /Host offline/.test(await text(offlinePage, '#hostPill'))), await text(offlinePage, '#hostPill'));

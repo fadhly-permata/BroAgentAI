@@ -3,6 +3,7 @@
 // Explorer or Search, or a diff from Source Control. When the editor page is
 // already open the panel focuses it and asks it (runtime message) to open or
 // activate the editor tab; only the first file opens a new browser tab.
+import { browser } from './browser.ts';
 
 export interface EditorTarget {
   path: string;
@@ -53,20 +54,20 @@ export function targetFromQuery(query: string): EditorTarget | null {
 
 /** Open the target in the editor page: focus the open one and add an editor tab there, or open the page. */
 export async function openEditorTab(target: EditorTarget): Promise<void> {
-  const base = chrome.runtime.getURL('src/editor.html');
+  const base = browser.runtime.getURL('src/editor.html');
   try {
-    const pages = (await chrome.tabs.query({ url: base + '*' }))
+    const pages = (await browser.tabs.query({ url: base + '*' }))
       .filter((t) => t.id !== undefined && t.status === 'complete')
       .sort((a, b) => ((b as any).lastAccessed ?? 0) - ((a as any).lastAccessed ?? 0));
     const page = pages[0];
     if (page?.id !== undefined) {
-      const reply = await chrome.runtime.sendMessage({ type: OPEN_MESSAGE, tabId: page.id, target }).catch(() => null);
+      const reply = await browser.runtime.sendMessage({ type: OPEN_MESSAGE, tabId: page.id, target }).catch(() => null);
       if (reply?.ok) {
-        await chrome.tabs.update(page.id, { active: true });
-        if (page.windowId !== undefined) await chrome.windows.update(page.windowId, { focused: true });
+        await browser.tabs.update(page.id, { active: true });
+        if (page.windowId !== undefined) await browser.windows.update(page.windowId, { focused: true });
         return;
       }
     }
   } catch { /* fall back to a new editor page */ }
-  await chrome.tabs.create({ url: `${base}?${editorQuery(target)}` });
+  await browser.tabs.create({ url: `${base}?${editorQuery(target)}` });
 }

@@ -6,8 +6,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcServer } from "./rpc-server.ts";
 import { WorkspaceStore } from "./workspace.ts";
-import { AGENT_MODES, approvalKey, decide, normalizeMode, writePreview } from "./agent.ts";
+import { AGENT_MODES, approvalKey, decide, normalizeMode, resolveAgentMode, writePreview } from "./agent.ts";
 import type { ToolCategory } from "./agent.ts";
+import { mergeConfig, normalizeApprovalMode } from "./config.ts";
+import { detectShell } from "./shell.ts";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/mcp-fixture-server.mjs", import.meta.url));
 
@@ -61,6 +63,35 @@ test("approvalKey: one key per tool, but shell keys bind shell, cwd and command"
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "rm -rf ." }, base));
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, cwd: "/ws/sub" }));
   assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.run", { command: "npm test" }, { ...base, shellFamily: "powershell" }));
+  assert.notEqual(approvalKey("shell.run", { command: "npm test" }, base), approvalKey("shell.start", { command: "npm test" }, base));
+  assert.equal(approvalKey("workflow.run", { planId: "unknown" }, base), "workflow.run:v2:sh:native-linux:/ws:/ws:unknown:");
+});
+
+test("dependency.install always asks and is never remembered as pre-approved", async () => {
+  const { ok, call } = await fixture();
+  const plan = await ok("dependency.plan", {
+    need: "json",
+    scope: "temporary",
+    reason: "JSON support needed",
+    force: true,
+  });
+  const check = await ok("agent.check", {
+    command: "dependency.install",
+    params: { requestId: plan.requestId },
+    mode: "auto-approve",
+  });
+  assert.equal(check.decision, "ask");
+  assert.equal(check.rememberApproval, false);
+  assert.match(check.preview, /npm install/);
+  assert.match(check.approvalKey, /^dependency\.install:v2:/);
+
+  const denied = await call("agent.callTool", {
+    command: "dependency.install",
+    params: { requestId: plan.requestId },
+    mode: "auto-approve",
+    approved: false,
+  });
+  assert.equal(denied.error?.code, -32022);
 });
 
 test("writePreview shows only the changed region", () => {
@@ -75,7 +106,16 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(tools.some((t: any) => t.name === "fs.readFile" && t.category === "read"));
   assert.ok(tools.some((t: any) => t.name === "git.push" && t.category === "sync"));
   assert.ok(tools.some((t: any) => t.name === "shell.run" && t.category === "execute"));
+  assert.ok(tools.some((t: any) => t.name === "shell.start" && t.category === "execute"));
+  assert.ok(tools.some((t: any) => t.name === "shell.poll" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "shell.fallbackPlan" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "shell.environmentPlan" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "workflow.plan" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "workflow.run" && t.category === "execute"));
   assert.ok(tools.some((t: any) => t.name === "context.read" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "capabilities.recommend" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "dependency.plan" && t.category === "read"));
+  assert.ok(tools.some((t: any) => t.name === "dependency.install" && t.category === "execute"));
   assert.ok(!tools.some((t: any) => t.name.startsWith("term."))); // the interactive PTY is not an agent tool
 
   const { prompt, mode, toolCount } = await ok("agent.prompt", { mode: "ask-once" });
@@ -87,11 +127,21 @@ test("tools.list contains built-ins and agent.prompt embeds catalog, shell, inst
   assert.ok(prompt.includes("## Project context (AGENTS.md)"));
   assert.ok(prompt.includes("- Use npm test."));
   assert.ok(prompt.includes("cannot change approval mode"));
+  assert.ok(prompt.includes("shell.start"));
+  assert.ok(prompt.includes("shell.poll"));
+  assert.ok(prompt.includes("shell.fallbackPlan"));
+  assert.ok(prompt.includes("shell.environmentPlan"));
+  assert.ok(prompt.includes("Use fs.* and git.* by default"));
+  assert.ok(prompt.includes("workflow.plan"));
+  assert.ok(prompt.includes("workflow.run"));
+  assert.ok(prompt.includes("do not preserve shell state"));
+  assert.ok(prompt.includes("capabilities.recommend"));
+  assert.ok(prompt.includes("dependency.install"));
   assert.ok(!prompt.includes("old context"));
   assert.ok(prompt.includes("release-notes"));
   assert.ok(!prompt.includes("Do the thing.")); // skill bodies are read on demand
   assert.ok(prompt.includes("- shell.run"));
-  assert.match(prompt, new RegExp(`- Shell: ${process.platform === "win32" ? "powershell" : "sh"}`));
+  assert.match(prompt, new RegExp(`- Shell: ${detectShell().family}`));
   assert.match(prompt, /READY/);
 
   // A handoff prompt must not ask for READY: the AI continues the moved task.
@@ -132,6 +182,9 @@ test("agent.check reports decision, approval key, paths and a preview without ex
 test("agent.callTool enforces the mode on the host", async () => {
   const { ok, call, ws } = await fixture();
   assert.match((await ok("agent.callTool", { command: "fs.readFile", params: { path: "README.md" }, mode: "read-only" })).text, /line two/);
+  const envPlan = await ok("agent.callTool", { command: "shell.environmentPlan", params: {}, mode: "read-only" });
+  assert.equal(JSON.parse(envPlan.text).enabled, false);
+  assert.equal((await call("agent.callTool", { command: "shell.environmentPlan", params: { shell: "cmd.exe" }, mode: "read-only" })).error?.code, -32602);
 
   const write = { command: "fs.writeFile", params: { path: "out.txt", content: "hello" } };
   assert.equal((await call("agent.callTool", { ...write, mode: "read-only", approved: true })).error?.code, -32022); // approval cannot beat read-only
@@ -191,6 +244,74 @@ test("shell.run through the agent: denied, asked, then executed with real output
   assert.equal(override.error?.code, -32602);
 });
 
+test("agent.callTool links a shell execution to a session and task", async () => {
+  const { ok, call } = await fixture();
+  const marker = process.platform === "win32" ? "Write-Output linked" : "echo linked";
+  const res = await ok("agent.callTool", {
+    command: "shell.run",
+    params: { command: marker },
+    mode: "auto-approve",
+    sessionId: "session_link_1",
+    taskId: "task_link_1",
+  });
+  assert.equal(res.sessionId, "session_link_1");
+  assert.equal(res.taskId, "task_link_1");
+  const out = JSON.parse(res.text);
+  assert.equal(out.sessionId, "session_link_1");
+  assert.equal(out.taskId, "task_link_1");
+  assert.match(out.stdout, /linked/);
+
+  const history = await ok("shell.history", { sessionId: "session_link_1", taskId: "task_link_1" });
+  assert.equal(history.total, 1);
+  assert.equal(history.entries[0].executionId, out.executionId);
+  assert.equal(history.entries[0].sessionId, "session_link_1");
+  assert.equal(history.entries[0].taskId, "task_link_1");
+  assert.equal("stdout" in history.entries[0], false);
+  const cleared = await ok("shell.history.clear", { sessionId: "session_link_1" });
+  assert.equal(cleared.cleared, 1);
+  assert.equal((await ok("shell.history", { sessionId: "session_link_1" })).total, 0);
+  assert.equal((await call("agent.callTool", {
+    command: "shell.run",
+    params: { command: marker, sessionId: "../escape" },
+    mode: "auto-approve",
+  })).error?.code, -32602);
+});
+
+test("workflow.run through the agent requires approval and reports plan commands", async () => {
+  const { ok, call } = await fixture();
+  const plan = await ok("workflow.plan", {
+    steps: [{ id: "alpha", command: "node -e \"process.stdout.write('alpha')\"" }],
+  });
+  const check = await ok("agent.check", { command: "workflow.run", params: { planId: plan.planId }, mode: "always-ask" });
+  assert.equal(check.decision, "ask");
+  assert.equal(check.category, "execute");
+  assert.match(check.approvalKey, /^workflow\.run:v2:/);
+  assert.match(check.preview, /alpha/);
+  assert.equal((await call("agent.callTool", { command: "workflow.run", params: { planId: plan.planId }, mode: "always-ask" })).error?.code, -32022);
+
+  const stale = await call("agent.callTool", {
+    command: "workflow.run",
+    params: { planId: plan.planId, approvalContext: { ...check.approvalContext, cwd: "/stale" } },
+    mode: "always-ask",
+    approved: true,
+  });
+  assert.equal(stale.error?.code, -32022);
+  assert.match(stale.error?.message ?? "", /approval expired/);
+
+  const res = await ok("agent.callTool", {
+    command: "workflow.run",
+    params: { planId: plan.planId, approvalContext: check.approvalContext },
+    mode: "always-ask",
+    approved: true,
+  });
+  const out = JSON.parse(res.text);
+  assert.equal(out.status, "completed");
+  assert.equal(out.steps[0].attempts[0].stdout, "alpha");
+
+  const override = await call("agent.check", { command: "workflow.run", params: { planId: plan.planId, shell: "bash" }, mode: "always-ask" });
+  assert.equal(override.error?.code, -32602);
+});
+
 test("large tool results are capped", async () => {
   const { ok, ws } = await fixture();
   writeFileSync(join(ws, "big.txt"), "y".repeat(200 * 1024));
@@ -219,4 +340,145 @@ test("MCP tools join the catalog and follow the same modes", async () => {
   } finally {
     await s.shutdown();
   }
+});
+
+test("new tool catalog exposes scripts, skill runs and extended git tools without exposing term.create", async () => {
+  const { ok } = await fixture();
+  const { tools } = await ok("tools.list");
+  const names = tools.map((tool: any) => tool.name);
+  for (const name of [
+    "script.list", "script.run", "skill.list", "skill.run",
+    "git.log", "git.blame", "git.stashList", "git.stashPush", "git.stashPop", "git.stashDrop", "git.stageLines",
+  ]) {
+    assert.ok(names.includes(name), name);
+  }
+  assert.ok(!names.some((name: string) => name.startsWith("term.")));
+  const { prompt } = await ok("agent.prompt", { mode: "auto-approve" });
+  assert.ok(prompt.includes("script.run"));
+  assert.ok(prompt.includes("skill.run"));
+});
+
+test("skill runs and destructive stash operations always ask in auto-approve", async () => {
+  const { ok } = await fixture();
+  for (const command of ["skill.run", "git.stashPop", "git.stashDrop"]) {
+    const check = await ok("agent.check", { command, params: { name: "ping", index: 0, confirmed: true }, mode: "auto-approve" });
+    assert.equal(check.decision, "ask", command);
+  }
+  const script = await ok("agent.check", { command: "script.run", params: { name: "test" }, mode: "auto-approve" });
+  assert.equal(script.decision, "auto");
+});
+
+test("config approval can only tighten the panel mode, never elevate it", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "ba-agent-policy-cfg-"));
+  const ws = mkdtempSync(join(tmpdir(), "ba-agent-policy-ws-"));
+  writeFileSync(join(ws, "README.md"), "hello\n");
+  writeFileSync(join(ws, "broagentai.jsonc"), JSON.stringify({ approval: "deny" }));
+  const s = new RpcServer({ store: new WorkspaceStore({ configDir }) });
+  await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
+  let id = 1;
+  const ok = async (method: string, params: unknown = {}) => {
+    const res = await s.handle({ id: id++, method, params });
+    assert.equal(res.error, undefined, `${method} failed: ${res.error?.message}`);
+    return res.result as any;
+  };
+
+  const read = await ok("agent.check", { command: "fs.readFile", params: { path: "README.md" }, mode: "auto-approve" });
+  assert.equal(read.decision, "auto");
+  assert.equal(read.mode, "read-only");
+  assert.equal(read.configConstrained, true);
+  const write = await ok("agent.check", { command: "fs.writeFile", params: { path: "out.txt", content: "x" }, mode: "auto-approve" });
+  assert.equal(write.decision, "deny");
+  assert.equal(write.mode, "read-only");
+});
+
+test("tool-specific config overrides only tighten the matching tool", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "ba-agent-override-cfg-"));
+  const ws = mkdtempSync(join(tmpdir(), "ba-agent-override-ws-"));
+  writeFileSync(join(ws, "broagentai.jsonc"), JSON.stringify({ toolOverrides: [{ tool: "shell.run", approval: "deny" }] }));
+  const s = new RpcServer({ store: new WorkspaceStore({ configDir }) });
+  await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
+  let id = 1;
+  const ok = async (method: string, params: unknown = {}) => {
+    const res = await s.handle({ id: id++, method, params });
+    assert.equal(res.error, undefined, `${method} failed: ${res.error?.message}`);
+    return res.result as any;
+  };
+
+  const shell = await ok("agent.check", { command: "shell.run", params: { command: "echo hi" }, mode: "auto-approve" });
+  assert.equal(shell.decision, "deny");
+  assert.equal(shell.mode, "read-only");
+  const push = await ok("agent.check", { command: "git.push", params: {}, mode: "auto-approve" });
+  assert.equal(push.decision, "auto");
+  assert.equal(push.configConstrained, false);
+});
+
+test("stash pop/drop never remember approval and their approval keys bind the stash index", async () => {
+  const { ok } = await fixture();
+  for (const command of ["git.stashPop", "git.stashDrop"]) {
+    const first = await ok("agent.check", { command, params: { index: 0, confirmed: true }, mode: "ask-once" });
+    const second = await ok("agent.check", { command, params: { index: 1, confirmed: true }, mode: "ask-once" });
+    assert.equal(first.rememberApproval, false, command);
+    assert.equal(second.rememberApproval, false, command);
+    assert.equal(first.approvalKey, `${command}:v2:0`);
+    assert.equal(second.approvalKey, `${command}:v2:1`);
+    assert.notEqual(first.approvalKey, second.approvalKey);
+    assert.equal(approvalKey(command, { index: 2 }), `${command}:v2:2`);
+  }
+});
+
+test("invalid config approval values fall back to ask", () => {
+  for (const value of ["god-mode", "auto-approve", "ALLOW", 1, {}, null, undefined]) {
+    assert.equal(normalizeApprovalMode(value), "ask", String(value));
+  }
+  const merged = mergeConfig(
+    { defaultApproval: "auto" },
+    { approval: "always" as any },
+    null,
+    { ignore: [], maxFileBytes: 1024 },
+  );
+  assert.equal(merged.approval, "ask");
+  assert.equal(merged.approvalConfigured, true);
+});
+
+test("resolveAgentMode fails closed when config loading throws", () => {
+  const host = { store: { active() { throw new Error("config unavailable"); } } } as any;
+  for (const mode of ["always-ask", "ask-once", "auto-approve"]) {
+    assert.equal(resolveAgentMode(host, mode), "always-ask", mode);
+    assert.equal(resolveAgentMode(host, mode, "shell.run"), "always-ask", mode);
+  }
+  assert.equal(resolveAgentMode(host, "read-only"), "read-only");
+});
+
+test("script.run check previews the real package script body and binds it to the approval key", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "ba-agent-script-cfg-"));
+  const ws = mkdtempSync(join(tmpdir(), "ba-agent-script-ws-"));
+  const body1 = "node -e \"console.log('one')\"";
+  const body2 = "node -e \"console.log('two')\"";
+  writeFileSync(join(ws, "package.json"), JSON.stringify({ scripts: { emit: body1 } }));
+  writeFileSync(join(ws, "broagentai.jsonc"), JSON.stringify({ scripts: { emit: { manager: "npm" } } }));
+  const s = new RpcServer({ store: new WorkspaceStore({ configDir }) });
+  const added = await s.handle({ id: 0, method: "workspace.add", params: { path: ws } });
+  assert.equal(added.error, undefined, added.error?.message);
+  let id = 1;
+  const check = async () => {
+    const res = await s.handle({
+      id: id++,
+      method: "agent.check",
+      params: { command: "script.run", params: { name: "emit" }, mode: "always-ask" },
+    });
+    assert.equal(res.error, undefined, res.error?.message);
+    return res.result as any;
+  };
+
+  const first = await check();
+  assert.equal(first.command, "script.run");
+  assert.match(first.preview, /^\$ npm run emit/);
+  assert.ok(first.preview.includes(`package script: ${body1}`), first.preview);
+  assert.ok(first.approvalContext.command.includes(`body:${body1}`));
+
+  writeFileSync(join(ws, "package.json"), JSON.stringify({ scripts: { emit: body2 } }));
+  const second = await check();
+  assert.ok(second.preview.includes(`package script: ${body2}`), second.preview);
+  assert.notEqual(first.approvalKey, second.approvalKey);
+  assert.ok(second.approvalContext.command.includes(`body:${body2}`));
 });
